@@ -1357,6 +1357,7 @@ if (root) {
       series.find((candidate) => candidate.layer.id === primaryLayerId) || series[0];
     const latest = primary.rows.at(-1);
     if (!latest) return;
+    const isPrimary = (candidate) => candidate.layer.id === primary.layer.id;
     const svg = d3.select(svgNode);
     svg.selectAll("*").remove();
     svg.attr("viewBox", "0 0 1200 675");
@@ -1370,7 +1371,7 @@ if (root) {
     const allRows = series.flatMap((candidate) => candidate.rows);
     const primaryTitle = primary.layer.shortLabel || primary.layer.label;
     const comparisonTitle = series
-      .filter((candidate) => !candidate.primary)
+      .filter((candidate) => !isPrimary(candidate))
       .map((candidate) => candidate.layer.shortLabel || candidate.layer.label)
       .join(" ");
     const hasComparisons = comparisonTitle.length > 0;
@@ -1479,9 +1480,10 @@ if (root) {
       .attr("fill", palette.line)
       .attr("fill-opacity", 0.055);
     const orderedSeries = [...series].sort(
-      (left, right) => Number(left.primary) - Number(right.primary),
+      (left, right) => Number(isPrimary(left)) - Number(isPrimary(right)),
     );
     orderedSeries.forEach((candidate) => {
+      const candidateIsPrimary = isPrimary(candidate);
       svg
         .append("path")
         .datum(candidate.rows)
@@ -1490,7 +1492,7 @@ if (root) {
         .attr("stroke", palette.line)
         .attr(
           "stroke-opacity",
-          candidate.primary
+          candidateIsPrimary
             ? 1
             : series.length > 2
               ? Math.min(0.42, candidate.layer.strokeOpacity)
@@ -1498,11 +1500,14 @@ if (root) {
         )
         .attr(
           "stroke-dasharray",
-          candidate.primary ? null : candidate.layer.strokeDasharray || null,
+          candidateIsPrimary ? null : candidate.layer.strokeDasharray || null,
         )
         .attr("stroke-linecap", "round")
         .attr("stroke-linejoin", "round")
-        .attr("stroke-width", candidate.primary ? (compact ? 6 : 3.5) : compact ? 4 : 1.8);
+        .attr(
+          "stroke-width",
+          candidateIsPrimary ? (compact ? 6 : 3.5) : compact ? 4 : 1.8,
+        );
     });
   }
 
