@@ -15,14 +15,11 @@ Website: <https://desk.adamsioud.com>
 - Hourly H100, H200, B200, and B300 prices
 - Price view for series with the same unit
 - Index view for comparing different kinds of data from a common starting point
-- A clearly marked sample Compute Token series for trying mixed comparisons
+- Token Index for mixed comparisons
 - Four color palettes with light and dark themes
 - Clean card and gallery views
 - Exact links for editable card compositions
 - Keyboard access, reduced motion, responsive layouts, and chart inspection
-
-The sample token series is generated from H100 and H200 price changes. It is an
-illustrative index, not a quoted token price.
 
 ## Run locally
 
@@ -40,7 +37,7 @@ The tabs above the card open one GPU at a time. The quiet row below the chart
 controls its value view, comparison, and sharing.
 
 - Open Compare to add or remove data layers.
-- Adding the sample token switches the card to Index automatically.
+- Adding Token Index switches the card to Index automatically.
 - Share copies the exact card link. Expand returns to the editable view.
 - Shared links use social artwork that matches the selected layers, value view,
   range, palette, and light or dark theme.

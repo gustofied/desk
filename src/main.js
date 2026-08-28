@@ -226,8 +226,8 @@ if (root) {
         button.setAttribute("aria-pressed", "false");
         button.setAttribute(
           "aria-label",
-          layer.sample
-            ? `Add sample ${layer.label} Index`
+          layer.unit === "index"
+            ? `Add ${layer.label} layer`
             : `Add ${layer.label} price layer`,
         );
         swatch.setAttribute("aria-hidden", "true");
@@ -413,7 +413,7 @@ if (root) {
             ? `Remove ${layer.shortLabel || layer.label}`
             : `Add ${layer.shortLabel || layer.label}`,
         subtitle: `${cardDefinition.sharePath}/layers/${layer.id.toLowerCase()}`,
-        hint: layer.sample ? "Sample" : "Layer",
+        hint: "Layer",
         keywords: ["compare", "overlay", "series", layer.label],
         active: () => state.layers.has(layer.id),
         disabled: () => state.selected === layer.id && state.layers.has(layer.id),
@@ -922,7 +922,7 @@ if (root) {
       state.layers.add(layerId);
       if (!layer.views.includes(state.scale)) {
         state.scale = "index";
-        announceCard("Index view selected for the sample token");
+        announceCard("Index view selected for Token Index");
       }
     }
     state.zoomWindow = null;
@@ -983,8 +983,8 @@ if (root) {
         primary
           ? `${layer.label} main layer`
           : selected
-            ? `Remove ${layer.sample ? "sample " : ""}${layer.label} layer`
-            : `Add ${layer.sample ? "sample " : ""}${layer.label} layer`,
+            ? `Remove ${layer.label} layer`
+            : `Add ${layer.label} layer`,
       );
     });
     const comparisonCount = Math.max(0, state.layers.size - 1);

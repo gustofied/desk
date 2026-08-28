@@ -35,7 +35,7 @@ for (const layer of gpuLayers) {
   sourceSeries.set(layer.id, points);
 }
 
-const tokenPoints = createSampleTokenIndex(
+const tokenPoints = createTokenIndex(
   sourceSeries.get("H100"),
   sourceSeries.get("H200"),
 );
@@ -70,7 +70,7 @@ function compactPoint(row) {
   return [timestamp, round(value), round(lower), round(upper)];
 }
 
-function createSampleTokenIndex(h100Points = [], h200Points = []) {
+function createTokenIndex(h100Points = [], h200Points = []) {
   if (!h100Points.length || !h200Points.length) return [];
   const h100Start = h100Points[0][1];
   const h200Start = h200Points[0][1];

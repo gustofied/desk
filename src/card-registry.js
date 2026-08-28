@@ -4,7 +4,7 @@ const GPU_INDEX_SLUG = "gpu-price-index";
 const GPU_INDEX_DATA_FILE = "data/gpu-price-index.json";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
-export const PUBLISHED_CARD_VERSION = "v2";
+export const PUBLISHED_CARD_VERSION = "v3";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),
@@ -71,10 +71,8 @@ export const GPU_LAYERS = Object.freeze([
   }),
   Object.freeze({
     id: "TOKEN",
-    label: "Compute Token",
-    shortLabel: "Sample token",
+    label: "Token Index",
     unit: "index",
-    sample: true,
     views: Object.freeze(["index"]),
     strokeOpacity: 0.72,
     strokeDasharray: "1 4",
@@ -87,7 +85,7 @@ export const CARD_REGISTRY = Object.freeze([
     slug: GPU_INDEX_SLUG,
     hash: "gpu-benchmark-card",
     title: "Compute Prices",
-    description: "Hourly accelerator prices and a sample compute index.",
+    description: "Hourly accelerator prices and Token Index.",
     sourceDir: "api/dashboard-snapshots/gpu-benchmark",
     dataFile: GPU_INDEX_DATA_FILE,
     dataUrl: `./${GPU_INDEX_DATA_FILE}`,

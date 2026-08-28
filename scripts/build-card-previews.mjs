@@ -496,7 +496,7 @@ function renderDefaultComparisonImage() {
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${colors.paper}"/>
       <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">H200</text>
-      <text x="40" y="88" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">with H100 Sample token</text>
+      <text x="40" y="88" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">with H100 Token Index</text>
       <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">7D INDEX</text>
       <text x="40" y="158" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndex(latest?.value)}</text>
       <path d="${area(primary?.rows || [])}" fill="${colors.line}" fill-opacity="0.055"/>
