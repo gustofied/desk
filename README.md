@@ -43,8 +43,8 @@ controls the value view and comparison layers.
 - Adding the sample token switches the card to Index automatically.
 - Lock records the current composition in the URL. Any later change unlocks it.
 - Copy link opens the exact card. Expand returns to the editable view.
-- Single GPU links use matching social artwork. Custom comparisons use the Desk
-  comparison cover and still open the exact editable card.
+- Copy link uses social artwork that matches the selected layers, value view,
+  range, palette, and light or dark theme.
 - Press **Command G** to find cards, layers, views, ranges, and settings.
 - Press **Command H** to hide or show the display controls.
 
@@ -66,8 +66,9 @@ The source records live under `api/dashboard-snapshots/`. Running
 `data/gpu-price-index.json`. The page loads that file once and lets the browser
 and CDN cache it normally.
 
-`npm run build` always rebuilds the compact data, share previews, and browser
-bundle.
+`npm run build` always rebuilds the compact data, exact share previews, local
+fonts, and browser bundle. `npm run build:site` assembles the clean GitHub Pages
+artifact in `_site`.
 
 ## Project shape
 
@@ -78,7 +79,10 @@ bundle.
 - `src/command-palette.js` provides the searchable resource index.
 - `scripts/build-runtime-data.mjs` creates the compact data file.
 - `scripts/build-card-previews.mjs` creates social images and share routes.
+- `scripts/build-site.mjs` assembles the deployment without committing the full
+  preview matrix.
 - `styles/` contains the card, workspace, control, and page styles.
 
-Edit the source files and run `npm run build`. `desk.js`, `data/`, `cards/`, and
-the social preview images are generated output.
+Edit the source files and run `npm run build`. `desk.js` is generated. Exact
+published routes, preview images, and local font files are generated for local
+use and for the Pages deployment without being added to Git history.

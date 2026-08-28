@@ -4,6 +4,7 @@ const GPU_INDEX_SLUG = "gpu-price-index";
 const GPU_INDEX_DATA_FILE = "data/gpu-price-index.json";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
+export const PUBLISHED_CARD_VERSION = "v1";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),
@@ -98,6 +99,8 @@ export const CARD_REGISTRY = Object.freeze([
       layers: Object.freeze(["H200"]),
       range: "7d",
       scale: "price",
+      palette: "azure",
+      theme: "light",
     }),
     layers: GPU_LAYERS,
     visualizations: Object.freeze([
@@ -143,4 +146,104 @@ export function serializeLayerIds(layerIds, card = getCardDefinition()) {
     .map((layer) => layer.id)
     .filter((layerId) => selected.has(layerId))
     .join(",");
+}
+
+export function normalizeCardState(cardId, stateParams = {}) {
+  const card = getCardDefinition(cardId);
+  const primaryLayers = card.layers.filter((layer) => layer.unit === "usd-hour");
+  const requestedGpu = String(stateParams.gpu || "").toUpperCase();
+  const gpu = primaryLayers.some((layer) => layer.id === requestedGpu)
+    ? requestedGpu
+    : card.defaults.layer;
+  const requestedLayers = parseLayerIds(
+    layerStateValue(stateParams.layers),
+    card,
+    [gpu],
+  );
+  const requestedScale = card.visualizations.some(
+    (visualization) => visualization.id === stateParams.scale,
+  )
+    ? stateParams.scale
+    : card.defaults.scale;
+  const requiresIndex = requestedLayers.some(
+    (layerId) => getLayerDefinition(card, layerId)?.unit === "index",
+  );
+  const scale = requiresIndex ? "index" : requestedScale;
+  const compatibleLayers = new Set(
+    requestedLayers.filter((layerId) =>
+      getLayerDefinition(card, layerId)?.views.includes(scale),
+    ),
+  );
+  compatibleLayers.add(gpu);
+  const layers = card.layers
+    .map((layer) => layer.id)
+    .filter((layerId) => compatibleLayers.has(layerId));
+  const requestedRange = String(stateParams.range || "").toLowerCase();
+  const range = RANGES[requestedRange]
+    ? requestedRange
+    : card.defaults.range;
+  const requestedPalette = String(stateParams.palette || "").toLowerCase();
+  const palette = paletteIds().includes(requestedPalette)
+    ? requestedPalette
+    : card.defaults.palette;
+  const requestedTheme = String(stateParams.theme || "").toLowerCase();
+  const theme = THEMES.includes(requestedTheme)
+    ? requestedTheme
+    : card.defaults.theme;
+
+  return {
+    gpu,
+    layers,
+    scale,
+    range,
+    palette,
+    theme,
+    locked: stateParams.locked === true || stateParams.locked === "1",
+  };
+}
+
+export function publishedCardSharePath(cardId, stateParams) {
+  const card = getCardDefinition(cardId);
+  const state = normalizeCardState(card.id, stateParams);
+  const layers = state.layers.map(pathSegment).join("~");
+
+  return (
+    `${card.sharePath}/published/` +
+    `${pathSegment(state.gpu)}/${pathSegment(state.scale)}/${layers}/` +
+    `${pathSegment(state.range)}/${pathSegment(state.palette)}/` +
+    `${pathSegment(state.theme)}/`
+  );
+}
+
+export function publishedCardPreviewPath(cardId, stateParams, revision) {
+  const card = getCardDefinition(cardId);
+  const state = normalizeCardState(card.id, stateParams);
+  const dataRevision = publishedRevisionSegment(revision);
+  const layers = state.layers.map(pathSegment).join("~");
+
+  return (
+    `/${card.previewImageDir}/published/${PUBLISHED_CARD_VERSION}/${dataRevision}/` +
+    `${pathSegment(state.gpu)}/${pathSegment(state.scale)}/${layers}/` +
+    `${pathSegment(state.range)}/` +
+    `${pathSegment(state.palette)}-${pathSegment(state.theme)}.png`
+  );
+}
+
+function layerStateValue(value) {
+  if (Array.isArray(value) || value instanceof Set) {
+    return Array.from(value).join(",");
+  }
+  return value;
+}
+
+function pathSegment(value) {
+  return encodeURIComponent(String(value).toLowerCase());
+}
+
+function publishedRevisionSegment(revision) {
+  const value = String(revision || "").trim();
+  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(value)) {
+    throw new TypeError("A valid card data revision is required");
+  }
+  return encodeURIComponent(value.toLowerCase());
 }

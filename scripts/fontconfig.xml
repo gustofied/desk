@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <dir prefix="relative">../node_modules/geist/dist/fonts/geist-sans</dir>
+  <dir prefix="relative">../node_modules/geist/dist/fonts/geist-mono</dir>
+  <cachedir prefix="cwd">.cache/fontconfig</cachedir>
+</fontconfig>

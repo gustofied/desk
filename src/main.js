@@ -1,15 +1,12 @@
 import * as d3 from "d3";
 import { animate } from "motion";
-import {
-  cardPermalink,
-  cardUrl,
-  replaceCardLocation,
-} from "./card-presentation.js";
+import { replaceCardLocation } from "./card-presentation.js";
 import {
   getCardDefinition,
   getLayerDefinition,
   paletteIds,
   parseLayerIds,
+  publishedCardSharePath,
   RANGES,
   serializeLayerIds,
 } from "./card-registry.js";
@@ -87,6 +84,7 @@ if (root) {
     scale: initialScale,
     range: ranges[params.get("range")] ? params.get("range") : cardDefinition.defaults.range,
     locked: params.get("locked") === "1",
+    dataRevision: null,
     shareReady: false,
     resizeTimer: null,
     transitionPending: false,
@@ -722,7 +720,11 @@ if (root) {
       if (!Number.isInteger(payload?.version) || !payload?.series) {
         throw new Error(`Unsupported card data at ${cardDefinition.dataUrl}`);
       }
+      if (typeof payload.revision !== "string" || !payload.revision.trim()) {
+        throw new Error(`Missing card data revision at ${cardDefinition.dataUrl}`);
+      }
 
+      state.dataRevision = payload.revision;
       state.seriesByLayer = new Map(
         cardDefinition.layers
           .map((layer) => [
@@ -1129,27 +1131,23 @@ if (root) {
   }
 
   function shareUrl() {
-    if (state.panel === "detail") {
-      return cardPermalink(cardId, currentCardState()).toString();
+    const cardState =
+      state.layout === "all"
+        ? {
+            ...currentCardState(),
+            layers: state.selected,
+            scale: "price",
+          }
+        : currentCardState();
+    const publishedUrl = new URL(
+      publishedCardSharePath(cardId, cardState),
+      window.location.origin,
+    );
+    if (state.dataRevision) {
+      publishedUrl.searchParams.set("v", state.dataRevision);
     }
-    const isPublishedPreset =
-      state.layout === "focus" &&
-      state.scale === "price" &&
-      state.layers.size === 1 &&
-      state.layers.has(state.selected) &&
-      !state.locked;
-    if (isPublishedPreset) {
-      const publishedUrl = new URL(
-        `${cardDefinition.sharePath}/${state.selected.toLowerCase()}/${state.range}/${currentPalette()}/${currentTheme()}/`,
-        window.location.origin,
-      );
-      return publishedUrl.toString();
-    }
-    return cardUrl(
-      cardId,
-      state.layout === "all" ? "gallery" : "card",
-      currentCardState(),
-    ).toString();
+    if (state.locked) publishedUrl.searchParams.set("locked", "1");
+    return publishedUrl.toString();
   }
 
   async function copyText(value, successMessage) {
@@ -1336,7 +1334,11 @@ if (root) {
       .join(" + ");
     const typography = compact
       ? { family: series.length > 1 ? 34 : 52, range: 36, price: 104 }
-      : { family: 34, range: 32, price: 82 };
+      : {
+          family: series.length >= 5 ? 28 : 34,
+          range: 32,
+          price: 82,
+        };
     svg
       .append("rect")
       .attr("width", 1200)

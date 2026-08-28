@@ -1,20 +1,35 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readFile,
+  readdir,
+  rmdir,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
+import { availableParallelism } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as d3 from "d3";
-import sharp from "sharp";
 import {
   getCardDefinition,
+  normalizeCardState,
   PALETTES,
+  publishedCardPreviewPath,
+  publishedCardSharePath,
   RANGES,
   SITE_ORIGIN,
   THEMES,
 } from "../src/card-registry.js";
+import { shareRangeLabel } from "../src/share-range-label.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+await mkdir(join(root, ".cache", "fontconfig"), { recursive: true });
+process.env.FONTCONFIG_FILE = join(root, "scripts", "fontconfig.xml");
+const { default: sharp } = await import("sharp");
 const cardDefinition = getCardDefinition("gpu-index");
-const families = cardDefinition.layers.filter(
+const gpuLayers = cardDefinition.layers.filter(
   (layer) => layer.unit === "usd-hour",
 );
 const palettes = Object.fromEntries(
@@ -22,107 +37,382 @@ const palettes = Object.fromEntries(
 );
 const imageRoot = join(root, cardDefinition.previewImageDir);
 const pageRoot = join(root, cardDefinition.previewPageDir);
-const manifestPath = join(root, "data", "generated-card-files.json");
+const manifestPath = join(root, ".cache", "generated-card-files.json");
 const runtimeData = JSON.parse(
   await readFile(join(root, cardDefinition.dataFile), "utf8"),
 );
 const generatedFiles = [];
+const workerCount = Math.max(
+  1,
+  Math.min(8, typeof availableParallelism === "function" ? availableParallelism() : 4),
+);
 
-const cards = families.map((family) => ({
-  family: family.id,
-  rows: (runtimeData.series?.[family.id] || []).map((point) => ({
-    date: new Date(Number(point[0]) * 1000),
-    value: Number(point[1]),
-  })),
+const seriesByLayer = new Map(
+  cardDefinition.layers.map((layer) => [
+    layer.id,
+    (runtimeData.series?.[layer.id] || []).map((point) => ({
+      date: new Date(Number(point[0]) * 1000),
+      value: Number(point[1]),
+    })),
+  ]),
+);
+const cards = gpuLayers.map((layer) => ({
+  family: layer.id,
+  rows: seriesByLayer.get(layer.id) || [],
 }));
-
 const latestDate = new Date(
   Math.max(
-    ...cards.flatMap((card) => card.rows.map((row) => row.date.getTime())),
+    ...Array.from(seriesByLayer.values()).flatMap((rows) =>
+      rows.map((row) => row.date.getTime()),
+    ),
   ),
 );
 
-for (const card of cards) {
-  for (const [rangeId, range] of Object.entries(RANGES)) {
-    const rows = range.milliseconds
-      ? card.rows.filter(
-          (row) => row.date >= new Date(latestDate.getTime() - range.milliseconds),
-        )
-      : card.rows;
-    const latest = card.rows.at(-1);
-    if (!rows.length || !latest) continue;
+await installWebFonts();
+await generateLegacyPreviews();
+const publishedCount = await generatePublishedPreviews();
+await generateDefaultPreview();
 
-    for (const [paletteId, accent] of Object.entries(palettes)) {
-      for (const theme of THEMES) {
-        const imagePath = join(
-          imageRoot,
-          card.family.toLowerCase(),
-          rangeId,
-          `${paletteId}-${theme}.png`,
-        );
-        const pagePath = join(
-          pageRoot,
-          card.family.toLowerCase(),
-          rangeId,
-          paletteId,
-          theme,
-          "index.html",
-        );
-        await mkdir(dirname(imagePath), { recursive: true });
-        await mkdir(dirname(pagePath), { recursive: true });
-        const previewSvg = renderCardImage(
-          card.family,
-          range,
-          rows,
-          latest,
-          accent,
-          theme,
-        );
-        const previewImage = await sharp(Buffer.from(previewSvg))
-          .png({ compressionLevel: 9, palette: true })
-          .toBuffer();
-        const previewRevision = createHash("sha256")
-          .update(previewImage)
-          .digest("hex")
-          .slice(0, 12);
-        await writeFile(imagePath, previewImage);
-        await writeFile(
-          pagePath,
-          renderSharePage(
-            card.family,
-            rangeId,
-            range,
-            latest,
-            paletteId,
-            theme,
-            previewRevision,
-          ),
-          "utf8",
-        );
-        generatedFiles.push(relative(root, imagePath), relative(root, pagePath));
-      }
-    }
-  }
-}
-
-const deskPreviewPath = join(imageRoot, "desk-comparison.png");
-await mkdir(dirname(deskPreviewPath), { recursive: true });
-await writeFile(
-  deskPreviewPath,
-  await sharp(Buffer.from(renderDeskComparisonImage()))
-    .png({ compressionLevel: 9, palette: true })
-    .toBuffer(),
-);
-generatedFiles.push(relative(root, deskPreviewPath));
-
+generatedFiles.sort();
 await retireOldGeneratedFiles(generatedFiles);
+await Promise.all([
+  pruneEmptyDirectories(imageRoot),
+  pruneEmptyDirectories(pageRoot),
+]);
+await mkdir(dirname(manifestPath), { recursive: true });
 await writeFile(
   manifestPath,
   `${JSON.stringify({ revision: runtimeData.revision, files: generatedFiles }, null, 2)}\n`,
   "utf8",
 );
 
-function renderCardImage(family, range, rows, latest, accent, theme) {
+console.log(
+  `Built ${publishedCount} exact card previews with ${workerCount} workers.`,
+);
+
+async function installWebFonts() {
+  const packageFontRoot = join(root, "node_modules", "geist", "dist", "fonts");
+  const publicFontRoot = join(root, "assets", "fonts");
+  await mkdir(publicFontRoot, { recursive: true });
+  await Promise.all([
+    copyFile(
+      join(packageFontRoot, "geist-sans", "Geist-Variable.woff2"),
+      join(publicFontRoot, "Geist-Variable.woff2"),
+    ),
+    copyFile(
+      join(packageFontRoot, "geist-mono", "GeistMono-Variable.woff2"),
+      join(publicFontRoot, "GeistMono-Variable.woff2"),
+    ),
+  ]);
+}
+
+async function generateLegacyPreviews() {
+  for (const card of cards) {
+    for (const [rangeId, range] of Object.entries(RANGES)) {
+      const rows = rowsForRange(card.rows, rangeId);
+      const latest = card.rows.at(-1);
+      if (!rows.length || !latest) continue;
+
+      for (const [paletteId, accent] of Object.entries(palettes)) {
+        for (const theme of THEMES) {
+          const imagePath = join(
+            imageRoot,
+            card.family.toLowerCase(),
+            rangeId,
+            `${paletteId}-${theme}.png`,
+          );
+          const pagePath = join(
+            pageRoot,
+            card.family.toLowerCase(),
+            rangeId,
+            paletteId,
+            theme,
+            "index.html",
+          );
+          await mkdir(dirname(imagePath), { recursive: true });
+          await mkdir(dirname(pagePath), { recursive: true });
+          const previewImage = await encodeLegacyPreview(
+            renderLegacyCardImage(
+              card.family,
+              range,
+              rows,
+              latest,
+              accent,
+              theme,
+            ),
+          );
+          const previewRevision = imageRevision(previewImage);
+          await writeFile(imagePath, previewImage);
+          await writeFile(
+            pagePath,
+            renderLegacySharePage(
+              card.family,
+              rangeId,
+              range,
+              latest,
+              paletteId,
+              theme,
+              previewRevision,
+            ),
+            "utf8",
+          );
+          track(imagePath, pagePath);
+        }
+      }
+    }
+  }
+}
+
+async function generatePublishedPreviews() {
+  const states = publishedStates();
+  await runWithConcurrency(states, workerCount, async (state) => {
+    const model = previewModel(state);
+    const pageHref = publishedCardSharePath(
+      cardDefinition.id,
+      state,
+    );
+    const imageHref = publishedCardPreviewPath(
+      cardDefinition.id,
+      state,
+      runtimeData.revision,
+    );
+    const pagePath = join(root, pageHref, "index.html");
+    const imagePath = join(root, imageHref);
+    const previewImage = await encodePreview(renderPublishedCardImage(model));
+    const previewRevision = imageRevision(previewImage);
+
+    await mkdir(dirname(imagePath), { recursive: true });
+    await mkdir(dirname(pagePath), { recursive: true });
+    await Promise.all([
+      writeFile(imagePath, previewImage),
+      writeFile(
+        pagePath,
+        renderPublishedSharePage(
+          model,
+          pageHref,
+          imageHref,
+          previewRevision,
+        ),
+        "utf8",
+      ),
+    ]);
+    track(imagePath, pagePath);
+  });
+
+  return states.length;
+}
+
+async function generateDefaultPreview() {
+  const deskPreviewPath = join(imageRoot, "desk-comparison.png");
+  await mkdir(dirname(deskPreviewPath), { recursive: true });
+  await writeFile(
+    deskPreviewPath,
+    await encodeLegacyPreview(renderDefaultComparisonImage()),
+  );
+  track(deskPreviewPath);
+}
+
+function publishedStates() {
+  const statesByPath = new Map();
+  for (const primary of gpuLayers) {
+    for (const visualization of cardDefinition.visualizations) {
+      const scale = visualization.id;
+      if (!primary.views.includes(scale)) continue;
+      const optionalLayers = cardDefinition.layers.filter(
+        (layer) =>
+          layer.id !== primary.id &&
+          layer.views.includes(scale),
+      );
+      for (let mask = 0; mask < 2 ** optionalLayers.length; mask += 1) {
+        const layers = [
+          primary.id,
+          ...optionalLayers
+            .filter((_, index) => mask & (1 << index))
+            .map((layer) => layer.id),
+        ];
+        for (const range of Object.keys(RANGES)) {
+          for (const palette of Object.keys(palettes)) {
+            for (const theme of THEMES) {
+              const state = normalizeCardState(cardDefinition.id, {
+                gpu: primary.id,
+                layers,
+                scale,
+                range,
+                palette,
+                theme,
+              });
+              const pageHref = publishedCardSharePath(
+                cardDefinition.id,
+                state,
+              );
+              if (statesByPath.has(pageHref)) {
+                throw new Error(`Duplicate published card route: ${pageHref}`);
+              }
+              statesByPath.set(pageHref, state);
+            }
+          }
+        }
+      }
+    }
+  }
+  return Array.from(statesByPath.values());
+}
+
+function previewModel(state) {
+  const normalized = normalizeCardState(cardDefinition.id, state);
+  const series = normalized.layers.map((layerId) => {
+    const layer = cardDefinition.layers.find((item) => item.id === layerId);
+    const sourceRows = rowsForRange(seriesByLayer.get(layerId) || [], normalized.range);
+    if (!layer || !sourceRows.length) {
+      throw new Error(`Missing preview data for ${layerId} ${normalized.range}`);
+    }
+    const baseValue = sourceRows[0].value || 1;
+    return {
+      layer,
+      primary: layerId === normalized.gpu,
+      rows: sourceRows.map((row) => ({
+        ...row,
+        plotValue:
+          normalized.scale === "index"
+            ? (row.value / baseValue) * 100
+            : row.value,
+      })),
+    };
+  });
+  const primary =
+    series.find((candidate) => candidate.primary) || series[0];
+  const latest = primary?.rows.at(-1);
+  if (!primary || !latest) {
+    throw new Error(`Missing primary preview data for ${normalized.gpu}`);
+  }
+
+  return {
+    ...normalized,
+    colors: themeColors(palettes[normalized.palette], normalized.theme),
+    series,
+    primary,
+    headline:
+      normalized.scale === "index"
+        ? formatIndex(latest.plotValue)
+        : formatUsd(latest.plotValue),
+    layerTitle: series
+      .map(({ layer }) => layer.shortLabel || layer.label)
+      .join(" + "),
+    rangeLabel:
+      normalized.scale === "index"
+        ? `${shareRangeLabel(primary.rows, normalized.range)} INDEX`
+        : shareRangeLabel(primary.rows, normalized.range),
+  };
+}
+
+function renderPublishedCardImage(model) {
+  const chart = { x: 0, y: 174, width: 1200, height: 430 };
+  const titleSize = model.series.length >= 5 ? 28 : 34;
+  const allRows = model.series.flatMap((candidate) => candidate.rows);
+  const { line, area } = layeredChartPaths(
+    allRows,
+    model.primary.rows,
+    chart,
+    630,
+  );
+  const layerMarkup = model.series
+    .map((candidate) => {
+      const strokeWidth = candidate.primary ? 3.5 : 2.5;
+      const strokeOpacity = candidate.primary
+        ? 1
+        : candidate.layer.strokeOpacity;
+      const dash = candidate.primary
+        ? ""
+        : candidate.layer.strokeDasharray || "";
+      return `<path d="${line(candidate.rows)}" fill="none" stroke="${model.colors.line}" stroke-opacity="${strokeOpacity}" stroke-width="${strokeWidth}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    })
+    .join("");
+
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+      <rect width="1200" height="630" fill="${model.colors.paper}"/>
+      <text x="40" y="54" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="${titleSize}" font-weight="600" letter-spacing="0.25">${escapeXml(model.layerTitle)}</text>
+      <text x="1160" y="54" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(model.rangeLabel)}</text>
+      <text x="40" y="138" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
+      <path d="${area}" fill="${model.colors.line}" fill-opacity="0.055"/>
+      ${layerMarkup}
+    </svg>`;
+}
+
+function renderPublishedSharePage(
+  model,
+  pageHref,
+  imageHref,
+  previewRevision,
+) {
+  const pageUrl = `${SITE_ORIGIN}${pageHref}?v=${runtimeData.revision}`;
+  const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
+  const rangeDescription = RANGES[model.range]?.longLabel || model.range;
+  const title = `${model.layerTitle} ${model.rangeLabel}`;
+  const description =
+    model.scale === "index"
+      ? `${model.headline} index over ${rangeDescription}`
+      : `${model.headline} per GPU hour over ${rangeDescription}`;
+  const imageAlt = `${model.layerTitle} card showing ${description.toLowerCase()}`;
+  const destinationParams = new URLSearchParams({
+    card: cardDefinition.id,
+    view: "card",
+    gpu: model.gpu,
+    layers: model.layers.join(","),
+    scale: model.scale,
+    range: model.range,
+    palette: model.palette,
+    theme: model.theme,
+  });
+  const destination = `/?${destinationParams.toString()}#${cardDefinition.hash}`;
+  const destinationHref = escapeHtml(destination);
+  const redirectScript = JSON.stringify(destination).replaceAll("<", "\\u003c");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="${escapeHtml(description)}">
+    <meta name="theme-color" content="${model.colors.paper}">
+    <link rel="canonical" href="${pageUrl}">
+    <meta property="og:title" content="${escapeHtml(title)}">
+    <meta property="og:description" content="${escapeHtml(description)}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Desk">
+    <meta property="og:url" content="${pageUrl}">
+    <meta property="og:image" content="${imageUrl}">
+    <meta property="og:image:secure_url" content="${imageUrl}">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="${escapeHtml(imageAlt)}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${escapeHtml(title)}">
+    <meta name="twitter:description" content="${escapeHtml(description)}">
+    <meta name="twitter:image" content="${imageUrl}">
+    <meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">
+    <title>${escapeHtml(title)} | Desk</title>
+    <script>
+      const target = new URL(${redirectScript}, window.location.origin);
+      if (new URLSearchParams(window.location.search).get("locked") === "1") {
+        target.searchParams.set("locked", "1");
+      }
+      window.location.replace(target);
+    </script>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: ${model.colors.paper}; color: ${model.colors.line}; font: 500 16px/24px Geist, system-ui, sans-serif; }
+      a { color: inherit; text-underline-offset: 0.2em; }
+    </style>
+  </head>
+  <body>
+    <a href="${destinationHref}">Open card</a>
+  </body>
+</html>
+`;
+}
+
+function renderLegacyCardImage(family, range, rows, latest, accent, theme) {
   const colors = themeColors(accent, theme);
   const chart = { x: 0, y: 174, width: 1200, height: 370 };
   const { line, area } = chartPaths(rows, chart, 630);
@@ -138,17 +428,14 @@ function renderCardImage(family, range, rows, latest, accent, theme) {
     </svg>`;
 }
 
-function renderDeskComparisonImage() {
+function renderDefaultComparisonImage() {
   const colors = themeColors(palettes.sage, "dark");
   const startDate = new Date(latestDate.getTime() - RANGES["7d"].milliseconds);
   const layerIds = ["H100", "H200", "TOKEN"];
   const series = layerIds.map((layerId) => {
-    const rows = (runtimeData.series?.[layerId] || [])
-      .map((point) => ({
-        date: new Date(Number(point[0]) * 1000),
-        value: Number(point[1]),
-      }))
-      .filter((row) => row.date >= startDate);
+    const rows = (seriesByLayer.get(layerId) || []).filter(
+      (row) => row.date >= startDate,
+    );
     const base = rows[0]?.value || 1;
     return {
       layerId,
@@ -203,6 +490,38 @@ function renderDeskComparisonImage() {
     </svg>`;
 }
 
+function layeredChartPaths(allRows, primaryRows, chart, bottom) {
+  let start = d3.min(allRows, (row) => row.date);
+  let end = d3.max(allRows, (row) => row.date);
+  if (+start === +end) {
+    start = new Date(+start - 30 * 60 * 1000);
+    end = new Date(+end + 30 * 60 * 1000);
+  }
+  const minimum = d3.min(allRows, (row) => row.plotValue) ?? 0;
+  const maximum = d3.max(allRows, (row) => row.plotValue) ?? minimum + 1;
+  const spread = Math.max(maximum - minimum, maximum * 0.025, 0.12);
+  const x = d3
+    .scaleTime()
+    .domain([start, end])
+    .range([chart.x, chart.x + chart.width]);
+  const y = d3
+    .scaleLinear()
+    .domain([Math.max(0, minimum - spread * 0.2), maximum + spread * 0.2])
+    .range([chart.y + chart.height, chart.y]);
+  const line = d3
+    .line()
+    .x((row) => x(row.date))
+    .y((row) => y(row.plotValue))
+    .curve(d3.curveMonotoneX);
+  const area = d3
+    .area()
+    .x((row) => x(row.date))
+    .y0(bottom)
+    .y1((row) => y(row.plotValue))
+    .curve(d3.curveMonotoneX)(primaryRows);
+  return { line, area };
+}
+
 function chartPaths(rows, chart, bottom) {
   let start = d3.min(rows, (row) => row.date);
   let end = d3.max(rows, (row) => row.date);
@@ -236,6 +555,13 @@ function chartPaths(rows, chart, bottom) {
   };
 }
 
+function rowsForRange(rows, rangeId) {
+  const milliseconds = RANGES[rangeId]?.milliseconds;
+  if (!milliseconds) return rows;
+  const cutoff = new Date(latestDate.getTime() - milliseconds);
+  return rows.filter((row) => row.date >= cutoff);
+}
+
 function themeColors(accent, theme) {
   if (theme === "dark") {
     return {
@@ -263,7 +589,7 @@ function hexChannels(value) {
   return [0, 2, 4].map((offset) => Number.parseInt(hex.slice(offset, offset + 2), 16));
 }
 
-function renderSharePage(
+function renderLegacySharePage(
   family,
   rangeId,
   range,
@@ -282,7 +608,7 @@ function renderSharePage(
     `/?card=${cardDefinition.id}&view=card&gpu=${family}` +
     `&layers=${family}&scale=price&range=${rangeId}` +
     `&palette=${palette}&theme=${theme}#${cardDefinition.hash}`;
-  const destinationHref = destination.replaceAll("&", "&amp;");
+  const destinationHref = escapeHtml(destination);
   const colors = themeColors(palettes[palette], theme);
 
   return `<!doctype html>
@@ -333,6 +659,54 @@ function formatIndex(value) {
   return Number(value || 0).toFixed(1);
 }
 
+function imageRevision(buffer) {
+  return createHash("sha256").update(buffer).digest("hex").slice(0, 12);
+}
+
+function encodePreview(svg) {
+  return sharp(Buffer.from(svg))
+    .png({ compressionLevel: 9, effort: 4, palette: true })
+    .toBuffer();
+}
+
+function encodeLegacyPreview(svg) {
+  return sharp(Buffer.from(svg))
+    .png({ compressionLevel: 9, palette: true })
+    .toBuffer();
+}
+
+function track(...paths) {
+  generatedFiles.push(...paths.map((path) => relative(root, path)));
+}
+
+function escapeXml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+function escapeHtml(value) {
+  return escapeXml(value);
+}
+
+async function runWithConcurrency(items, concurrency, task) {
+  let cursor = 0;
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        await task(items[index], index);
+      }
+    },
+  );
+  await Promise.all(workers);
+}
+
 async function retireOldGeneratedFiles(nextFiles) {
   let previousFiles = [];
   try {
@@ -356,4 +730,30 @@ async function retireOldGeneratedFiles(nextFiles) {
       if (error?.code !== "ENOENT") throw error;
     }
   }
+}
+
+async function pruneEmptyDirectories(rootDirectory) {
+  const walk = async (directory, keepDirectory = false) => {
+    let entries;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch (error) {
+      if (error?.code === "ENOENT") return false;
+      throw error;
+    }
+
+    await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory())
+        .map((entry) => walk(join(directory, entry.name))),
+    );
+    const remaining = await readdir(directory);
+    if (!keepDirectory && remaining.length === 0) {
+      await rmdir(directory);
+      return true;
+    }
+    return false;
+  };
+
+  await walk(rootDirectory, true);
 }
