@@ -615,7 +615,7 @@ button.compute-share-card-frame:focus-visible {
 .gpu-benchmark__composer {
   position: relative;
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: stretch;
   width: calc(100% + 16px);
   min-height: 40px;
@@ -625,17 +625,9 @@ button.compute-share-card-frame:focus-visible {
   border-bottom: 1px solid var(--market-card-rule);
 }
 
-.gpu-benchmark__measure,
-.gpu-benchmark__composer-actions {
-  display: flex;
-  min-width: 0;
-  align-items: stretch;
-}
-
 .gpu-benchmark__compare-toggle {
-  grid-column: 2;
+  grid-column: 1;
   min-width: 96px !important;
-  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent) !important;
 }
 
 .gpu-benchmark__compare-toggle strong {
@@ -686,11 +678,6 @@ button.compute-share-card-frame:focus-visible {
   align-items: stretch;
 }
 
-.gpu-benchmark__composer-actions {
-  grid-column: 4;
-  justify-content: flex-end;
-}
-
 .gpu-benchmark__composer button {
   position: relative;
   display: flex;
@@ -714,11 +701,6 @@ button.compute-share-card-frame:focus-visible {
     background-color 180ms var(--desk-ease-out),
     opacity 180ms var(--desk-ease-out),
     transform 140ms var(--desk-ease-out);
-}
-
-.gpu-benchmark__measure button + button,
-.gpu-benchmark__composer-actions button + button {
-  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
 }
 
 .gpu-benchmark__composer button[aria-pressed="true"] {
@@ -865,7 +847,7 @@ button.compute-share-card-frame:focus-visible {
   }
 
   .gpu-benchmark__composer {
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .gpu-benchmark__composer button {

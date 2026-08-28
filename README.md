@@ -34,20 +34,21 @@ Open <http://localhost:4173>.
 ## Working with a card
 
 The tabs above the card open one GPU at a time. The quiet row below the chart
-controls its value view, comparison, and sharing.
+opens comparisons.
 
 - Open Compare to add or remove data layers.
-- Adding Token Index switches the card to Index automatically.
-- Share copies the exact card link. Expand returns to the editable view.
-- Shared links use social artwork that matches the selected layers, value view,
-  range, palette, and light or dark theme.
-- Press **Command G** to find cards, layers, views, ranges, and settings.
+- GPU data uses hourly prices. Adding Token Index compares movement from a
+  common starting point.
+- Collapse to the card, then use Copy link to share it. Expand returns to editing.
+- Shared links use social artwork that matches the selected layers, range,
+  palette, and light or dark theme.
+- Press **Command G** to find cards, layers, ranges, and settings.
 - Press **Command H** to hide or show the display controls.
 
 ## Card registry
 
 [`src/card-registry.js`](src/card-registry.js) is the source of truth for card
-metadata, data layers, value views, ranges, palettes, defaults, and share paths.
+metadata, data layers, ranges, palettes, defaults, and share paths.
 The browser and the preview build both read from it, so labels and colors do not
 drift apart.
 

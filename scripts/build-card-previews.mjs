@@ -294,17 +294,14 @@ function previewModel(state) {
     primary,
     headline:
       normalized.scale === "index"
-        ? formatIndex(latest.plotValue)
+        ? formatIndexChange(latest.plotValue)
         : formatUsd(latest.plotValue),
     primaryTitle: primary.layer.shortLabel || primary.layer.label,
     comparisonTitle: series
       .filter((candidate) => !candidate.primary)
       .map(({ layer }) => layer.shortLabel || layer.label)
-      .join(" "),
-    rangeLabel:
-      normalized.scale === "index"
-        ? `${shareRangeLabel(primary.rows, normalized.range)} INDEX`
-        : shareRangeLabel(primary.rows, normalized.range),
+      .join(" + "),
+    rangeLabel: shareRangeLabel(primary.rows, normalized.range),
   };
 }
 
@@ -340,7 +337,7 @@ function renderPublishedCardImage(model) {
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${model.colors.paper}"/>
       <text x="40" y="54" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">${escapeXml(model.primaryTitle)}</text>
-      ${hasComparisons ? `<text x="40" y="88" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">${escapeXml(`with ${model.comparisonTitle}`)}</text>` : ""}
+      ${hasComparisons ? `<text x="40" y="88" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">${escapeXml(model.comparisonTitle)}</text>` : ""}
       <text x="1160" y="54" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(model.rangeLabel)}</text>
       <text x="40" y="${hasComparisons ? 158 : 138}" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
       <path d="${area}" fill="${model.colors.line}" fill-opacity="0.055"/>
@@ -358,14 +355,14 @@ function renderPublishedSharePage(
   const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
   const rangeDescription = RANGES[model.range]?.longLabel || model.range;
   const cardTitle = model.comparisonTitle
-    ? `${model.primaryTitle} with ${model.comparisonTitle}`
+    ? `${model.primaryTitle} + ${model.comparisonTitle}`
     : model.primaryTitle;
   const title = `${cardTitle} ${model.rangeLabel}`;
   const description =
     model.scale === "index"
-      ? `${model.headline} index over ${rangeDescription}`
+      ? `${model.primaryTitle} ${model.headline} over ${rangeDescription}`
       : `${model.headline} per GPU hour over ${rangeDescription}`;
-  const imageAlt = `${cardTitle} card showing ${description.toLowerCase()}`;
+  const imageAlt = `${cardTitle} card showing ${description}`;
   const destinationParams = new URLSearchParams({
     card: cardDefinition.id,
     view: "card",
@@ -496,9 +493,9 @@ function renderDefaultComparisonImage() {
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${colors.paper}"/>
       <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">H200</text>
-      <text x="40" y="88" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">with H100 Token Index</text>
-      <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">7D INDEX</text>
-      <text x="40" y="158" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndex(latest?.value)}</text>
+      <text x="40" y="88" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">H100 + Token Index</text>
+      <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">7D</text>
+      <text x="40" y="158" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndexChange(latest?.value)}</text>
       <path d="${area(primary?.rows || [])}" fill="${colors.line}" fill-opacity="0.055"/>
       ${layerMarkup}
     </svg>`;
@@ -669,8 +666,11 @@ function formatUsd(value) {
   return `$${value.toFixed(2)}`;
 }
 
-function formatIndex(value) {
-  return Number(value || 0).toFixed(1);
+function formatIndexChange(value) {
+  const change = Number(value) - 100;
+  if (!Number.isFinite(change)) return "pending";
+  const rounded = Math.abs(change) < 0.05 ? 0 : change;
+  return `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}%`;
 }
 
 function imageRevision(buffer) {

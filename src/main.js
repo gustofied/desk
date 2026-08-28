@@ -127,13 +127,11 @@ if (root) {
     zoomReset: root.querySelector("[data-gpu-zoom-reset]"),
     rangeStart: root.querySelector("[data-gpu-range-start]"),
     rangeEnd: root.querySelector("[data-gpu-range-end]"),
-    scaleButtons: Array.from(root.querySelectorAll("[data-card-scale]")),
     layerGroup: root.querySelector("[data-card-layers]"),
     layerButtons: [],
     compareToggle: root.querySelector("[data-card-compare-toggle]"),
     comparePanel: root.querySelector("[data-card-compare-panel]"),
     compareCount: root.querySelector("[data-card-compare-count]"),
-    cardCopy: root.querySelector("[data-card-copy]"),
     cardAnnounce: root.querySelector("[data-card-announce]"),
     chart: root.querySelector("[data-gpu-chart]"),
     svg: root.querySelector("[data-gpu-chart-svg]"),
@@ -188,7 +186,6 @@ if (root) {
       );
     });
     nodes.copyLink?.addEventListener("click", copyCardLink);
-    nodes.cardCopy?.addEventListener("click", copyCardLink);
     nodes.compareToggle?.addEventListener("click", (event) => {
       setCompareOpen(!state.compareOpen, event.detail === 0);
     });
@@ -240,13 +237,6 @@ if (root) {
       });
       nodes.layerGroup.replaceChildren(...nodes.layerButtons);
     }
-
-    configureChoiceButtons(
-      nodes.scaleButtons,
-      (button) => button.dataset.cardScale,
-      selectScale,
-      "aria-pressed",
-    );
   }
 
   function handleComparePanelKeydown(event) {
@@ -392,17 +382,6 @@ if (root) {
         keywords: ["accelerator", "family", "chip"],
         active: () => state.selected === family,
         run: () => selectFamily(family),
-      })),
-      ...cardDefinition.visualizations.map((visualization, index) => ({
-        id: `view.${visualization.id}`,
-        group: "View",
-        order: index,
-        title: `Use ${visualization.label.toLowerCase()} view`,
-        subtitle: `${cardDefinition.sharePath}/view/${visualization.id}`,
-        hint: visualization.label,
-        keywords: ["chart", "compare", "value", visualization.unit],
-        active: () => state.scale === visualization.id,
-        run: () => selectScale(visualization.id),
       })),
       ...cardDefinition.layers.map((layer, index) => ({
         id: `layer.${layer.id.toLowerCase()}`,
@@ -848,6 +827,7 @@ if (root) {
     if (!changed) return;
     state.layers = new Set([family]);
     state.selected = family;
+    state.scale = "price";
     setCompareOpen(false);
     state.zoomWindow = null;
     syncControls();
@@ -884,31 +864,6 @@ if (root) {
     updateLocation(state.panel);
   }
 
-  function selectScale(scale) {
-    if (
-      !cardDefinition.visualizations.some(
-        (visualization) => visualization.id === scale,
-      ) ||
-      scale === state.scale
-    ) {
-      return;
-    }
-    state.scale = scale;
-    if (scale === "price") {
-      state.layers = new Set(
-        Array.from(state.layers).filter(
-          (layerId) =>
-            getLayerDefinition(cardDefinition, layerId)?.unit === "usd-hour",
-        ),
-      );
-      state.layers.add(state.selected);
-    }
-    state.zoomWindow = null;
-    syncControls();
-    render(true);
-    updateLocation(state.panel);
-  }
-
   function toggleLayer(layerId) {
     const layer = getLayerDefinition(cardDefinition, layerId);
     if (!layer) return;
@@ -920,11 +875,8 @@ if (root) {
       state.layers.delete(layerId);
     } else {
       state.layers.add(layerId);
-      if (!layer.views.includes(state.scale)) {
-        state.scale = "index";
-        announceCard("Index view selected for Token Index");
-      }
     }
+    state.scale = scaleForLayers(state.layers);
     state.zoomWindow = null;
     syncControls();
     render(true);
@@ -937,6 +889,14 @@ if (root) {
     window.requestAnimationFrame(() => {
       nodes.cardAnnounce.textContent = message;
     });
+  }
+
+  function scaleForLayers(layerIds) {
+    return Array.from(layerIds).some(
+      (id) => getLayerDefinition(cardDefinition, id)?.unit === "index",
+    )
+      ? "index"
+      : "price";
   }
 
   function syncControls() {
@@ -966,11 +926,6 @@ if (root) {
   }
 
   function syncComposerControls() {
-    nodes.scaleButtons.forEach((button) => {
-      const selected = button.dataset.cardScale === state.scale;
-      button.setAttribute("aria-pressed", String(selected));
-      button.tabIndex = selected ? 0 : -1;
-    });
     nodes.layerButtons.forEach((button) => {
       const selected = state.layers.has(button.dataset.cardLayer);
       const layer = getLayerDefinition(cardDefinition, button.dataset.cardLayer);
@@ -1222,17 +1177,17 @@ if (root) {
     }
     const layerNames = activeLayerDefinitions()
       .map((layer) => layer.shortLabel || layer.label)
-      .join(", ");
+      .join(" + ");
     nodes.shareStatus.textContent =
       `${layerNames} ${ranges[state.range].label} ` +
-      `${formatPlotValue(latest.plotValue, state.scale)}`;
+      `${formatCardHeadline(latest.plotValue, state.scale)}`;
     if (nodes.shareObserved) {
       nodes.shareObserved.textContent = formatUtcDateTime(latest.date);
       nodes.shareObserved.setAttribute("datetime", latest.date.toISOString());
     }
     nodes.shareArtifactSvg?.setAttribute(
       "aria-label",
-      `${layerNames} ${formatPlotValue(latest.plotValue, state.scale)} ${ranges[state.range].label}`,
+      `${layerNames} ${formatCardHeadline(latest.plotValue, state.scale)} ${ranges[state.range].label}`,
     );
   }
 
@@ -1240,7 +1195,6 @@ if (root) {
     state.shareReady = ready;
     syncViewToggle(false);
     if (nodes.copyLink) nodes.copyLink.disabled = !ready;
-    if (nodes.cardCopy) nodes.cardCopy.disabled = !ready;
     if (nodes.galleryToggle) nodes.galleryToggle.disabled = !ready;
   }
 
@@ -1373,7 +1327,7 @@ if (root) {
     const comparisonTitle = series
       .filter((candidate) => !isPrimary(candidate))
       .map((candidate) => candidate.layer.shortLabel || candidate.layer.label)
-      .join(" ");
+      .join(" + ");
     const hasComparisons = comparisonTitle.length > 0;
     const typography = compact
       ? { family: series.length > 1 ? 34 : 52, range: 36, price: 104 }
@@ -1402,7 +1356,7 @@ if (root) {
       appendShareText(svg, {
         x: 40,
         y: 88,
-        text: `with ${comparisonTitle}`,
+        text: comparisonTitle,
         fill: palette.line,
         size: 18,
         weight: 500,
@@ -1413,10 +1367,7 @@ if (root) {
     appendShareText(svg, {
       x: 1160,
       y: 54,
-      text:
-        scale === "index"
-          ? `${shareRangeLabel(primary.rows, state.range)} INDEX`
-          : shareRangeLabel(primary.rows, state.range),
+      text: shareRangeLabel(primary.rows, state.range),
       fill: palette.line,
       size: typography.range,
       anchor: "end",
@@ -1427,7 +1378,7 @@ if (root) {
     appendShareText(svg, {
       x: 40,
       y: compact ? 160 : hasComparisons ? 158 : 138,
-      text: formatPlotValue(latest.plotValue, scale),
+      text: formatCardHeadline(latest.plotValue, scale),
       fill: palette.line,
       size: typography.price,
       weight: 500,
@@ -2076,6 +2027,14 @@ if (root) {
     const number = Number(value);
     if (!Number.isFinite(number)) return "pending";
     return number.toFixed(number >= 100 ? 1 : 2);
+  }
+
+  function formatCardHeadline(value, scale = state.scale) {
+    if (scale === "price") return formatUsd(value);
+    const change = Number(value) - 100;
+    if (!Number.isFinite(change)) return "pending";
+    const rounded = Math.abs(change) < 0.05 ? 0 : change;
+    return `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}%`;
   }
 
   function formatDateTime(date) {
