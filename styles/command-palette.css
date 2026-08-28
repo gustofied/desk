@@ -1,0 +1,295 @@
+.desk-command-menu {
+  width: min(calc(100vw - 32px), 680px);
+  max-height: calc(100dvh - 96px);
+  padding: 0;
+  margin: 96px auto auto;
+  overflow: hidden;
+  color: #181818;
+  background: #fff;
+  border: 1px solid var(--desk-accent-deep);
+  border-radius: 0;
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--desk-accent-deep) 16%, transparent);
+  transition:
+    background-color 240ms var(--desk-ease-out),
+    border-color 240ms var(--desk-ease-out),
+    box-shadow 240ms var(--desk-ease-out);
+}
+
+.desk-command-menu[open][data-closing] {
+  pointer-events: none;
+}
+
+.desk-command-menu::backdrop {
+  background: rgb(24 24 24 / 24%);
+  backdrop-filter: blur(4px);
+}
+
+.desk-command-menu__surface {
+  display: grid;
+  min-height: 0;
+  max-height: calc(100dvh - 96px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.desk-command-menu__title,
+.desk-command-menu__status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+}
+
+.desk-command-menu__search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 12px;
+  align-items: center;
+  min-height: 64px;
+  padding: 12px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--desk-accent-deep) 32%, transparent);
+}
+
+.desk-command-menu__search input {
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  color: inherit;
+  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 24px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  outline: 0;
+}
+
+.desk-command-menu__search input::placeholder {
+  color: #666;
+  opacity: 1;
+}
+
+.desk-command-menu__shortcut,
+.desk-command-menu__close,
+.desk-command-menu__footer,
+.desk-command-menu__group,
+.desk-command-menu__meta,
+.desk-command-menu__copy small {
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.desk-command-menu__shortcut {
+  color: #666;
+  font-variant-numeric: tabular-nums;
+}
+
+.desk-command-menu__close {
+  min-height: 32px;
+  padding: 8px 12px;
+  color: var(--desk-accent-deep);
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  transition:
+    color 160ms var(--desk-ease-out),
+    background-color 160ms var(--desk-ease-out),
+    transform 140ms var(--desk-ease-out);
+}
+
+.desk-command-menu__close:active {
+  transform: scale(0.98);
+}
+
+.desk-command-menu__close:focus-visible {
+  background: var(--desk-accent-pale);
+  outline: 2px solid var(--desk-accent-deep);
+  outline-offset: -2px;
+}
+
+.desk-command-menu__results {
+  min-height: 96px;
+  max-height: min(480px, calc(100dvh - 240px));
+  overflow: auto;
+  contain: layout paint;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--desk-accent-deep) transparent;
+  scrollbar-gutter: stable;
+}
+
+.desk-command-menu__group {
+  margin: 0;
+  padding: 12px 16px 4px;
+  color: #666;
+}
+
+.desk-command-menu__option {
+  display: grid;
+  width: 100%;
+  min-height: 64px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: center;
+  padding: 12px 16px;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  transition: none;
+}
+
+.desk-command-menu__option[aria-selected="true"] {
+  background: var(--desk-accent-pale);
+}
+
+.desk-command-menu__option:focus-visible {
+  outline: 2px solid var(--desk-accent-deep);
+  outline-offset: -2px;
+}
+
+.desk-command-menu__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.desk-command-menu__copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.desk-command-menu__copy strong {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desk-command-menu__copy small {
+  overflow: hidden;
+  color: #666;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none;
+}
+
+.desk-command-menu__meta {
+  color: var(--desk-accent-deep);
+  white-space: nowrap;
+}
+
+.desk-command-menu__empty {
+  margin: 0;
+  padding: 32px 16px 40px;
+  color: #666;
+  font-family: "Geist Mono", ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-align: center;
+}
+
+.desk-command-menu__footer {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 16px;
+  color: #666;
+  border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
+}
+
+.desk-command-menu__footer span:last-child {
+  margin-left: auto;
+}
+
+.desk-command-menu__footer kbd {
+  color: var(--desk-accent-deep);
+  font: inherit;
+}
+
+:root[data-theme="dark"] .desk-command-menu {
+  color: #f5f5f5;
+  background: #1f1f1f;
+  box-shadow: 0 24px 64px rgb(0 0 0 / 48%);
+}
+
+:root[data-theme="dark"] .desk-command-menu::backdrop {
+  background: rgb(0 0 0 / 48%);
+}
+
+:root[data-theme="dark"] .desk-command-menu__search input::placeholder,
+:root[data-theme="dark"] .desk-command-menu__shortcut,
+:root[data-theme="dark"] .desk-command-menu__group,
+:root[data-theme="dark"] .desk-command-menu__copy small,
+:root[data-theme="dark"] .desk-command-menu__empty,
+:root[data-theme="dark"] .desk-command-menu__footer {
+  color: #9b9b9b;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desk-command-menu__close:hover,
+  .desk-command-menu__option:hover {
+    background: color-mix(in srgb, var(--desk-accent) 16%, transparent);
+  }
+}
+
+@media (max-width: 640px) {
+  .desk-command-menu {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 64px);
+    margin-top: 64px;
+  }
+
+  .desk-command-menu__surface {
+    max-height: calc(100dvh - 64px);
+  }
+
+  .desk-command-menu::backdrop {
+    backdrop-filter: none;
+  }
+
+  .desk-command-menu__results {
+    max-height: calc(100dvh - 240px);
+  }
+
+  .desk-command-menu__shortcut {
+    display: none;
+  }
+
+  .desk-command-menu__search {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .desk-command-menu__footer {
+    gap: 8px;
+  }
+
+  .desk-command-menu__footer span:last-child {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desk-command-menu,
+  .desk-command-menu::backdrop,
+  .desk-command-menu__close,
+  .desk-command-menu__option {
+    transition: none;
+  }
+}

@@ -2,6 +2,7 @@
   "name": "desk",
   "version": "0.1.0",
   "private": true,
+  "homepage": "https://desk.adamsioud.com",
   "type": "module",
   "scripts": {
     "build": "esbuild src/main.js --bundle --format=esm --target=es2022 --minify --outfile=desk.js",

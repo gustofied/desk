@@ -1,37 +1,27 @@
 import * as d3 from "d3";
 import { animate } from "motion";
 import { cardPermalink } from "./card-presentation.js";
-import { createCardFeed } from "./compute-card-feed.js";
+import { createCommandPalette } from "./command-palette.js";
 import { shareRangeLabel } from "./share-range-label.js";
 import {
   horizontalHitZones,
   positionSvgTooltip,
 } from "./chart-pointer.js";
-import {
-  bindCardCover,
-  copyTextToClipboard,
-  swapCardPanels,
-} from "./card-transitions.js";
+import { copyTextToClipboard } from "./card-transitions.js";
 
 const root = document.querySelector("[data-gpu-benchmark-card]");
 
 if (root) {
   const cardId = "gpu-index";
-  const configuredDataBase = String(root.dataset.marketDataBase || "").replace(
+  const dataBase = String(root.dataset.marketDataBase || "").replace(
     /\/+$/,
     "",
   );
-  const fetchDataBase = ["127.0.0.1", "localhost"].includes(
-    window.location.hostname,
-  )
-    ? `${window.location.origin}/api/dashboard-snapshots`
-    : configuredDataBase;
-  const publicationDataBase = "https://bazaar.adamsioud.com";
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
   const families = ["H100", "H200", "B200", "B300"];
-  const selectedLineColor = "#315f82";
+  const palettes = ["azure", "linen", "sage", "sand"];
   const familyColors = new Map([
     ["H100", "#587383"],
     ["H200", "#708690"],
@@ -47,12 +37,16 @@ if (root) {
   const requestedCard = params.get("card");
   const requestedView =
     requestedCard === cardId ? params.get("view") : null;
-  const initialView = ["detail", "card", "share"].includes(requestedView)
-    ? requestedView
-    : "detail";
+  const requestedLayout = params.get("layout");
+  const initialView =
+    (["card", "share"].includes(requestedView) || requestedLayout === "all")
+      ? "share"
+      : "detail";
+  const initialLayout = requestedLayout === "all" ? "all" : "focus";
   const state = {
     cards: new Map(),
     panel: initialView,
+    layout: initialLayout,
     selected: families.includes(params.get("gpu")) ? params.get("gpu") : "H200",
     range: ranges[params.get("range")] ? params.get("range") : "7d",
     shareReady: false,
@@ -63,24 +57,27 @@ if (root) {
   };
 
   const nodes = {
+    layoutPanels: new Map(
+      Array.from(root.querySelectorAll("[data-card-layout-panel]")).map((panel) => [
+        panel.dataset.cardLayoutPanel,
+        panel,
+      ]),
+    ),
     panels: new Map(
       Array.from(root.querySelectorAll("[data-index-panel]")).map((panel) => [
         panel.dataset.indexPanel,
         panel,
       ]),
     ),
-    cover: root.querySelector("[data-index-cover]"),
-    open: root.querySelector("[data-index-open]"),
-    closeButtons: Array.from(root.querySelectorAll("[data-index-close]")),
-    shareButtons: Array.from(root.querySelectorAll("[data-index-share]")),
-    cardButtons: Array.from(
-      root.querySelectorAll("[data-index-card]"),
-    ),
-    return: root.querySelector("[data-share-return]"),
-    copyLink: root.querySelector("[data-share-copy-link]"),
+    cardRail: root.querySelector(".desk-card-rail"),
+    galleryGrid: root.querySelector("[data-card-gallery-grid]"),
+    galleryStatus: root.querySelector("[data-card-gallery-status]"),
+    viewActions: document.querySelector(".desk-view-actions"),
+    viewToggle: document.querySelector("[data-index-view-toggle]"),
+    galleryToggle: document.querySelector("[data-index-gallery-toggle]"),
+    copyLink: document.querySelector("[data-share-copy-link]"),
     shareStatus: root.querySelector("[data-share-status]"),
     shareArtifactSvg: root.querySelector("[data-share-artifact-svg]"),
-    coverUpdated: root.querySelector("[data-cover-updated]"),
     familyButtons: Array.from(root.querySelectorAll("[data-gpu-family]")),
     familyValues: new Map(
       Array.from(root.querySelectorAll("[data-gpu-family-value]")).map(
@@ -95,24 +92,36 @@ if (root) {
     svg: root.querySelector("[data-gpu-chart-svg]"),
     tooltip: root.querySelector("[data-gpu-tooltip]"),
     chartState: root.querySelector("[data-gpu-state]"),
-    coverFeed: root.querySelector('[data-card-feed="gpu"]'),
+    pageClock: document.querySelector("[data-desk-clock]"),
+    pageClockDate: document.querySelector("[data-desk-clock-date]"),
+    pageClockTime: document.querySelector("[data-desk-clock-time]"),
+    displayToolbar: document.querySelector(".desk-display-controls"),
+    themeButtons: Array.from(document.querySelectorAll("[data-theme-value]")),
+    paletteButtons: Array.from(document.querySelectorAll("[data-palette-value]")),
+    commandPalette: document.querySelector("[data-command-palette]"),
+    themeColor: document.querySelector('meta[name="theme-color"]'),
   };
-  const coverFeed = createCardFeed(nodes.coverFeed, {
-    visibleRows: 3,
-    advanceDelayMs: 1800,
-    motion: "snap",
-    pauseOnHover: false,
+  const commandPalette = createCommandPalette({
+    root: nodes.commandPalette,
+    reducedMotion,
   });
-
+  const galleryCards = new Map();
   initialize();
 
   function initialize() {
+    configureWorkspaceControls();
     setInitialPanel();
     setShareReady(false);
+    configureAppearanceControls();
+    configureCommandPalette();
+    configureUtcClock();
     configureChoiceButtons(
-      nodes.familyButtons,
-      (button) => button.dataset.gpuFamily,
-      selectFamily,
+      [
+        ...nodes.familyButtons,
+        ...(nodes.galleryToggle ? [nodes.galleryToggle] : []),
+      ],
+      (button) => button.dataset.gpuFamily || "all",
+      selectCardTab,
       "aria-selected",
     );
     configureChoiceButtons(
@@ -121,27 +130,25 @@ if (root) {
       selectRange,
       "aria-pressed",
     );
-    nodes.open?.addEventListener("click", () => showPanel("detail", true));
-    bindCardCover({
-      cover: nodes.cover,
-      activate: () => showPanel("detail", true),
+    nodes.viewToggle?.addEventListener("click", () => {
+      showPanel(
+        state.panel === "detail" ? "share" : "detail",
+        true,
+        "focus",
+      );
     });
-    nodes.closeButtons.forEach((button) => {
-      button.addEventListener("click", () => showPanel("detail", true));
-    });
-    nodes.cardButtons.forEach((button) => {
-      button.addEventListener("click", () => showPanel("card", true));
-    });
-    nodes.shareButtons.forEach((button) => {
-      button.addEventListener("click", () => showPanel("share", true));
-    });
-    nodes.return?.addEventListener("click", () => showPanel("detail", true));
     nodes.copyLink?.addEventListener("click", copyCardLink);
     nodes.zoomReset?.addEventListener("click", resetCustomZoom);
 
     if ("ResizeObserver" in window && nodes.chart) {
       const observer = new ResizeObserver(() => {
-        if (!state.cards.size || state.panel !== "detail") return;
+        if (
+          !state.cards.size ||
+          state.panel !== "detail" ||
+          state.layout !== "focus"
+        ) {
+          return;
+        }
         window.clearTimeout(state.resizeTimer);
         state.resizeTimer = window.setTimeout(() => render(false), 90);
       });
@@ -152,24 +159,417 @@ if (root) {
     loadCards();
   }
 
+  function configureAppearanceControls() {
+    syncAppearanceControls();
+    nodes.displayToolbar?.addEventListener("keydown", handleDisplayToolbarKeydown);
+    document.addEventListener("keydown", handleDisplayShortcut);
+    for (const button of nodes.themeButtons) {
+      button.addEventListener("click", () => setTheme(button.dataset.themeValue));
+    }
+    for (const button of nodes.paletteButtons) {
+      button.addEventListener("click", () => setPalette(button.dataset.paletteValue));
+    }
+  }
+
+  function configureCommandPalette() {
+    commandPalette.register([
+      {
+        id: "cards.gpu-price-index",
+        group: "Cards",
+        order: 0,
+        title: "GPU Price Index",
+        subtitle: "/cards/gpu-price-index",
+        hint: "Expand",
+        keywords: ["desk", "market", "accelerator", "prices", "chart", "compute", "gpu", "index"],
+        active: () => state.panel === "detail" && state.layout === "focus",
+        run: () => showPanel("detail", true, "focus"),
+      },
+      {
+        id: "create.gpu-share-card",
+        group: "Create",
+        order: 0,
+        title: "Open collapsed card",
+        subtitle: "/card",
+        hint: "Collapse",
+        keywords: ["export", "snapshot", "publish", "single"],
+        disabled: () => !state.shareReady,
+        active: () => state.panel === "share" && state.layout === "focus",
+        run: () => showPanel("share", true, "focus"),
+      },
+      {
+        id: "create.gpu-share-gallery",
+        group: "Create",
+        order: 1,
+        title: "Open all cards",
+        subtitle: "/cards",
+        hint: "All",
+        keywords: ["all", "gallery", "export", "snapshot", "publish"],
+        disabled: () => !state.shareReady,
+        active: () => state.panel === "share" && state.layout === "all",
+        run: () => showPanel("share", true, "all"),
+      },
+      {
+        id: "actions.copy-card-link",
+        group: "Actions",
+        order: 0,
+        title: "Copy card link",
+        subtitle: "/actions/copy-card-link",
+        hint: "Copy",
+        keywords: ["share", "url", "clipboard"],
+        disabled: () => !state.shareReady,
+        run: copyCardLink,
+      },
+      {
+        id: "actions.toggle-display-controls",
+        group: "Actions",
+        order: 1,
+        title: () =>
+          document.documentElement.dataset.displayToolbar === "collapsed"
+            ? "Show display controls"
+            : "Hide display controls",
+        subtitle: "/actions/toggle-display-controls",
+        hint: "⌘H",
+        keywords: ["toolbar", "theme", "palette", "controls"],
+        run: () => {
+          setDisplayToolbarCollapsed(
+            document.documentElement.dataset.displayToolbar !== "collapsed",
+          );
+        },
+      },
+      ...families.map((family, index) => ({
+        id: `gpu.${family.toLowerCase()}`,
+        group: "GPU",
+        order: index,
+        title: `Use ${family}`,
+        subtitle: `/cards/gpu-price-index/gpu/${family.toLowerCase()}`,
+        hint: "GPU",
+        keywords: ["accelerator", "family", "chip"],
+        active: () => state.selected === family,
+        run: () => selectFamily(family),
+      })),
+      ...Object.keys(ranges).map((range, index) => ({
+        id: `range.${range}`,
+        group: "Range",
+        order: index,
+        title:
+          range === "1d"
+            ? "Show one day"
+            : range === "7d"
+              ? "Show seven days"
+              : "Show all history",
+        subtitle: `/cards/gpu-price-index/range/${range}`,
+        hint: ranges[range].label,
+        keywords: ["date", "time", "history", "window"],
+        active: () => state.range === range,
+        run: () => selectRange(range),
+      })),
+      {
+        id: "appearance.theme.light",
+        group: "Appearance",
+        order: 0,
+        title: "Use light mode",
+        subtitle: "/settings/theme/light",
+        hint: "Theme",
+        keywords: ["white", "bright", "display"],
+        active: () => currentTheme() === "light",
+        run: () => setTheme("light"),
+      },
+      {
+        id: "appearance.theme.dark",
+        group: "Appearance",
+        order: 1,
+        title: "Use dark mode",
+        subtitle: "/settings/theme/dark",
+        hint: "Theme",
+        keywords: ["black", "night", "display"],
+        active: () => currentTheme() === "dark",
+        run: () => setTheme("dark"),
+      },
+      ...[
+        ["azure", "Soft Azure"],
+        ["linen", "Soft Linen"],
+        ["sage", "Sage Green"],
+        ["sand", "Warm Sand"],
+      ].map(([palette, title], index) => ({
+        id: `appearance.palette.${palette}`,
+        group: "Appearance",
+        order: index + 2,
+        title: `Use ${title}`,
+        subtitle: `/settings/palette/${palette}`,
+        hint: "Palette",
+        keywords: ["color", "colour", "display", title],
+        active: () => currentPalette() === palette,
+        run: () => setPalette(palette),
+      })),
+    ]);
+  }
+
+  function handleDisplayShortcut(event) {
+    if (
+      event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.key.toLowerCase() === "h"
+    ) {
+      event.preventDefault();
+      setDisplayToolbarCollapsed(
+        document.documentElement.dataset.displayToolbar !== "collapsed",
+      );
+    }
+  }
+
+  function handleDisplayToolbarKeydown(event) {
+    const buttons = Array.from(
+      nodes.displayToolbar.querySelectorAll("button:not(:disabled)"),
+    );
+    const current = buttons.indexOf(document.activeElement);
+    if (current < 0) return;
+
+    let next = current;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+      next = (current + 1) % buttons.length;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+      next = (current - 1 + buttons.length) % buttons.length;
+    } else if (event.key === "Home") {
+      next = 0;
+    } else if (event.key === "End") {
+      next = buttons.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    buttons[next].focus();
+  }
+
+  function setDisplayToolbarCollapsed(collapsed) {
+    document.documentElement.dataset.displayToolbar = collapsed
+      ? "collapsed"
+      : "expanded";
+    nodes.displayToolbar?.toggleAttribute("inert", collapsed);
+    nodes.displayToolbar?.setAttribute("aria-hidden", String(collapsed));
+    if (!collapsed) {
+      window.setTimeout(() => {
+        nodes.themeButtons
+          .find((button) => button.getAttribute("aria-pressed") === "true")
+          ?.focus({ preventScroll: true });
+      }, reducedMotion ? 0 : 220);
+    }
+  }
+
+  function currentTheme() {
+    return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  }
+
+  function configureUtcClock() {
+    const months = [
+      "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+    ];
+    const tick = () => {
+      const now = new Date();
+      const iso = now.toISOString();
+      if (nodes.pageClockDate) {
+        nodes.pageClockDate.textContent = `${iso.slice(8, 10)} ${months[now.getUTCMonth()]} ${iso.slice(0, 4)}`;
+      }
+      if (nodes.pageClockTime) nodes.pageClockTime.textContent = iso.slice(11, 19);
+      nodes.pageClock?.setAttribute("datetime", iso);
+      window.setTimeout(tick, 1000 - now.getMilliseconds());
+    };
+    tick();
+  }
+
+  function currentPalette() {
+    const palette = document.documentElement.dataset.palette;
+    return palettes.includes(palette) ? palette : "azure";
+  }
+
+  function currentLineColor() {
+    return readCssToken("--desk-accent-deep", "#315f82");
+  }
+
+  function currentPaperColor() {
+    return readCssToken("--desk-canvas", currentTheme() === "dark" ? "#181818" : "#ffffff");
+  }
+
+  function readCssToken(name, fallback) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+  }
+
+  function setTheme(theme) {
+    if (theme !== "light" && theme !== "dark") return;
+    document.documentElement.dataset.theme = theme;
+    try {
+      window.localStorage.setItem("desk-theme", theme);
+    } catch {}
+    syncAppearanceControls();
+    refreshAppearance();
+  }
+
+  function setPalette(palette) {
+    if (!palettes.includes(palette)) return;
+    document.documentElement.dataset.palette = palette;
+    try {
+      window.localStorage.setItem("desk-palette", palette);
+    } catch {}
+    syncAppearanceControls();
+    updateLocation(state.panel);
+    refreshAppearance();
+  }
+
+  function syncAppearanceControls() {
+    const theme = currentTheme();
+    const isDark = theme === "dark";
+    for (const button of nodes.themeButtons) {
+      button.setAttribute("aria-pressed", String(button.dataset.themeValue === theme));
+    }
+    for (const button of nodes.paletteButtons) {
+      button.setAttribute(
+        "aria-pressed",
+        String(button.dataset.paletteValue === currentPalette()),
+      );
+    }
+    nodes.themeColor?.setAttribute("content", currentPaperColor());
+  }
+
+  function refreshAppearance() {
+    if (!state.cards.size) return;
+    const card = state.cards.get(state.selected);
+    const rangeRows = visibleRows(card?.rows || []);
+    const latest = card?.rows.at(-1);
+    if (!rangeRows.length || !latest) return;
+    renderShareArtifact(rangeRows, latest);
+    renderWorkspaceGallery();
+    if (state.layout === "all" && !reducedMotion && nodes.galleryGrid) {
+      animate(
+        nodes.galleryGrid,
+        { opacity: [0.58, 1] },
+        { duration: 0.2, ease: [0.23, 1, 0.32, 1] },
+      );
+    }
+  }
+
   function setInitialPanel() {
+    syncFocusPanels();
+    syncLayout(false);
+    syncViewToggle(false);
+  }
+
+  function syncFocusPanels() {
     for (const [name, panel] of nodes.panels) {
       const isCurrent = name === state.panel;
       panel.hidden = !isCurrent;
       panel.toggleAttribute("inert", !isCurrent);
     }
-    nodes.open?.setAttribute(
-      "aria-expanded",
-      String(state.panel === "detail"),
-    );
-    nodes.cover?.setAttribute(
-      "aria-expanded",
-      String(state.panel === "detail"),
-    );
+  }
+
+  function configureWorkspaceControls() {
+    if (nodes.galleryGrid) {
+      nodes.galleryGrid.dataset.cardCount = String(
+        Math.min(families.length, 5),
+      );
+      const cards = families.map((family) => {
+        const button = document.createElement("button");
+        button.className = "desk-gallery-card compute-share-card-frame";
+        button.type = "button";
+        button.dataset.galleryFamily = family;
+        button.innerHTML = `
+          <svg class="compute-share-artifact desk-gallery-card__artifact" viewBox="0 0 1200 675" aria-hidden="true" data-gallery-artifact></svg>`;
+        button.addEventListener("click", (event) => {
+          openPublishedCard(family, event.detail === 0);
+        });
+        galleryCards.set(family, {
+          button,
+          artifact: button.querySelector("[data-gallery-artifact]"),
+        });
+        return button;
+      });
+      nodes.galleryGrid.replaceChildren(...cards);
+    }
+  }
+
+  function syncLayout(animateChange) {
+    for (const [name, panel] of nodes.layoutPanels) {
+      const isCurrent = name === state.layout;
+      panel.hidden = !isCurrent;
+      panel.toggleAttribute("inert", !isCurrent);
+    }
+    root.dataset.workspaceLayout = state.layout;
+    root.dataset.workspaceMode = state.panel;
+    root.dataset.workspaceView =
+      state.layout === "all" ? "gallery" : state.panel;
+    document.documentElement.dataset.deskLayout = state.layout;
+
+    if (nodes.cardRail) {
+      const showRail = state.layout === "focus";
+      nodes.cardRail.hidden = !showRail;
+      nodes.cardRail.toggleAttribute("inert", !showRail);
+    }
+
+    const current = nodes.layoutPanels.get(state.layout);
+    if (animateChange && current && !reducedMotion) {
+      animate(
+        current,
+        {
+          opacity: [0.58, 1],
+          transform: ["translateY(4px)", "translateY(0)"],
+        },
+        { duration: 0.22, ease: [0.23, 1, 0.32, 1] },
+      );
+      if (state.layout === "all") {
+        Array.from(galleryCards.values()).forEach(({ button }, index) => {
+          animate(
+            button,
+            {
+              opacity: [0, 1],
+              transform: ["translateY(4px)", "translateY(0)"],
+            },
+            {
+              delay: index * 0.03,
+              duration: 0.24,
+              ease: [0.23, 1, 0.32, 1],
+            },
+          );
+        });
+      }
+    }
+  }
+
+  function syncViewToggle(animateChange) {
+    if (!nodes.viewToggle) return;
+    const showSizeControl = state.layout === "focus";
+    if (nodes.viewActions) {
+      nodes.viewActions.hidden = !showSizeControl;
+      nodes.viewActions.toggleAttribute("inert", !showSizeControl);
+    }
+    const nextName = state.panel === "detail" ? "share" : "detail";
+    const label = nextName === "share" ? "Collapse" : "Expand";
+    if (nodes.viewToggle) {
+      nodes.viewToggle.textContent = label;
+      nodes.viewToggle.setAttribute(
+        "aria-label",
+        nextName === "share" ? "Collapse card" : "Expand card",
+      );
+      nodes.viewToggle.disabled = nextName === "share" && !state.shareReady;
+    }
+    if (nodes.galleryToggle) {
+      nodes.galleryToggle.disabled = !state.shareReady;
+    }
+    if (showSizeControl && animateChange && !reducedMotion) {
+      animate(
+        nodes.viewToggle,
+        {
+          opacity: [0, 1],
+          transform: ["translateY(-2px)", "translateY(0)"],
+        },
+        { duration: 0.18, ease: [0.23, 1, 0.32, 1] },
+      );
+    }
   }
 
   async function loadCards() {
-    if (!fetchDataBase) {
+    if (!dataBase) {
       showFailure("Benchmark history could not load.");
       signalReady();
       return;
@@ -178,7 +578,7 @@ if (root) {
     try {
       const cards = await Promise.all(
         families.map(async (family) => {
-          const url = cardUrl(family, fetchDataBase);
+          const url = cardUrl(family, dataBase);
           const response = await fetch(url, { cache: "no-store" });
           if (!response.ok) throw new Error(`${response.status} ${url}`);
           const payload = await response.json();
@@ -188,47 +588,19 @@ if (root) {
           ) {
             throw new Error(`Unsupported benchmark card at ${url}`);
           }
-          const publication = await loadPublication(family);
-          return [
-            family,
-            normalizeCard(
-              publication ? { ...payload, publication } : payload,
-              family,
-            ),
-          ];
+          return [family, normalizeCard(payload, family)];
         }),
       );
       state.cards = new Map(cards);
       setShareReady(true);
       updateFamilyQuoteNodes();
-      renderCoverFeed();
       render(true);
     } catch (error) {
       setShareReady(false);
       console.error("GPU benchmark card failed to load", error);
-      coverFeed.setItems([
-        {
-          label: "GPU benchmark",
-          value: "unavailable",
-          title: "Hourly benchmark history is temporarily unavailable.",
-        },
-      ]);
       showFailure("Hourly benchmark history is temporarily unavailable.");
     } finally {
       signalReady();
-    }
-  }
-
-  async function loadPublication(family) {
-    try {
-      const response = await fetch(cardUrl(family, publicationDataBase), {
-        cache: "no-store",
-      });
-      if (!response.ok) return null;
-      const payload = await response.json();
-      return payload?.publication || null;
-    } catch {
-      return null;
     }
   }
 
@@ -240,40 +612,6 @@ if (root) {
           .sort((left, right) => left.date - right.date)
       : [];
     return { payload, rows };
-  }
-
-  function renderCoverFeed() {
-    const orderedFamilies = [
-      state.selected,
-      ...families.filter((family) => family !== state.selected),
-    ];
-    const latestRows = families
-      .map((family) => state.cards.get(family)?.rows?.at(-1))
-      .filter(Boolean);
-    const lastUpdated = latestRows.reduce(
-      (latest, row) => (!latest || row.date > latest ? row.date : latest),
-      null,
-    );
-    if (nodes.coverUpdated) {
-      nodes.coverUpdated.textContent = lastUpdated
-        ? `As of ${formatCardDateTime(lastUpdated)}`
-        : "As of pending";
-    }
-    coverFeed.setItems(
-      orderedFamilies.flatMap((family) => {
-        const card = state.cards.get(family);
-        const latest = card?.rows?.at(-1);
-        if (!latest) return [];
-        return [
-          {
-            label: family,
-            value: formatUsd(latest.value),
-            href: cardUrl(family, configuredDataBase),
-            title: `${family} index level: ${formatUsd(latest.value)} per GPU-hour. As of ${formatDateTime(latest.date)}.`,
-          },
-        ];
-      }),
-    );
   }
 
   function normalizeRow(row, family) {
@@ -300,7 +638,9 @@ if (root) {
     stateAttribute,
   ) {
     buttons.forEach((button, index) => {
-      button.addEventListener("click", () => selectValue(getValue(button)));
+      button.addEventListener("click", (event) => {
+        selectValue(getValue(button), event);
+      });
       button.addEventListener("keydown", (event) => {
         if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
         event.preventDefault();
@@ -308,7 +648,7 @@ if (root) {
         const nextIndex =
           (index + direction + buttons.length) % buttons.length;
         buttons[nextIndex].focus();
-        selectValue(getValue(buttons[nextIndex]));
+        selectValue(getValue(buttons[nextIndex]), event);
       });
       button.dataset.stateAttribute = stateAttribute;
     });
@@ -316,12 +656,27 @@ if (root) {
 
   function selectFamily(family) {
     if (Date.now() < state.controlsReadyAt) return;
-    if (!families.includes(family) || family === state.selected) return;
+    if (!families.includes(family)) return;
+    const changed = family !== state.selected;
+    if (!changed) return;
     state.selected = family;
+    state.zoomWindow = null;
     syncControls();
-    renderCoverFeed();
-    render(true);
+    render(changed);
     updateLocation(state.panel);
+  }
+
+  function selectCardTab(value, event) {
+    if (value === "all") {
+      showPanel("share", true, "all", event?.detail === 0);
+      return;
+    }
+    selectFamily(value);
+  }
+
+  function openPublishedCard(family, moveFocus) {
+    selectFamily(family);
+    showPanel("share", true, "focus", moveFocus);
   }
 
   function selectRange(range) {
@@ -336,10 +691,21 @@ if (root) {
 
   function syncControls() {
     nodes.familyButtons.forEach((button) => {
-      const selected = button.dataset.gpuFamily === state.selected;
+      const selected =
+        state.layout === "focus" &&
+        button.dataset.gpuFamily === state.selected;
       button.setAttribute("aria-selected", String(selected));
+      button.setAttribute(
+        "aria-controls",
+        state.panel === "share" ? "gpu-index-publish" : "gpu-index-detail",
+      );
       button.tabIndex = selected ? 0 : -1;
     });
+    if (nodes.galleryToggle) {
+      const selected = state.layout === "all";
+      nodes.galleryToggle.setAttribute("aria-selected", String(selected));
+      nodes.galleryToggle.tabIndex = selected ? 0 : -1;
+    }
     nodes.rangeButtons.forEach((button) => {
       const selected = button.dataset.gpuRange === state.range;
       button.setAttribute("aria-pressed", String(selected));
@@ -378,62 +744,87 @@ if (root) {
     }
   }
 
-  async function showPanel(nextName, updateUrl) {
+  async function showPanel(
+    nextName,
+    updateUrl,
+    nextLayout = "focus",
+    moveFocus = null,
+  ) {
+    const targetLayout =
+      nextName === "share" && nextLayout === "all" ? "all" : "focus";
+    const returnFocus =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const returnFocusWasVisible = returnFocus?.matches(":focus-visible") ?? false;
+    const shouldMoveFocus = moveFocus ?? returnFocusWasVisible;
     if (
       state.transitionPending ||
-      nextName === state.panel ||
+      (nextName === state.panel && targetLayout === state.layout) ||
       !nodes.panels.has(nextName)
     ) {
       return;
     }
     state.transitionPending = true;
-    const previousName = state.panel;
-    const previous = nodes.panels.get(previousName);
-    const next = nodes.panels.get(nextName);
-    state.panel = nextName;
-    state.controlsReadyAt =
-      nextName === "detail" && !reducedMotion ? Date.now() + 560 : 0;
-    nodes.open?.setAttribute(
-      "aria-expanded",
-      String(nextName === "detail"),
-    );
-    nodes.cover?.setAttribute(
-      "aria-expanded",
-      String(nextName === "detail"),
-    );
-    const snapping = previousName === "card" || nextName === "card";
-    const turning =
-      ["detail", "card", "share"].includes(previousName) &&
-      ["detail", "card", "share"].includes(nextName);
+    const previousLayout = nodes.layoutPanels.get(state.layout);
+    const canMorph =
+      !reducedMotion && typeof document.startViewTransition === "function";
 
-    await swapCardPanels({
-      root,
-      previous,
-      next,
-      reducedMotion,
-      effect: snapping ? "snap" : turning ? "turn" : "resize",
-      onPrepare:
-        nextName === "detail"
-          ? () => render(false)
-          : nextName === "share"
-            ? () => render(false)
-            : null,
-    });
+    const commitPanelChange = (animateLayout) => {
+      state.panel = nextName;
+      state.layout = targetLayout;
+      state.controlsReadyAt = 0;
+      state.zoomWindow = null;
+      syncFocusPanels();
+      syncControls();
+      syncLayout(animateLayout);
+      render(false);
+      syncViewToggle(animateLayout);
+    };
+
+    if (canMorph) {
+      const transition = document.startViewTransition(() => {
+        commitPanelChange(false);
+      });
+      await transition.finished.catch(() => {});
+    } else {
+      if (!reducedMotion && previousLayout) {
+        const exit = animate(
+          previousLayout,
+          {
+            opacity: [1, 0.42],
+            transform: ["translateY(0)", "translateY(-2px)"],
+          },
+          { duration: 0.16, ease: [0.23, 1, 0.32, 1] },
+        );
+        await exit.finished?.catch(() => {});
+      }
+      commitPanelChange(!reducedMotion);
+    }
 
     state.transitionPending = false;
     root.dispatchEvent(
       new CustomEvent("compute-card:panel", {
-        detail: { panel: nextName },
+        detail: { panel: nextName, layout: state.layout },
         bubbles: true,
       }),
     );
 
-    if (nextName === "detail") {
-      nodes.cardButtons[0]?.focus({ preventScroll: true });
-    } else if (nextName === "card") {
-      nodes.open?.focus({ preventScroll: true });
-    } else if (nextName === "share") {
-      nodes.copyLink?.focus({ preventScroll: true });
+    const returnFocusIsAvailable =
+      returnFocus?.isConnected &&
+      !returnFocus.closest("[hidden], [inert]");
+    if (returnFocusIsAvailable) {
+      returnFocus.focus({ preventScroll: true });
+    } else if (shouldMoveFocus) {
+      const fallbackFocus =
+        state.layout === "all"
+          ? galleryCards.get(state.selected)?.button
+          : state.panel === "share"
+            ? nodes.galleryToggle
+            : nodes.viewToggle;
+      fallbackFocus?.focus({ preventScroll: true });
+    } else {
+      returnFocus?.blur();
     }
 
     if (updateUrl) updateLocation(nextName);
@@ -448,32 +839,41 @@ if (root) {
       }
     } else {
       url.searchParams.set("card", cardId);
-      url.searchParams.set("view", view);
+      url.searchParams.set("view", "card");
     }
     url.searchParams.set("gpu", state.selected);
     url.searchParams.set("range", state.range);
+    url.searchParams.set("palette", currentPalette());
+    if (view === "share" && state.layout === "all") {
+      url.searchParams.set("layout", "all");
+    } else {
+      url.searchParams.delete("layout");
+    }
     url.hash = root.id;
     window.history.replaceState({}, "", url);
   }
 
   async function copyCardLink() {
-    const copied = await copyText(publicationUrl(), "Link copied.");
-    if (!copied || !nodes.copyLink) return;
-    nodes.copyLink.textContent = "Copied";
-    window.clearTimeout(copyCardLink.timer);
-    copyCardLink.timer = window.setTimeout(() => {
-      nodes.copyLink.textContent = "Copy link";
-    }, 2200);
+    await copyText(shareUrl(), "Link copied.");
   }
 
-  function publicationUrl() {
-    const publication = state.cards.get(state.selected)?.payload?.publication
-      ?.ranges?.[state.range];
-    if (publication?.url) return String(publication.url);
-    if (publication?.live_url) return String(publication.live_url);
+  function shareUrl() {
+    if (state.panel === "share") {
+      const url = new URL(window.location.href);
+      url.search = "";
+      url.searchParams.set("gpu", state.selected);
+      url.searchParams.set("range", state.range);
+      url.searchParams.set("palette", currentPalette());
+      url.searchParams.set("card", cardId);
+      url.searchParams.set("view", "card");
+      if (state.layout === "all") url.searchParams.set("layout", "all");
+      url.hash = root.id;
+      return url.toString();
+    }
     return cardPermalink(cardId, {
       gpu: state.selected,
       range: state.range,
+      palette: currentPalette(),
     }).toString();
   }
 
@@ -505,17 +905,15 @@ if (root) {
       return;
     }
     nodes.shareStatus.textContent =
-      `${state.selected} · ${ranges[state.range].label} · ` +
+      `${state.selected}, ${ranges[state.range].label}, ` +
       `${formatUsd(latest.value)} per GPU hour`;
   }
 
   function setShareReady(ready) {
     state.shareReady = ready;
-    for (const button of nodes.shareButtons) {
-      button.disabled = !ready;
-      button.textContent = "Share";
-    }
+    syncViewToggle(false);
     if (nodes.copyLink) nodes.copyLink.disabled = !ready;
+    if (nodes.galleryToggle) nodes.galleryToggle.disabled = !ready;
   }
 
   function render(drawAnimation) {
@@ -532,17 +930,45 @@ if (root) {
     nodes.tooltip.hidden = true;
     updateRangeDates(rows);
     renderShareArtifact(rangeRows, latest);
+    renderWorkspaceGallery();
     syncShareStatus();
 
-    if (state.panel === "detail" && nodes.chart.clientWidth > 0) {
+    if (
+      state.layout === "focus" &&
+      state.panel === "detail" &&
+      nodes.chart.clientWidth > 0
+    ) {
       renderChart(rows, drawAnimation);
-      if (drawAnimation && !reducedMotion) {
-        animate(
-          nodes.svg,
-          { opacity: [0.72, 1] },
-          { duration: 0.42, ease: [0.23, 1, 0.32, 1] },
-        );
-      }
+    }
+  }
+
+  function renderWorkspaceGallery() {
+    if (!galleryCards.size || !state.cards.size) return;
+
+    for (const family of families) {
+      const card = state.cards.get(family);
+      const cardNodes = galleryCards.get(family);
+      const rows = visibleRows(card?.rows || []);
+      const latest = card?.rows.at(-1);
+      if (!cardNodes || !rows.length || !latest) continue;
+
+      const value = formatUsd(latest.value);
+      const selected = family === state.selected;
+      cardNodes.button.dataset.selected = String(selected);
+      cardNodes.button.setAttribute("aria-pressed", String(selected));
+      cardNodes.button.setAttribute(
+        "aria-label",
+        `Open ${family} card, ${value} per GPU hour`,
+      );
+      drawShareArtifact(cardNodes.artifact, family, rows, latest, {
+        compact: true,
+      });
+    }
+
+    if (nodes.galleryStatus) {
+      nodes.galleryStatus.textContent =
+        `${families.length} open cards, ${ranges[state.range].label} range, ` +
+        `${state.layout === "all" ? "gallery" : state.panel} view`;
     }
   }
 
@@ -555,17 +981,36 @@ if (root) {
   }
 
   function renderShareArtifact(selectedRows, latest) {
-    if (!nodes.shareArtifactSvg || !selectedRows.length) {
+    drawShareArtifact(
+      nodes.shareArtifactSvg,
+      state.selected,
+      selectedRows,
+      latest,
+    );
+  }
+
+  function drawShareArtifact(
+    svgNode,
+    family,
+    selectedRows,
+    latest,
+    options = {},
+  ) {
+    if (!svgNode || !selectedRows.length) {
       return;
     }
-    const svg = d3.select(nodes.shareArtifactSvg);
+    const svg = d3.select(svgNode);
     svg.selectAll("*").remove();
     svg.attr("viewBox", "0 0 1200 675");
 
     const palette = {
-      paper: "#ffffff",
-      line: "#315f82",
+      paper: currentPaperColor(),
+      line: currentLineColor(),
     };
+    const compact = options.compact === true;
+    const typography = compact
+      ? { family: 52, range: 36, price: 104 }
+      : { family: 24, range: 20, price: 64 };
     svg
       .append("rect")
       .attr("width", 1200)
@@ -575,9 +1020,9 @@ if (root) {
     appendShareText(svg, {
       x: 40,
       y: 54,
-      text: state.selected,
+      text: family,
       fill: palette.line,
-      size: 24,
+      size: typography.family,
       weight: 600,
       family: "Geist, Avenir Next, sans-serif",
       spacing: 0.25,
@@ -587,7 +1032,7 @@ if (root) {
       y: 54,
       text: shareRangeLabel(selectedRows, state.range),
       fill: palette.line,
-      size: 20,
+      size: typography.range,
       anchor: "end",
       weight: 600,
       family: "Geist Mono, monospace",
@@ -595,16 +1040,18 @@ if (root) {
     });
     appendShareText(svg, {
       x: 40,
-      y: 138,
+      y: compact ? 160 : 138,
       text: formatUsd(latest.value),
       fill: palette.line,
-      size: 64,
+      size: typography.price,
       weight: 500,
       family: "Geist, Avenir Next, sans-serif",
       spacing: -2,
     });
 
-    const chart = { x: 0, y: 174, width: 1200, height: 390 };
+    const chart = compact
+      ? { x: 0, y: 204, width: 1200, height: 360 }
+      : { x: 0, y: 174, width: 1200, height: 390 };
     let start = d3.min(selectedRows, (row) => row.date);
     let end = d3.max(selectedRows, (row) => row.date);
     if (+start === +end) {
@@ -652,7 +1099,7 @@ if (root) {
       .attr("stroke", palette.line)
       .attr("stroke-linecap", "round")
       .attr("stroke-linejoin", "round")
-      .attr("stroke-width", 3.5);
+      .attr("stroke-width", compact ? 6 : 3.5);
   }
 
   function renderChart(selectedRows, drawAnimation) {
@@ -701,11 +1148,11 @@ if (root) {
     const plotRoot = svg
       .append("g")
       .attr("class", "gpu-benchmark__plot-root")
-      .attr("opacity", drawAnimation && !reducedMotion ? 0.18 : 1)
+      .attr("opacity", drawAnimation && !reducedMotion ? 0.42 : 1)
       .attr(
         "transform",
         drawAnimation && !reducedMotion
-          ? "translate(0,7)"
+          ? "translate(0,4)"
           : "translate(0,0)",
       );
     const plot = plotRoot
@@ -714,15 +1161,14 @@ if (root) {
     if (drawAnimation && !reducedMotion) {
       previousRoot
         .transition()
-        .duration(260)
+        .duration(160)
         .ease(d3.easeCubicOut)
         .attr("opacity", 0)
-        .attr("transform", "translate(0,-5)")
+        .attr("transform", "translate(0,-2)")
         .remove();
       plotRoot
         .transition()
-        .delay(48)
-        .duration(430)
+        .duration(220)
         .ease(d3.easeCubicOut)
         .attr("opacity", 1)
         .attr("transform", "translate(0,0)");
@@ -736,45 +1182,23 @@ if (root) {
       .y0((row) => y(Math.min(row.lower, row.upper)))
       .y1((row) => y(Math.max(row.lower, row.upper)))
       .curve(d3.curveMonotoneX);
-    const bandPath = plot
+    plot
       .append("path")
       .datum(selectedRows)
       .attr("class", "gpu-benchmark__band")
       .attr("d", area);
-    if (drawAnimation && !reducedMotion) {
-      bandPath
-        .attr("opacity", 0)
-        .transition()
-        .duration(520)
-        .ease(d3.easeCubicOut)
-        .attr("opacity", 1);
-    }
 
     const line = d3
       .line()
       .x((row) => x(row.date))
       .y((row) => y(row.value))
       .curve(d3.curveMonotoneX);
-    const selectedPath = plot
+    plot
       .append("path")
       .datum(selectedRows)
       .attr("class", "gpu-benchmark__line is-selected")
       .attr("d", line)
-      .attr("stroke", selectedLineColor);
-    if (drawAnimation && !reducedMotion) {
-      const length = selectedPath.node()?.getTotalLength() || 0;
-      if (length) {
-        selectedPath
-          .attr("stroke-dasharray", `${length} ${length}`)
-          .attr("stroke-dashoffset", length)
-          .transition()
-          .delay(80)
-          .duration(880)
-          .ease(d3.easeCubicInOut)
-          .attr("stroke-dashoffset", 0)
-          .on("end", () => selectedPath.attr("stroke-dasharray", null));
-      }
-    }
+      .attr("stroke", currentLineColor());
 
     const zoomSelection = plot
       .append("rect")
@@ -938,7 +1362,7 @@ if (root) {
       zoomSelection
         .raise()
         .transition()
-        .duration(400)
+        .duration(220)
         .ease(d3.easeCubicOut)
         .attr("x", 0)
         .attr("width", innerWidth)
@@ -1009,7 +1433,7 @@ if (root) {
       if (row.family === state.selected) entry.dataset.selected = "true";
       swatch.style.backgroundColor =
         row.family === state.selected
-          ? selectedLineColor
+          ? currentLineColor()
           : familyColors.get(row.family);
       label.textContent = row.family;
       value.textContent = formatUsd(row.value);
@@ -1117,18 +1541,6 @@ if (root) {
       month: "short",
       timeZoneName: "short",
     });
-  }
-
-  function formatCardDateTime(date) {
-    return date
-      .toLocaleString(undefined, {
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        month: "short",
-        timeZoneName: "short",
-      })
-      .replace(",", " ·");
   }
 
   function formatUtcDateTime(date) {
