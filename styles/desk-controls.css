@@ -1,6 +1,7 @@
 :root {
   --desk-accent: #91aecb;
   --desk-accent-deep: color-mix(in srgb, var(--desk-accent) 52%, #102635);
+  --desk-comparison-line: color-mix(in srgb, var(--desk-accent) 28%, #102635);
   --desk-accent-pale: color-mix(in srgb, var(--desk-accent) 28%, #fff);
   --desk-canvas: color-mix(in srgb, var(--desk-accent) 5%, #fff);
   --desk-ease: cubic-bezier(0.32, 0.72, 0, 1);
@@ -24,6 +25,7 @@
   --desk-accent-deep: color-mix(in srgb, var(--desk-accent) 88%, #fff);
   --desk-accent-pale: color-mix(in srgb, var(--desk-accent) 17%, #272727);
   --desk-canvas: color-mix(in srgb, var(--desk-accent) 3%, #171717);
+  --desk-comparison-line: color-mix(in srgb, var(--desk-accent) 28%, #fff);
 }
 
 .gpu-index {
@@ -549,7 +551,10 @@ button.compute-share-card-frame:focus-visible {
 .gpu-index-share__window,
 .compute-share-card-frame,
 .gpu-benchmark__line,
+.gpu-benchmark__line-underlay,
 .gpu-benchmark__band,
+.gpu-benchmark__value-area,
+.gpu-benchmark__reference-line,
 .gpu-benchmark__composer,
 .gpu-benchmark__composer button {
   transition:
@@ -563,6 +568,30 @@ button.compute-share-card-frame:focus-visible {
 
 .gpu-benchmark__line.is-selected {
   stroke: var(--desk-accent-deep) !important;
+}
+
+.gpu-benchmark__line-underlay {
+  fill: none;
+  opacity: 0.94;
+  pointer-events: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.gpu-benchmark__value-area {
+  fill: var(--desk-comparison-line);
+  opacity: 0.09;
+  pointer-events: none;
+}
+
+.gpu-benchmark__reference-line {
+  fill: none;
+  opacity: 0.12;
+  pointer-events: none;
+  stroke-dasharray: 2 8;
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
 }
 
 .gpu-benchmark__line-label {
@@ -606,6 +635,7 @@ button.compute-share-card-frame:focus-visible {
 
 .gpu-benchmark__band {
   fill: var(--desk-accent);
+  opacity: 0.12;
 }
 
 .compute-card-skin--market .gpu-index-detail::after {

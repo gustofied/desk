@@ -24,6 +24,11 @@ import {
   THEMES,
 } from "../src/card-registry.js";
 import { shareRangeLabel } from "../src/share-range-label.js";
+import {
+  chartYDomain,
+  comparisonStrokeOpacity,
+  INDEX_BASELINE,
+} from "../src/chart-domain.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 await mkdir(join(root, ".cache", "fontconfig"), { recursive: true });
@@ -311,36 +316,47 @@ function renderPublishedCardImage(model) {
     ? { x: 0, y: 194, width: 1200, height: 410 }
     : { x: 0, y: 174, width: 1200, height: 430 };
   const allRows = model.series.flatMap((candidate) => candidate.rows);
-  const { line, area } = layeredChartPaths(
+  const { line, area, baselineY } = layeredChartPaths(
     allRows,
     model.primary.rows,
     chart,
-    630,
+    model.scale,
   );
   const layerMarkup = [...model.series]
     .sort((left, right) => Number(left.primary) - Number(right.primary))
     .map((candidate) => {
-      const strokeWidth = candidate.primary ? 3.5 : 1.8;
+      const strokeWidth = candidate.primary ? 3.5 : 2;
       const strokeOpacity = candidate.primary
         ? 1
-        : model.series.length > 2
-          ? Math.min(0.42, candidate.layer.strokeOpacity)
-          : candidate.layer.strokeOpacity;
+        : comparisonStrokeOpacity(model.theme);
       const dash = candidate.primary
         ? ""
         : candidate.layer.strokeDasharray || "";
-      return `<path d="${line(candidate.rows)}" fill="none" stroke="${model.colors.line}" stroke-opacity="${strokeOpacity}" stroke-width="${strokeWidth}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const underlay = candidate.primary
+        ? `<path d="${line(candidate.rows)}" fill="none" stroke="${model.colors.paper}" stroke-opacity="0.94" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>`
+        : "";
+      const color = candidate.primary ? model.colors.line : model.colors.secondary;
+      return `${underlay}<path d="${line(candidate.rows)}" fill="none" stroke="${color}" stroke-opacity="${strokeOpacity}" stroke-width="${strokeWidth}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`;
     })
     .join("");
+  const areaMarkup =
+    model.scale === "index" || model.series.length === 1
+      ? `<path d="${area}" fill="${model.colors.secondary}" fill-opacity="${model.scale === "index" ? "0.09" : "0.055"}"/>`
+      : "";
+  const baselineMarkup =
+    model.scale === "index"
+      ? `<line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${model.colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>`
+      : "";
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${model.colors.paper}"/>
       <text x="40" y="54" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">${escapeXml(model.primaryTitle)}</text>
-      ${hasComparisons ? `<text x="40" y="88" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">${escapeXml(model.comparisonTitle)}</text>` : ""}
+      ${hasComparisons ? comparisonLegendMarkup(model.series, model.colors) : ""}
       <text x="1160" y="54" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(model.rangeLabel)}</text>
       <text x="40" y="${hasComparisons ? 158 : 138}" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
-      <path d="${area}" fill="${model.colors.line}" fill-opacity="0.055"/>
+      ${areaMarkup}
+      ${baselineMarkup}
       ${layerMarkup}
     </svg>`;
 }
@@ -420,8 +436,8 @@ function renderPublishedSharePage(
 
 function renderLegacyCardImage(family, range, rows, latest, accent, theme) {
   const colors = themeColors(accent, theme);
-  const chart = { x: 0, y: 174, width: 1200, height: 370 };
-  const { line, area } = chartPaths(rows, chart, 630);
+  const chart = { x: 0, y: 174, width: 1200, height: 430 };
+  const { line, area } = chartPaths(rows, chart);
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
@@ -429,7 +445,7 @@ function renderLegacyCardImage(family, range, rows, latest, accent, theme) {
       <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="24" font-weight="600" letter-spacing="0.25">${family}</text>
       <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="24" font-weight="600" text-anchor="end" letter-spacing="1">${range.label}</text>
       <text x="40" y="138" fill="${colors.line}" font-family="Geist, sans-serif" font-size="64" font-weight="500" letter-spacing="-2">${formatUsd(latest.value)}</text>
-      <path d="${area}" fill="${colors.line}" fill-opacity="0.055"/>
+      <path d="${area}" fill="${colors.secondary}" fill-opacity="0.055"/>
       <path d="${line}" fill="none" stroke="${colors.line}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>`;
 }
@@ -445,38 +461,24 @@ function renderDefaultComparisonImage() {
     const base = rows[0]?.value || 1;
     return {
       layerId,
+      layer: cardDefinition.layers.find((item) => item.id === layerId),
+      primary: layerId === "H200",
       rows: rows.map((row) => ({
         ...row,
-        value: (row.value / base) * 100,
+        plotValue: (row.value / base) * 100,
       })),
     };
   });
   const primary = series.find((item) => item.layerId === "H200");
   const latest = primary?.rows.at(-1);
   const allRows = series.flatMap((item) => item.rows);
-  const chart = { x: 0, y: 174, width: 1200, height: 370 };
-  const minimum = d3.min(allRows, (row) => row.value) ?? 0;
-  const maximum = d3.max(allRows, (row) => row.value) ?? minimum + 1;
-  const spread = Math.max(maximum - minimum, maximum * 0.025, 0.12);
-  const x = d3
-    .scaleTime()
-    .domain(d3.extent(allRows, (row) => row.date))
-    .range([chart.x, chart.x + chart.width]);
-  const y = d3
-    .scaleLinear()
-    .domain([Math.max(0, minimum - spread * 0.2), maximum + spread * 0.2])
-    .range([chart.y + chart.height, chart.y]);
-  const line = d3
-    .line()
-    .x((row) => x(row.date))
-    .y((row) => y(row.value))
-    .curve(d3.curveMonotoneX);
-  const area = d3
-    .area()
-    .x((row) => x(row.date))
-    .y0(630)
-    .y1((row) => y(row.value))
-    .curve(d3.curveMonotoneX);
+  const chart = { x: 0, y: 174, width: 1200, height: 430 };
+  const { line, area, baselineY } = layeredChartPaths(
+    allRows,
+    primary?.rows || [],
+    chart,
+    "index",
+  );
   const layerMarkup = [...series]
     .sort(
       (left, right) =>
@@ -485,7 +487,10 @@ function renderDefaultComparisonImage() {
     .map(({ layerId, rows }) => {
       const layer = cardDefinition.layers.find((item) => item.id === layerId);
       const primaryLayer = layerId === "H200";
-      return `<path d="${line(rows)}" fill="none" stroke="${colors.line}" stroke-opacity="${primaryLayer ? 1 : Math.min(0.42, layer.strokeOpacity)}" stroke-width="${primaryLayer ? 3.5 : 1.8}" stroke-dasharray="${primaryLayer ? "" : layer.strokeDasharray || ""}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      const underlay = primaryLayer
+        ? `<path d="${line(rows)}" fill="none" stroke="${colors.paper}" stroke-opacity="0.94" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>`
+        : "";
+      return `${underlay}<path d="${line(rows)}" fill="none" stroke="${primaryLayer ? colors.line : colors.secondary}" stroke-opacity="${primaryLayer ? 1 : comparisonStrokeOpacity(colors.theme)}" stroke-width="${primaryLayer ? 3.5 : 2}" stroke-dasharray="${primaryLayer ? "" : layer.strokeDasharray || ""}" stroke-linecap="round" stroke-linejoin="round"/>`;
     })
     .join("");
 
@@ -493,31 +498,56 @@ function renderDefaultComparisonImage() {
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${colors.paper}"/>
       <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">H200</text>
-      <text x="40" y="88" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">H100 + Token Index</text>
+      ${comparisonLegendMarkup(series, colors)}
       <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">7D</text>
-      <text x="40" y="158" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndexChange(latest?.value)}</text>
-      <path d="${area(primary?.rows || [])}" fill="${colors.line}" fill-opacity="0.055"/>
+      <text x="40" y="158" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndexChange(latest?.plotValue)}</text>
+      <path d="${area}" fill="${colors.secondary}" fill-opacity="0.09"/>
+      <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>
       ${layerMarkup}
     </svg>`;
 }
 
-function layeredChartPaths(allRows, primaryRows, chart, bottom) {
+function comparisonLegendMarkup(series, colors) {
+  let x = 40;
+  const opacity = comparisonStrokeOpacity(colors.theme);
+  return series
+    .filter((candidate) => !candidate.primary)
+    .map((candidate) => {
+      const layer = candidate.layer;
+      const label = layer.shortLabel || layer.label;
+      const markup =
+        `<line x1="${x}" x2="${x + 24}" y1="82" y2="82" ` +
+        `stroke="${colors.secondary}" stroke-opacity="${opacity}" ` +
+        `stroke-width="2" stroke-dasharray="${layer.strokeDasharray || ""}" ` +
+        `stroke-linecap="round"/>` +
+        `<text x="${x + 34}" y="88" fill="${colors.line}" ` +
+        `font-family="Geist Mono, monospace" font-size="18" font-weight="500" ` +
+        `letter-spacing="0.3">${escapeXml(label)}</text>`;
+      x += 58 + label.length * 11;
+      return markup;
+    })
+    .join("");
+}
+
+function layeredChartPaths(allRows, primaryRows, chart, scale) {
   let start = d3.min(allRows, (row) => row.date);
   let end = d3.max(allRows, (row) => row.date);
   if (+start === +end) {
     start = new Date(+start - 30 * 60 * 1000);
     end = new Date(+end + 30 * 60 * 1000);
   }
-  const minimum = d3.min(allRows, (row) => row.plotValue) ?? 0;
-  const maximum = d3.max(allRows, (row) => row.plotValue) ?? minimum + 1;
-  const spread = Math.max(maximum - minimum, maximum * 0.025, 0.12);
   const x = d3
     .scaleTime()
     .domain([start, end])
     .range([chart.x, chart.x + chart.width]);
   const y = d3
     .scaleLinear()
-    .domain([Math.max(0, minimum - spread * 0.2), maximum + spread * 0.2])
+    .domain(
+      chartYDomain(
+        allRows.map((row) => row.plotValue),
+        { scale },
+      ),
+    )
     .range([chart.y + chart.height, chart.y]);
   const line = d3
     .line()
@@ -527,29 +557,30 @@ function layeredChartPaths(allRows, primaryRows, chart, bottom) {
   const area = d3
     .area()
     .x((row) => x(row.date))
-    .y0(bottom)
+    .y0(scale === "index" ? y(INDEX_BASELINE) : chart.y + chart.height)
     .y1((row) => y(row.plotValue))
     .curve(d3.curveMonotoneX)(primaryRows);
-  return { line, area };
+  return {
+    line,
+    area,
+    baselineY: scale === "index" ? y(INDEX_BASELINE) : null,
+  };
 }
 
-function chartPaths(rows, chart, bottom) {
+function chartPaths(rows, chart) {
   let start = d3.min(rows, (row) => row.date);
   let end = d3.max(rows, (row) => row.date);
   if (+start === +end) {
     start = new Date(+start - 30 * 60 * 1000);
     end = new Date(+end + 30 * 60 * 1000);
   }
-  const minimum = d3.min(rows, (row) => row.value) ?? 0;
-  const maximum = d3.max(rows, (row) => row.value) ?? minimum + 1;
-  const spread = Math.max(maximum - minimum, maximum * 0.025, 0.12);
   const x = d3
     .scaleTime()
     .domain([start, end])
     .range([chart.x, chart.x + chart.width]);
   const y = d3
     .scaleLinear()
-    .domain([Math.max(0, minimum - spread * 0.2), maximum + spread * 0.2])
+    .domain(chartYDomain(rows.map((row) => row.value), { scale: "price" }))
     .range([chart.y + chart.height, chart.y]);
   return {
     line: d3
@@ -560,7 +591,7 @@ function chartPaths(rows, chart, bottom) {
     area: d3
       .area()
       .x((row) => x(row.date))
-      .y0(bottom)
+      .y0(chart.y + chart.height)
       .y1((row) => y(row.value))
       .curve(d3.curveMonotoneX)(rows),
   };
@@ -575,14 +606,22 @@ function rowsForRange(rows, rangeId) {
 
 function themeColors(accent, theme) {
   if (theme === "dark") {
+    const line = mixHex(accent, "#ffffff", 0.88);
     return {
+      accent,
+      theme,
       paper: mixHex(accent, "#171717", 0.03),
-      line: mixHex(accent, "#ffffff", 0.88),
+      line,
+      secondary: mixHex(accent, "#ffffff", 0.28),
     };
   }
+  const line = mixHex(accent, "#102635", 0.52);
   return {
+    accent,
+    theme,
     paper: mixHex(accent, "#ffffff", 0.05),
-    line: mixHex(accent, "#102635", 0.52),
+    line,
+    secondary: mixHex(accent, "#102635", 0.28),
   };
 }
 

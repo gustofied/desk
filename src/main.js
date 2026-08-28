@@ -18,6 +18,11 @@ import {
   positionSvgTooltip,
 } from "./chart-pointer.js";
 import { copyTextToClipboard } from "./card-transitions.js";
+import {
+  chartYDomain,
+  comparisonStrokeOpacity,
+  INDEX_BASELINE,
+} from "./chart-domain.js";
 
 const root = document.querySelector("[data-gpu-benchmark-card]");
 
@@ -538,6 +543,14 @@ if (root) {
 
   function currentLineColor() {
     return readCssToken("--desk-accent-deep", "#315f82");
+  }
+
+  function currentSecondaryLineColor() {
+    return readCssToken("--desk-comparison-line", currentLineColor());
+  }
+
+  function currentAreaColor() {
+    return currentSecondaryLineColor();
   }
 
   function currentPaperColor() {
@@ -1319,6 +1332,8 @@ if (root) {
     const palette = {
       paper: currentPaperColor(),
       line: currentLineColor(),
+      secondary: currentSecondaryLineColor(),
+      area: currentAreaColor(),
     };
     const compact = options.compact === true;
     const scale = options.scale || state.scale;
@@ -1353,16 +1368,11 @@ if (root) {
       spacing: 0.25,
     });
     if (hasComparisons) {
-      appendShareText(svg, {
-        x: 40,
-        y: 88,
-        text: comparisonTitle,
-        fill: palette.line,
-        size: 18,
-        weight: 500,
-        family: "Geist Mono, monospace",
-        spacing: 0.3,
-      });
+      appendShareComparisonLegend(
+        svg,
+        series.filter((candidate) => !isPrimary(candidate)),
+        palette,
+      );
     }
     appendShareText(svg, {
       x: 1160,
@@ -1397,19 +1407,18 @@ if (root) {
       start = new Date(+start - 30 * 60 * 1000);
       end = new Date(+end + 30 * 60 * 1000);
     }
-    const minimum = d3.min(allRows, (row) => row.plotValue) ?? 0;
-    const maximum = d3.max(allRows, (row) => row.plotValue) ?? minimum + 1;
-    const spread = Math.max(maximum - minimum, maximum * 0.025, 0.12);
     const x = d3
       .scaleTime()
       .domain([start, end])
       .range([chart.x, chart.x + chart.width]);
     const y = d3
       .scaleLinear()
-      .domain([
-        Math.max(0, minimum - spread * 0.2),
-        maximum + spread * 0.2,
-      ])
+      .domain(
+        chartYDomain(
+          allRows.map((row) => row.plotValue),
+          { scale },
+        ),
+      )
       .range([chart.y + chart.height, chart.y]);
 
     const line = d3
@@ -1420,34 +1429,64 @@ if (root) {
     const valueArea = d3
       .area()
       .x((row) => x(row.date))
-      // Carry the pale chart field through the date row to the card edge.
-      .y0(675)
+      .y0(scale === "index" ? y(INDEX_BASELINE) : chart.y + chart.height)
       .y1((row) => y(row.plotValue))
       .curve(d3.curveMonotoneX);
-    svg
-      .append("path")
-      .datum(primary.rows)
-      .attr("d", valueArea)
-      .attr("fill", palette.line)
-      .attr("fill-opacity", 0.055);
+    if (scale === "index" || series.length === 1) {
+      svg
+        .append("path")
+        .datum(primary.rows)
+        .attr("d", valueArea)
+        .attr("fill", palette.area)
+        .attr("fill-opacity", scale === "index" ? 0.09 : 0.055);
+    }
+    if (scale === "index") {
+      svg
+        .append("line")
+        .attr("x1", chart.x)
+        .attr("x2", chart.x + chart.width)
+        .attr("y1", y(INDEX_BASELINE))
+        .attr("y2", y(INDEX_BASELINE))
+        .attr("stroke", palette.line)
+        .attr("stroke-opacity", 0.12)
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "2 8");
+    }
     const orderedSeries = [...series].sort(
       (left, right) => Number(isPrimary(left)) - Number(isPrimary(right)),
     );
     orderedSeries.forEach((candidate) => {
       const candidateIsPrimary = isPrimary(candidate);
+      const strokeWidth = candidateIsPrimary
+        ? compact
+          ? 6
+          : 3.5
+        : compact
+          ? 3
+          : 2;
+      if (candidateIsPrimary) {
+        svg
+          .append("path")
+          .datum(candidate.rows)
+          .attr("d", line)
+          .attr("fill", "none")
+          .attr("stroke", palette.paper)
+          .attr("stroke-opacity", 0.94)
+          .attr("stroke-linecap", "round")
+          .attr("stroke-linejoin", "round")
+          .attr("stroke-width", strokeWidth + (compact ? 5 : 4));
+      }
       svg
         .append("path")
         .datum(candidate.rows)
         .attr("d", line)
         .attr("fill", "none")
-        .attr("stroke", palette.line)
+        .attr("stroke", candidateIsPrimary ? palette.line : palette.secondary)
         .attr(
           "stroke-opacity",
           candidateIsPrimary
             ? 1
-            : series.length > 2
-              ? Math.min(0.42, candidate.layer.strokeOpacity)
-              : candidate.layer.strokeOpacity,
+            : comparisonStrokeOpacity(currentTheme()),
         )
         .attr(
           "stroke-dasharray",
@@ -1455,10 +1494,7 @@ if (root) {
         )
         .attr("stroke-linecap", "round")
         .attr("stroke-linejoin", "round")
-        .attr(
-          "stroke-width",
-          candidateIsPrimary ? (compact ? 6 : 3.5) : compact ? 4 : 1.8,
-        );
+        .attr("stroke-width", strokeWidth);
     });
   }
 
@@ -1497,17 +1533,10 @@ if (root) {
               : candidate.rows.map((row) => row.plotValue),
           )
         : allRows.map((row) => row.plotValue);
-    const minimum = d3.min(values) ?? 0;
-    const maximum = d3.max(values) ?? minimum + 1;
-    const spread = Math.max(maximum - minimum, Math.abs(maximum) * 0.06, 0.08);
     const x = d3.scaleTime().domain([start, end]).range([0, innerWidth]);
     const y = d3
       .scaleLinear()
-      .domain([
-        Math.max(0, minimum - spread * 0.18),
-        maximum + spread * 0.18,
-      ])
-      .nice(5)
+      .domain(chartYDomain(values, { scale: state.scale }))
       .range([innerHeight, 0]);
     const svg = d3.select(nodes.svg);
     svg.selectAll(".gpu-benchmark__plot-root.is-exiting").remove();
@@ -1562,6 +1591,30 @@ if (root) {
         .attr("d", area);
     }
 
+    if (state.scale === "index") {
+      const indexArea = d3
+        .area()
+        .x((row) => x(row.date))
+        .y0(y(INDEX_BASELINE))
+        .y1((row) => y(row.plotValue))
+        .curve(d3.curveMonotoneX);
+      plot
+        .append("path")
+        .datum(selectedRows)
+        .attr("class", "gpu-benchmark__value-area")
+        .attr("aria-hidden", "true")
+        .attr("d", indexArea);
+      plot
+        .append("line")
+        .attr("class", "gpu-benchmark__reference-line")
+        .attr("aria-hidden", "true")
+        .attr("x1", 0)
+        .attr("x2", innerWidth)
+        .attr("y1", y(INDEX_BASELINE))
+        .attr("y2", y(INDEX_BASELINE))
+        .attr("stroke", currentLineColor());
+    }
+
     const line = d3
       .line()
       .x((row) => x(row.date))
@@ -1571,6 +1624,17 @@ if (root) {
       (left, right) => Number(left.primary) - Number(right.primary),
     );
     orderedSeries.forEach((candidate) => {
+      if (candidate.primary) {
+        plot
+          .append("path")
+          .datum(candidate.rows)
+          .attr("class", "gpu-benchmark__line-underlay")
+          .attr("aria-hidden", "true")
+          .attr("data-layer", candidate.layer.id)
+          .attr("d", line)
+          .attr("stroke", currentPaperColor())
+          .attr("stroke-width", 5.4);
+      }
       plot
         .append("path")
         .datum(candidate.rows)
@@ -1580,20 +1644,23 @@ if (root) {
         )
         .attr("data-layer", candidate.layer.id)
         .attr("d", line)
-        .attr("stroke", currentLineColor())
+        .attr(
+          "stroke",
+          candidate.primary
+            ? currentLineColor()
+            : currentSecondaryLineColor(),
+        )
         .attr(
           "stroke-opacity",
           candidate.primary
             ? 1
-            : series.length > 2
-              ? Math.min(0.42, candidate.layer.strokeOpacity)
-              : candidate.layer.strokeOpacity,
+            : comparisonStrokeOpacity(currentTheme()),
         )
         .attr(
           "stroke-dasharray",
           candidate.primary ? null : candidate.layer.strokeDasharray || null,
         )
-        .attr("stroke-width", candidate.primary ? 2.4 : 1.8);
+        .attr("stroke-width", candidate.primary ? 2.4 : 1.35);
     });
 
     if (series.length > 1) {
@@ -1609,17 +1676,23 @@ if (root) {
       labelPositions.forEach(({ candidate, lineY, labelY }) => {
         const stateClass = candidate.primary ? "is-selected" : "is-layer";
         plot
-          .append("line")
+          .append("path")
           .attr(
             "class",
             `gpu-benchmark__line-label-connector ${stateClass}`,
           )
           .attr("aria-hidden", "true")
-          .attr("x1", innerWidth - 4)
-          .attr("x2", innerWidth + 4)
-          .attr("y1", lineY)
-          .attr("y2", labelY)
-          .attr("stroke", currentLineColor());
+          .attr(
+            "d",
+            `M${innerWidth - 4},${lineY}H${innerWidth + 2}` +
+              `V${labelY}H${innerWidth + 6}`,
+          )
+          .attr(
+            "stroke",
+            candidate.primary
+              ? currentLineColor()
+              : currentSecondaryLineColor(),
+          );
         plot
           .append("text")
           .attr("class", `gpu-benchmark__line-label ${stateClass}`)
@@ -1627,7 +1700,12 @@ if (root) {
           .attr("x", innerWidth + 8)
           .attr("y", labelY)
           .attr("dominant-baseline", "middle")
-          .attr("fill", currentLineColor())
+          .attr(
+            "fill",
+            candidate.primary
+              ? currentLineColor()
+              : currentSecondaryLineColor(),
+          )
           .text(candidate.layer.id);
       });
     }
@@ -1878,7 +1956,9 @@ if (root) {
       const range = document.createElement("small");
       entry.className = "gpu-benchmark__tooltip-row";
       if (row.primary) entry.dataset.selected = "true";
-      const lineColor = currentLineColor();
+      const lineColor = row.primary
+        ? currentLineColor()
+        : currentSecondaryLineColor();
       const [dashLength = 4, gapLength = 3] = String(
         row.layer.strokeDasharray || "4 3",
       )
@@ -1893,9 +1973,7 @@ if (root) {
       swatch.style.opacity = String(
         row.primary
           ? 1
-          : rows.length > 2
-            ? Math.min(0.42, row.layer.strokeOpacity)
-            : row.layer.strokeOpacity,
+          : comparisonStrokeOpacity(currentTheme()),
       );
       label.textContent = row.layer.shortLabel || row.layer.label;
       value.textContent = formatPlotValue(row.plotValue, state.scale);
@@ -2012,6 +2090,36 @@ if (root) {
       .attr("letter-spacing", spacing)
       .attr("text-anchor", anchor)
       .text(text);
+  }
+
+  function appendShareComparisonLegend(svg, series, palette) {
+    let x = 40;
+    for (const candidate of series) {
+      const label = candidate.layer.shortLabel || candidate.layer.label;
+      svg
+        .append("line")
+        .attr("x1", x)
+        .attr("x2", x + 24)
+        .attr("y1", 82)
+        .attr("y2", 82)
+        .attr("stroke", palette.secondary)
+        .attr("stroke-opacity", comparisonStrokeOpacity(currentTheme()))
+        .attr("stroke-width", 2)
+        .attr("stroke-dasharray", candidate.layer.strokeDasharray || null)
+        .attr("stroke-linecap", "round")
+        .attr("aria-hidden", "true");
+      appendShareText(svg, {
+        x: x + 34,
+        y: 88,
+        text: label,
+        fill: palette.line,
+        size: 18,
+        weight: 500,
+        family: "Geist Mono, monospace",
+        spacing: 0.3,
+      });
+      x += 58 + label.length * 11;
+    }
   }
 
   function formatUsd(value) {
