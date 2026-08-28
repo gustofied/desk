@@ -5,7 +5,8 @@
   "homepage": "https://desk.adamsioud.com",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.js --bundle --format=esm --target=es2022 --minify --outfile=desk.js",
+    "build:previews": "node scripts/build-card-previews.mjs",
+    "build": "npm run build:previews && esbuild src/main.js --bundle --format=esm --target=es2022 --minify --outfile=desk.js",
     "dev": "python3 -m http.server 4173"
   },
   "dependencies": {
@@ -13,6 +14,7 @@
     "motion": "12.42.2"
   },
   "devDependencies": {
-    "esbuild": "0.28.1"
+    "esbuild": "0.28.1",
+    "sharp": "^0.35.4"
   }
 }

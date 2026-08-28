@@ -866,6 +866,13 @@ if (root) {
         palette: currentPalette(),
       }).toString();
     }
+    if (state.layout === "focus") {
+      const publishedUrl = new URL(
+        `/cards/gpu-price-index/${state.selected.toLowerCase()}/${state.range}/${currentPalette()}/${currentTheme()}/`,
+        window.location.origin,
+      );
+      return publishedUrl.toString();
+    }
     const url = new URL(window.location.href);
     url.search = "";
     url.searchParams.set("card", cardId);
@@ -1021,7 +1028,7 @@ if (root) {
     const compact = options.compact === true;
     const typography = compact
       ? { family: 52, range: 36, price: 104 }
-      : { family: 24, range: 20, price: 64 };
+      : { family: 24, range: 24, price: 64 };
     svg
       .append("rect")
       .attr("width", 1200)

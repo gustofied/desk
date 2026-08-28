@@ -13,9 +13,17 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Desk">
     <meta property="og:url" content="https://desk.adamsioud.com/">
-    <meta name="twitter:card" content="summary">
+    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/h200/7d/azure-light.png">
+    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/h200/7d/azure-light.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="H200 GPU Price Index card showing the latest hourly price over seven days.">
+    <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Desk">
     <meta name="twitter:description" content="Compare frozen hourly price history for H100, H200, B200, and B300 GPUs.">
+    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/h200/7d/azure-light.png">
+    <meta name="twitter:image:alt" content="H200 GPU Price Index card showing the latest hourly price over seven days.">
     <title>Desk</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/favicon.svg">
@@ -28,12 +36,22 @@
         const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
           ? "dark"
           : "light";
-        let theme = systemTheme;
-        const requestedPalette = new URL(window.location.href).searchParams.get("palette");
+        const params = new URL(window.location.href).searchParams;
+        const requestedTheme = params.get("theme");
+        const requestedPalette = params.get("palette");
+        let theme = requestedTheme === "light" || requestedTheme === "dark"
+          ? requestedTheme
+          : systemTheme;
         let palette = palettes.includes(requestedPalette) ? requestedPalette : "azure";
         try {
           const savedTheme = window.localStorage.getItem("desk-theme");
-          if (savedTheme === "light" || savedTheme === "dark") theme = savedTheme;
+          if (
+            requestedTheme !== "light" &&
+            requestedTheme !== "dark" &&
+            (savedTheme === "light" || savedTheme === "dark")
+          ) {
+            theme = savedTheme;
+          }
           const savedPalette = window.localStorage.getItem("desk-palette");
           if (!palettes.includes(requestedPalette) && palettes.includes(savedPalette)) {
             palette = savedPalette;
