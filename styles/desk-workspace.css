@@ -86,6 +86,14 @@
   display: inline;
 }
 
+.gpu-index[data-workspace-mode="share"]
+  .desk-card-rail
+  .desk-card-tabs
+  button[aria-selected="true"]
+  strong {
+  display: none;
+}
+
 .compute-card-skin--market .desk-card-rail .desk-card-tabs button::after {
   position: absolute;
   right: 8px;

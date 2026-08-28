@@ -22,6 +22,7 @@ import {
   chartYDomain,
   comparisonStrokeOpacity,
   INDEX_BASELINE,
+  spreadLineLabels,
 } from "./chart-domain.js";
 
 const root = document.querySelector("[data-gpu-benchmark-card]");
@@ -369,7 +370,7 @@ if (root) {
             ? "Show display controls"
             : "Hide display controls",
         subtitle: "/actions/toggle-display-controls",
-        hint: "⌘H",
+        hint: "⌘/",
         keywords: ["toolbar", "theme", "palette", "controls"],
         run: () => {
           setDisplayToolbarCollapsed(
@@ -461,12 +462,20 @@ if (root) {
   }
 
   function handleDisplayShortcut(event) {
+    const target = event.target;
+    const isTyping =
+      target instanceof HTMLElement &&
+      (target.isContentEditable ||
+        target.matches("input, textarea, select"));
+
     if (
+      !event.defaultPrevented &&
+      !event.isComposing &&
+      !isTyping &&
       event.metaKey &&
       !event.ctrlKey &&
       !event.altKey &&
-      !event.shiftKey &&
-      event.key.toLowerCase() === "h"
+      event.key === "/"
     ) {
       event.preventDefault();
       setDisplayToolbarCollapsed(
@@ -935,6 +944,7 @@ if (root) {
       button.tabIndex = selected ? 0 : -1;
     });
     if (nodes.zoomReset) nodes.zoomReset.hidden = !state.zoomWindow;
+    updateFamilyQuoteNodes();
     syncComposerControls();
   }
 
@@ -1001,7 +1011,15 @@ if (root) {
   function updateFamilyQuoteNodes() {
     for (const family of families) {
       const latest = state.seriesByLayer.get(family)?.at(-1);
-      const value = latest ? formatUsd(latest.value) : "pending";
+      const selectedIndex =
+        family === state.selected && state.scale === "index"
+          ? createLayerSeries(family, { scale: "index" })?.rows.at(-1)
+          : null;
+      const value = selectedIndex
+        ? formatCardHeadline(selectedIndex.plotValue, "index")
+        : latest
+          ? formatUsd(latest.value)
+          : "pending";
       const node = nodes.familyValues.get(family);
       if (node) node.textContent = value;
       const button = nodes.familyButtons.find(
@@ -1009,8 +1027,10 @@ if (root) {
       );
       button?.setAttribute(
         "aria-label",
-        latest
-          ? `${family} ${value} per GPU hour`
+        selectedIndex
+          ? `${family} ${value} over ${ranges[state.range].label}`
+          : latest
+            ? `${family} ${value} per GPU hour`
           : `${family}, price pending`,
       );
     }
@@ -1188,9 +1208,19 @@ if (root) {
       }
       return;
     }
-    const layerNames = activeLayerDefinitions()
-      .map((layer) => layer.shortLabel || layer.label)
-      .join(" + ");
+    const activeLayers = activeLayerDefinitions();
+    const primaryLayer = activeLayers.find(
+      (layer) => layer.id === state.selected,
+    );
+    const layerLabels = [
+      primaryLayer,
+      ...activeLayers.filter((layer) => layer.id !== state.selected),
+    ]
+      .filter(Boolean)
+      .map((layer) => layer.shortLabel || layer.label);
+    const layerNames = layerLabels.length > 1
+      ? `${layerLabels[0]} compared with ${layerLabels.slice(1).join(", ")}`
+      : layerLabels[0];
     nodes.shareStatus.textContent =
       `${layerNames} ${ranges[state.range].label} ` +
       `${formatCardHeadline(latest.plotValue, state.scale)}`;
@@ -1339,11 +1369,7 @@ if (root) {
     const scale = options.scale || state.scale;
     const allRows = series.flatMap((candidate) => candidate.rows);
     const primaryTitle = primary.layer.shortLabel || primary.layer.label;
-    const comparisonTitle = series
-      .filter((candidate) => !isPrimary(candidate))
-      .map((candidate) => candidate.layer.shortLabel || candidate.layer.label)
-      .join(" + ");
-    const hasComparisons = comparisonTitle.length > 0;
+    const hasComparisons = series.some((candidate) => !isPrimary(candidate));
     const typography = compact
       ? { family: series.length > 1 ? 34 : 52, range: 36, price: 104 }
       : {
@@ -1367,13 +1393,6 @@ if (root) {
       family: "Geist, Avenir Next, sans-serif",
       spacing: 0.25,
     });
-    if (hasComparisons) {
-      appendShareComparisonLegend(
-        svg,
-        series.filter((candidate) => !isPrimary(candidate)),
-        palette,
-      );
-    }
     appendShareText(svg, {
       x: 1160,
       y: 54,
@@ -1387,7 +1406,7 @@ if (root) {
     });
     appendShareText(svg, {
       x: 40,
-      y: compact ? 160 : hasComparisons ? 158 : 138,
+      y: compact ? 160 : 138,
       text: formatCardHeadline(latest.plotValue, scale),
       fill: palette.line,
       size: typography.price,
@@ -1398,9 +1417,12 @@ if (root) {
 
     const chart = compact
       ? { x: 0, y: 204, width: 1200, height: 445 }
-      : hasComparisons
-        ? { x: 0, y: 194, width: 1200, height: 455 }
-        : { x: 0, y: 174, width: 1200, height: 475 };
+      : {
+          x: 0,
+          y: 174,
+          width: hasComparisons ? 1040 : 1200,
+          height: 475,
+        };
     let start = d3.min(allRows, (row) => row.date);
     let end = d3.max(allRows, (row) => row.date);
     if (+start === +end) {
@@ -1496,6 +1518,9 @@ if (root) {
         .attr("stroke-linejoin", "round")
         .attr("stroke-width", strokeWidth);
     });
+    if (hasComparisons) {
+      appendShareEndpointLabels(svg, series, palette, chart, y, isPrimary);
+    }
   }
 
   function renderChart(series, drawAnimation) {
@@ -1665,16 +1690,18 @@ if (root) {
 
     if (series.length > 1) {
       const labelPositions = spreadLineLabels(
-        series.map((candidate) => ({
-          candidate,
-          lineY: y(candidate.rows.at(-1).plotValue),
-        })),
+        series
+          .filter((candidate) => !candidate.primary)
+          .map((candidate) => ({
+            candidate,
+            lineY: y(candidate.rows.at(-1).plotValue),
+          })),
         8,
         innerHeight - 8,
         16,
       );
       labelPositions.forEach(({ candidate, lineY, labelY }) => {
-        const stateClass = candidate.primary ? "is-selected" : "is-layer";
+        const stateClass = "is-layer";
         plot
           .append("path")
           .attr(
@@ -1689,9 +1716,7 @@ if (root) {
           )
           .attr(
             "stroke",
-            candidate.primary
-              ? currentLineColor()
-              : currentSecondaryLineColor(),
+            currentSecondaryLineColor(),
           );
         plot
           .append("text")
@@ -1702,9 +1727,7 @@ if (root) {
           .attr("dominant-baseline", "middle")
           .attr(
             "fill",
-            candidate.primary
-              ? currentLineColor()
-              : currentSecondaryLineColor(),
+            currentSecondaryLineColor(),
           )
           .text(candidate.layer.id);
       });
@@ -2002,38 +2025,6 @@ if (root) {
       : before;
   }
 
-  function spreadLineLabels(entries, minimum, maximum, gap) {
-    const positions = entries
-      .map((entry) => ({ ...entry, labelY: entry.lineY }))
-      .sort((left, right) => left.lineY - right.lineY);
-    positions.forEach((entry, index) => {
-      entry.labelY = Math.max(
-        minimum,
-        entry.lineY,
-        index ? positions[index - 1].labelY + gap : minimum,
-      );
-    });
-    const overflow = (positions.at(-1)?.labelY ?? maximum) - maximum;
-    if (overflow > 0) {
-      positions.forEach((entry) => {
-        entry.labelY -= overflow;
-      });
-    }
-    for (let index = positions.length - 2; index >= 0; index -= 1) {
-      positions[index].labelY = Math.min(
-        positions[index].labelY,
-        positions[index + 1].labelY - gap,
-      );
-    }
-    const underflow = minimum - (positions[0]?.labelY ?? minimum);
-    if (underflow > 0) {
-      positions.forEach((entry) => {
-        entry.labelY += underflow;
-      });
-    }
-    return positions;
-  }
-
   function visibleRows(rows) {
     const milliseconds = ranges[state.range]?.milliseconds;
     if (!milliseconds || !rows.length) return rows;
@@ -2079,7 +2070,7 @@ if (root) {
       spacing = 0,
     },
   ) {
-    svg
+    return svg
       .append("text")
       .attr("x", x)
       .attr("y", y)
@@ -2092,33 +2083,57 @@ if (root) {
       .text(text);
   }
 
-  function appendShareComparisonLegend(svg, series, palette) {
-    let x = 40;
-    for (const candidate of series) {
-      const label = candidate.layer.shortLabel || candidate.layer.label;
+  function appendShareEndpointLabels(
+    svg,
+    series,
+    palette,
+    chart,
+    y,
+    isPrimary,
+  ) {
+    const labelPositions = spreadLineLabels(
+      series
+        .filter((candidate) => !isPrimary(candidate))
+        .map((candidate) => ({
+          candidate,
+          lineY: y(candidate.rows.at(-1).plotValue),
+        })),
+      chart.y + 12,
+      chart.y + chart.height - 12,
+      26,
+    );
+    const chartRight = chart.x + chart.width;
+    for (const { candidate, lineY, labelY } of labelPositions) {
+      const color = palette.secondary;
+      const opacity = comparisonStrokeOpacity(currentTheme());
       svg
-        .append("line")
-        .attr("x1", x)
-        .attr("x2", x + 24)
-        .attr("y1", 82)
-        .attr("y2", 82)
-        .attr("stroke", palette.secondary)
-        .attr("stroke-opacity", comparisonStrokeOpacity(currentTheme()))
-        .attr("stroke-width", 2)
-        .attr("stroke-dasharray", candidate.layer.strokeDasharray || null)
-        .attr("stroke-linecap", "round")
+        .append("path")
+        .attr(
+          "d",
+          `M${chartRight - 4},${lineY}H${chartRight + 4}` +
+            `V${labelY}H${chartRight + 12}`,
+        )
+        .attr("fill", "none")
+        .attr("stroke", color)
+        .attr("stroke-opacity", opacity)
+        .attr("stroke-width", 1.5)
+        .attr(
+          "stroke-dasharray",
+          candidate.layer.strokeDasharray || null,
+        )
         .attr("aria-hidden", "true");
       appendShareText(svg, {
-        x: x + 34,
-        y: 88,
-        text: label,
-        fill: palette.line,
+        x: chartRight + 20,
+        y: labelY + 6,
+        text: candidate.layer.shortLabel || candidate.layer.label,
+        fill: color,
         size: 18,
         weight: 500,
         family: "Geist Mono, monospace",
         spacing: 0.3,
-      });
-      x += 58 + label.length * 11;
+      })
+        .attr("fill-opacity", opacity)
+        .attr("aria-hidden", "true");
     }
   }
 

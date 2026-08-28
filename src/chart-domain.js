@@ -21,3 +21,35 @@ export function chartYDomain(values, { scale = "price" } = {}) {
 export function comparisonStrokeOpacity(theme = "light") {
   return theme === "dark" ? 0.4 : 0.65;
 }
+
+export function spreadLineLabels(entries, minimum, maximum, gap) {
+  const positions = entries
+    .map((entry) => ({ ...entry, labelY: entry.lineY }))
+    .sort((left, right) => left.lineY - right.lineY);
+  positions.forEach((entry, index) => {
+    entry.labelY = Math.max(
+      minimum,
+      entry.lineY,
+      index ? positions[index - 1].labelY + gap : minimum,
+    );
+  });
+  const overflow = (positions.at(-1)?.labelY ?? maximum) - maximum;
+  if (overflow > 0) {
+    positions.forEach((entry) => {
+      entry.labelY -= overflow;
+    });
+  }
+  for (let index = positions.length - 2; index >= 0; index -= 1) {
+    positions[index].labelY = Math.min(
+      positions[index].labelY,
+      positions[index + 1].labelY - gap,
+    );
+  }
+  const underflow = minimum - (positions[0]?.labelY ?? minimum);
+  if (underflow > 0) {
+    positions.forEach((entry) => {
+      entry.labelY += underflow;
+    });
+  }
+  return positions;
+}

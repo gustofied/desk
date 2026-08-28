@@ -28,6 +28,7 @@ import {
   chartYDomain,
   comparisonStrokeOpacity,
   INDEX_BASELINE,
+  spreadLineLabels,
 } from "../src/chart-domain.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -305,18 +306,21 @@ function previewModel(state) {
     comparisonTitle: series
       .filter((candidate) => !candidate.primary)
       .map(({ layer }) => layer.shortLabel || layer.label)
-      .join(" + "),
+      .join(", "),
     rangeLabel: shareRangeLabel(primary.rows, normalized.range),
   };
 }
 
 function renderPublishedCardImage(model) {
   const hasComparisons = model.comparisonTitle.length > 0;
-  const chart = hasComparisons
-    ? { x: 0, y: 194, width: 1200, height: 410 }
-    : { x: 0, y: 174, width: 1200, height: 430 };
+  const chart = {
+    x: 0,
+    y: 174,
+    width: hasComparisons ? 1040 : 1200,
+    height: 430,
+  };
   const allRows = model.series.flatMap((candidate) => candidate.rows);
-  const { line, area, baselineY } = layeredChartPaths(
+  const { line, area, baselineY, y } = layeredChartPaths(
     allRows,
     model.primary.rows,
     chart,
@@ -347,17 +351,20 @@ function renderPublishedCardImage(model) {
     model.scale === "index"
       ? `<line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${model.colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>`
       : "";
+  const endpointLabels = hasComparisons
+    ? endpointLabelMarkup(model.series, model.colors, chart, y)
+    : "";
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${model.colors.paper}"/>
       <text x="40" y="54" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">${escapeXml(model.primaryTitle)}</text>
-      ${hasComparisons ? comparisonLegendMarkup(model.series, model.colors) : ""}
       <text x="1160" y="54" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(model.rangeLabel)}</text>
-      <text x="40" y="${hasComparisons ? 158 : 138}" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
+      <text x="40" y="138" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
       ${areaMarkup}
       ${baselineMarkup}
       ${layerMarkup}
+      ${endpointLabels}
     </svg>`;
 }
 
@@ -371,7 +378,7 @@ function renderPublishedSharePage(
   const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
   const rangeDescription = RANGES[model.range]?.longLabel || model.range;
   const cardTitle = model.comparisonTitle
-    ? `${model.primaryTitle} + ${model.comparisonTitle}`
+    ? `${model.primaryTitle} with ${model.comparisonTitle}`
     : model.primaryTitle;
   const title = `${cardTitle} ${model.rangeLabel}`;
   const description =
@@ -472,8 +479,8 @@ function renderDefaultComparisonImage() {
   const primary = series.find((item) => item.layerId === "H200");
   const latest = primary?.rows.at(-1);
   const allRows = series.flatMap((item) => item.rows);
-  const chart = { x: 0, y: 174, width: 1200, height: 430 };
-  const { line, area, baselineY } = layeredChartPaths(
+  const chart = { x: 0, y: 174, width: 1040, height: 430 };
+  const { line, area, baselineY, y } = layeredChartPaths(
     allRows,
     primary?.rows || [],
     chart,
@@ -493,38 +500,49 @@ function renderDefaultComparisonImage() {
       return `${underlay}<path d="${line(rows)}" fill="none" stroke="${primaryLayer ? colors.line : colors.secondary}" stroke-opacity="${primaryLayer ? 1 : comparisonStrokeOpacity(colors.theme)}" stroke-width="${primaryLayer ? 3.5 : 2}" stroke-dasharray="${primaryLayer ? "" : layer.strokeDasharray || ""}" stroke-linecap="round" stroke-linejoin="round"/>`;
     })
     .join("");
+  const endpointLabels = endpointLabelMarkup(series, colors, chart, y);
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${colors.paper}"/>
       <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">H200</text>
-      ${comparisonLegendMarkup(series, colors)}
       <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">7D</text>
-      <text x="40" y="158" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndexChange(latest?.plotValue)}</text>
+      <text x="40" y="138" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndexChange(latest?.plotValue)}</text>
       <path d="${area}" fill="${colors.secondary}" fill-opacity="0.09"/>
       <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>
       ${layerMarkup}
+      ${endpointLabels}
     </svg>`;
 }
 
-function comparisonLegendMarkup(series, colors) {
-  let x = 40;
+function endpointLabelMarkup(series, colors, chart, y) {
   const opacity = comparisonStrokeOpacity(colors.theme);
-  return series
-    .filter((candidate) => !candidate.primary)
-    .map((candidate) => {
+  const labelPositions = spreadLineLabels(
+    series
+      .filter((candidate) => !candidate.primary)
+      .map((candidate) => ({
+        candidate,
+        lineY: y(candidate.rows.at(-1).plotValue),
+      })),
+    chart.y + 12,
+    chart.y + chart.height - 12,
+    26,
+  );
+  const chartRight = chart.x + chart.width;
+  return labelPositions
+    .map(({ candidate, lineY, labelY }) => {
       const layer = candidate.layer;
       const label = layer.shortLabel || layer.label;
-      const markup =
-        `<line x1="${x}" x2="${x + 24}" y1="82" y2="82" ` +
+      return (
+        `<path d="M${chartRight - 4},${lineY}H${chartRight + 4}` +
+        `V${labelY}H${chartRight + 12}" fill="none" ` +
         `stroke="${colors.secondary}" stroke-opacity="${opacity}" ` +
-        `stroke-width="2" stroke-dasharray="${layer.strokeDasharray || ""}" ` +
-        `stroke-linecap="round"/>` +
-        `<text x="${x + 34}" y="88" fill="${colors.line}" ` +
+        `stroke-width="1.5" stroke-dasharray="${layer.strokeDasharray || ""}"/>` +
+        `<text x="${chartRight + 20}" y="${labelY + 6}" ` +
+        `fill="${colors.secondary}" fill-opacity="${opacity}" ` +
         `font-family="Geist Mono, monospace" font-size="18" font-weight="500" ` +
-        `letter-spacing="0.3">${escapeXml(label)}</text>`;
-      x += 58 + label.length * 11;
-      return markup;
+        `letter-spacing="0.3">${escapeXml(label)}</text>`
+      );
     })
     .join("");
 }
@@ -564,6 +582,7 @@ function layeredChartPaths(allRows, primaryRows, chart, scale) {
     line,
     area,
     baselineY: scale === "index" ? y(INDEX_BASELINE) : null,
+    y,
   };
 }
 

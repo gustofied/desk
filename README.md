@@ -43,7 +43,7 @@ opens comparisons.
 - Shared links use social artwork that matches the selected layers, range,
   palette, and light or dark theme.
 - Press **Command G** to find cards, layers, ranges, and settings.
-- Press **Command H** to hide or show the display controls.
+- Press **Command /** to hide or show the display controls.
 
 ## Card registry
 
