@@ -1,22 +1,42 @@
-const DESK_CARD = {
-  id: "gpu-index",
-  hash: "gpu-benchmark-card",
-  stateParams: ["gpu", "range", "palette"],
-};
+import {
+  getCardDefinition,
+  parseLayerIds,
+  serializeLayerIds,
+} from "./card-registry.js";
 
-export function cardPermalink(cardId, stateParams = {}) {
-  const isDeskCard = cardId === DESK_CARD.id;
+export const CARD_STATE_PARAMS = Object.freeze([
+  "gpu",
+  "layers",
+  "scale",
+  "range",
+  "palette",
+  "theme",
+  "locked",
+]);
+
+export function cardUrl(cardId, view, stateParams = {}) {
+  const card = getCardDefinition(cardId);
   const url = new URL(window.location.href);
   url.search = "";
-  if (!isDeskCard) return url;
-  url.searchParams.set("card", DESK_CARD.id);
-  url.searchParams.set("view", "full");
-  for (const [name, value] of Object.entries(stateParams)) {
-    if (value !== null && value !== undefined && value !== "") {
-      url.searchParams.set(name, value);
-    }
+  url.searchParams.set("card", card.id);
+  url.searchParams.set("view", view);
+
+  for (const name of CARD_STATE_PARAMS) {
+    const value = normalizedStateValue(name, stateParams[name], card);
+    if (value !== "") url.searchParams.set(name, value);
   }
-  url.hash = DESK_CARD.hash;
+
+  url.hash = card.hash;
+  return url;
+}
+
+export function cardPermalink(cardId, stateParams = {}) {
+  return cardUrl(cardId, "full", stateParams);
+}
+
+export function replaceCardLocation(cardId, view, stateParams = {}) {
+  const url = cardUrl(cardId, view, stateParams);
+  window.history.replaceState({}, "", url);
   return url;
 }
 
@@ -24,32 +44,40 @@ export function normalizeLegacyCardPresentation() {
   const params = new URL(window.location.href).searchParams;
   if (params.get("present") !== "card") return;
 
-  if (params.get("card") !== DESK_CARD.id) return;
+  const card = getCardDefinition(params.get("card"));
+  if (params.get("card") !== card.id) return;
 
-  const articleUrl = new URL(window.location.href);
-  articleUrl.search = "";
-  articleUrl.searchParams.set("card", DESK_CARD.id);
-  articleUrl.searchParams.set("view", "full");
-  for (const name of DESK_CARD.stateParams) {
-    const value = params.get(name);
-    if (value) articleUrl.searchParams.set(name, value);
-  }
-  articleUrl.hash = DESK_CARD.hash;
-  window.history.replaceState({}, "", articleUrl);
+  const state = Object.fromEntries(
+    CARD_STATE_PARAMS.map((name) => [name, params.get(name)]),
+  );
+  window.history.replaceState({}, "", cardUrl(card.id, "full", state));
 }
 
 normalizeLegacyCardPresentation();
 
 export function normalizeCardHash() {
   const url = new URL(window.location.href);
-  if (url.searchParams.get("card") !== DESK_CARD.id) return;
-  if (url.hash === `#${DESK_CARD.hash}`) return;
+  const card = getCardDefinition(url.searchParams.get("card"));
+  if (url.searchParams.get("card") !== card.id) return;
+  if (url.hash === `#${card.hash}`) return;
 
-  url.hash = DESK_CARD.hash;
+  url.hash = card.hash;
   window.history.replaceState({}, "", url);
   window.requestAnimationFrame(() => {
-    document.getElementById(DESK_CARD.hash)?.scrollIntoView({ block: "start" });
+    document.getElementById(card.hash)?.scrollIntoView({ block: "start" });
   });
 }
 
 normalizeCardHash();
+
+function normalizedStateValue(name, value, card) {
+  if (name === "layers") {
+    if (value === null || value === undefined || value === "") return "";
+    return serializeLayerIds(
+      parseLayerIds(Array.isArray(value) ? value.join(",") : value, card),
+      card,
+    );
+  }
+  if (name === "locked") return value === true || value === "1" ? "1" : "";
+  return value === null || value === undefined ? "" : String(value);
+}

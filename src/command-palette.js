@@ -1,4 +1,13 @@
-const defaultGroups = ["Cards", "Create", "Actions", "GPU", "Range", "Appearance"];
+const defaultGroups = [
+  "Cards",
+  "Create",
+  "Actions",
+  "GPU",
+  "View",
+  "Layers",
+  "Range",
+  "Appearance",
+];
 const maxRenderedCommands = 64;
 
 export function createCommandPalette({ root, reducedMotion = false } = {}) {

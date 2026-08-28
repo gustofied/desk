@@ -1,6 +1,18 @@
 import * as d3 from "d3";
 import { animate } from "motion";
-import { cardPermalink } from "./card-presentation.js";
+import {
+  cardPermalink,
+  cardUrl,
+  replaceCardLocation,
+} from "./card-presentation.js";
+import {
+  getCardDefinition,
+  getLayerDefinition,
+  paletteIds,
+  parseLayerIds,
+  RANGES,
+  serializeLayerIds,
+} from "./card-registry.js";
 import { createCommandPalette } from "./command-palette.js";
 import { shareRangeLabel } from "./share-range-label.js";
 import {
@@ -12,27 +24,16 @@ import { copyTextToClipboard } from "./card-transitions.js";
 const root = document.querySelector("[data-gpu-benchmark-card]");
 
 if (root) {
-  const cardId = "gpu-index";
-  const dataBase = String(root.dataset.marketDataBase || "").replace(
-    /\/+$/,
-    "",
-  );
+  const cardDefinition = getCardDefinition(root.dataset.cardId);
+  const cardId = cardDefinition.id;
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
-  const families = ["H100", "H200", "B200", "B300"];
-  const palettes = ["azure", "linen", "sage", "sand"];
-  const familyColors = new Map([
-    ["H100", "#587383"],
-    ["H200", "#708690"],
-    ["B200", "#899ba2"],
-    ["B300", "#a0afb4"],
-  ]);
-  const ranges = {
-    "1d": { milliseconds: 24 * 60 * 60 * 1000, label: "1D" },
-    "7d": { milliseconds: 7 * 24 * 60 * 60 * 1000, label: "7D" },
-    all: { milliseconds: null, label: "ALL" },
-  };
+  const families = cardDefinition.layers
+    .filter((layer) => layer.unit === "usd-hour")
+    .map((layer) => layer.id);
+  const palettes = paletteIds();
+  const ranges = RANGES;
   const params = new URL(window.location.href).searchParams;
   const requestedCard = params.get("card");
   const requestedView =
@@ -47,12 +48,45 @@ if (root) {
     requestedView === "gallery" || requestedLayout === "all"
       ? "all"
       : "focus";
+  const selected = families.includes(params.get("gpu"))
+    ? params.get("gpu")
+    : cardDefinition.defaults.layer;
+  const requestedLayers = params.has("layers")
+    ? parseLayerIds(params.get("layers"), cardDefinition, [selected])
+    : [selected];
+  const requestedScale = cardDefinition.visualizations.some(
+    (visualization) => visualization.id === params.get("scale"),
+  )
+    ? params.get("scale")
+    : cardDefinition.defaults.scale;
+  const initialScale = requestedLayers.some(
+    (layerId) => getLayerDefinition(cardDefinition, layerId)?.unit === "index",
+  )
+    ? "index"
+    : requestedScale;
+  const initialLayers = new Set(
+    initialScale === "price"
+      ? requestedLayers.filter(
+          (layerId) => getLayerDefinition(cardDefinition, layerId)?.unit === "usd-hour",
+        )
+      : requestedLayers,
+  );
+  initialLayers.add(selected);
+  const initialStateNeedsRepair =
+    (params.has("gpu") && params.get("gpu") !== selected) ||
+    (params.has("layers") &&
+      params.get("layers") !== serializeLayerIds(initialLayers, cardDefinition)) ||
+    (params.has("scale") && params.get("scale") !== initialScale) ||
+    (params.has("range") && !ranges[params.get("range")]);
   const state = {
-    cards: new Map(),
+    seriesByLayer: new Map(),
     panel: initialView,
     layout: initialLayout,
-    selected: families.includes(params.get("gpu")) ? params.get("gpu") : "H200",
-    range: ranges[params.get("range")] ? params.get("range") : "7d",
+    selected,
+    layers: initialLayers,
+    scale: initialScale,
+    range: ranges[params.get("range")] ? params.get("range") : cardDefinition.defaults.range,
+    locked: params.get("locked") === "1",
     shareReady: false,
     resizeTimer: null,
     transitionPending: false,
@@ -93,8 +127,15 @@ if (root) {
     zoomReset: root.querySelector("[data-gpu-zoom-reset]"),
     rangeStart: root.querySelector("[data-gpu-range-start]"),
     rangeEnd: root.querySelector("[data-gpu-range-end]"),
+    scaleButtons: Array.from(root.querySelectorAll("[data-card-scale]")),
+    layerGroup: root.querySelector("[data-card-layers]"),
+    layerButtons: [],
+    lockButton: root.querySelector("[data-card-lock]"),
+    cardCopy: root.querySelector("[data-card-copy]"),
+    cardAnnounce: root.querySelector("[data-card-announce]"),
     chart: root.querySelector("[data-gpu-chart]"),
     svg: root.querySelector("[data-gpu-chart-svg]"),
+    chartDescription: root.querySelector("[data-gpu-chart-description]"),
     tooltip: root.querySelector("[data-gpu-tooltip]"),
     chartState: root.querySelector("[data-gpu-state]"),
     pageClock: document.querySelector("[data-desk-clock]"),
@@ -118,8 +159,10 @@ if (root) {
     setInitialPanel();
     setShareReady(false);
     configureAppearanceControls();
+    configureComposerControls();
     configureCommandPalette();
     configureUtcClock();
+    if (initialStateNeedsRepair) updateLocation(state.panel);
     configureChoiceButtons(
       [
         ...nodes.familyButtons,
@@ -143,12 +186,14 @@ if (root) {
       );
     });
     nodes.copyLink?.addEventListener("click", copyCardLink);
+    nodes.cardCopy?.addEventListener("click", copyCardLink);
+    nodes.lockButton?.addEventListener("click", toggleCardLock);
     nodes.zoomReset?.addEventListener("click", resetCustomZoom);
 
     if ("ResizeObserver" in window && nodes.chart) {
       const observer = new ResizeObserver(() => {
         if (
-          !state.cards.size ||
+          !state.seriesByLayer.size ||
           state.panel !== "detail" ||
           state.layout !== "focus"
         ) {
@@ -161,7 +206,45 @@ if (root) {
     }
 
     syncControls();
+    syncComposerControls();
     loadCards();
+  }
+
+  function configureComposerControls() {
+    if (nodes.layerGroup) {
+      nodes.layerButtons = cardDefinition.layers.map((layer) => {
+        const button = document.createElement("button");
+        const swatch = document.createElement("i");
+        const label = document.createElement("span");
+        button.type = "button";
+        button.dataset.cardLayer = layer.id;
+        button.setAttribute("aria-pressed", "false");
+        button.setAttribute(
+          "aria-label",
+          layer.sample
+            ? `Add sample ${layer.label} Index`
+            : `Add ${layer.label} price layer`,
+        );
+        swatch.setAttribute("aria-hidden", "true");
+        swatch.style.opacity = String(layer.strokeOpacity);
+        if (layer.strokeDasharray) swatch.dataset.pattern = layer.id.toLowerCase();
+        label.textContent = layer.shortLabel || layer.label;
+        button.append(swatch, label);
+        button.addEventListener("click", () => toggleLayer(layer.id));
+        return button;
+      });
+      const heading = document.createElement("span");
+      heading.className = "gpu-benchmark__layer-heading";
+      heading.textContent = "Compare";
+      nodes.layerGroup.replaceChildren(heading, ...nodes.layerButtons);
+    }
+
+    configureChoiceButtons(
+      nodes.scaleButtons,
+      (button) => button.dataset.cardScale,
+      selectScale,
+      "aria-pressed",
+    );
   }
 
   function configureAppearanceControls() {
@@ -182,8 +265,8 @@ if (root) {
         id: "cards.gpu-price-index",
         group: "Cards",
         order: 0,
-        title: "GPU Price Index",
-        subtitle: "/cards/gpu-price-index/full",
+        title: cardDefinition.title,
+        subtitle: `${cardDefinition.sharePath}/full`,
         hint: "Expand",
         keywords: ["desk", "market", "accelerator", "prices", "chart", "compute", "gpu", "index"],
         active: () => state.panel === "detail" && state.layout === "focus",
@@ -194,7 +277,7 @@ if (root) {
         group: "Create",
         order: 0,
         title: "Open card preview",
-        subtitle: "/cards/gpu-price-index/card",
+        subtitle: `${cardDefinition.sharePath}/card`,
         hint: "Preview",
         keywords: ["export", "snapshot", "publish", "single"],
         disabled: () => !state.shareReady,
@@ -206,7 +289,7 @@ if (root) {
         group: "Create",
         order: 1,
         title: "Open card gallery",
-        subtitle: "/cards/gpu-price-index/gallery",
+        subtitle: `${cardDefinition.sharePath}/gallery`,
         hint: "Gallery",
         keywords: ["all", "gallery", "export", "snapshot", "publish"],
         disabled: () => !state.shareReady,
@@ -225,9 +308,20 @@ if (root) {
         run: copyCardLink,
       },
       {
-        id: "actions.toggle-display-controls",
+        id: "actions.toggle-card-lock",
         group: "Actions",
         order: 1,
+        title: () => (state.locked ? "Unlock card" : "Lock card"),
+        subtitle: "/actions/lock-card",
+        hint: () => (state.locked ? "Locked" : "Lock"),
+        keywords: ["save", "pin", "composition", "state"],
+        active: () => state.locked,
+        run: toggleCardLock,
+      },
+      {
+        id: "actions.toggle-display-controls",
+        group: "Actions",
+        order: 2,
         title: () =>
           document.documentElement.dataset.displayToolbar === "collapsed"
             ? "Show display controls"
@@ -246,11 +340,37 @@ if (root) {
         group: "GPU",
         order: index,
         title: `Use ${family}`,
-        subtitle: `/cards/gpu-price-index/gpu/${family.toLowerCase()}`,
+        subtitle: `${cardDefinition.sharePath}/gpu/${family.toLowerCase()}`,
         hint: "GPU",
         keywords: ["accelerator", "family", "chip"],
         active: () => state.selected === family,
         run: () => selectFamily(family),
+      })),
+      ...cardDefinition.visualizations.map((visualization, index) => ({
+        id: `view.${visualization.id}`,
+        group: "View",
+        order: index,
+        title: `Use ${visualization.label.toLowerCase()} view`,
+        subtitle: `${cardDefinition.sharePath}/view/${visualization.id}`,
+        hint: visualization.label,
+        keywords: ["chart", "compare", "value", visualization.unit],
+        active: () => state.scale === visualization.id,
+        run: () => selectScale(visualization.id),
+      })),
+      ...cardDefinition.layers.map((layer, index) => ({
+        id: `layer.${layer.id.toLowerCase()}`,
+        group: "Layers",
+        order: index,
+        title: () =>
+          state.layers.has(layer.id)
+            ? `Remove ${layer.shortLabel || layer.label}`
+            : `Add ${layer.shortLabel || layer.label}`,
+        subtitle: `${cardDefinition.sharePath}/layers/${layer.id.toLowerCase()}`,
+        hint: layer.sample ? "Sample" : "Layer",
+        keywords: ["compare", "overlay", "series", layer.label],
+        active: () => state.layers.has(layer.id),
+        disabled: () => state.selected === layer.id && state.layers.has(layer.id),
+        run: () => toggleLayer(layer.id),
       })),
       ...Object.keys(ranges).map((range, index) => ({
         id: `range.${range}`,
@@ -262,7 +382,7 @@ if (root) {
             : range === "7d"
               ? "Show seven days"
               : "Show all history",
-        subtitle: `/cards/gpu-price-index/range/${range}`,
+        subtitle: `${cardDefinition.sharePath}/range/${range}`,
         hint: ranges[range].label,
         keywords: ["date", "time", "history", "window"],
         active: () => state.range === range,
@@ -404,16 +524,27 @@ if (root) {
 
   function setTheme(theme) {
     if (theme !== "light" && theme !== "dark") return;
+    if (theme === currentTheme()) {
+      updateLocation(state.panel);
+      return;
+    }
+    markCardChanged();
     document.documentElement.dataset.theme = theme;
     try {
       window.localStorage.setItem("desk-theme", theme);
     } catch {}
     syncAppearanceControls();
+    updateLocation(state.panel);
     refreshAppearance();
   }
 
   function setPalette(palette) {
     if (!palettes.includes(palette)) return;
+    if (palette === currentPalette()) {
+      updateLocation(state.panel);
+      return;
+    }
+    markCardChanged();
     document.documentElement.dataset.palette = palette;
     try {
       window.localStorage.setItem("desk-palette", palette);
@@ -421,6 +552,13 @@ if (root) {
     syncAppearanceControls();
     updateLocation(state.panel);
     refreshAppearance();
+  }
+
+  function markCardChanged() {
+    if (!state.locked) return;
+    state.locked = false;
+    announceCard("Card unlocked by changes");
+    syncComposerControls();
   }
 
   function syncAppearanceControls() {
@@ -439,13 +577,8 @@ if (root) {
   }
 
   function refreshAppearance() {
-    if (!state.cards.size) return;
-    const card = state.cards.get(state.selected);
-    const rangeRows = visibleRows(card?.rows || []);
-    const latest = card?.rows.at(-1);
-    if (!rangeRows.length || !latest) return;
-    renderShareArtifact(rangeRows, latest);
-    renderWorkspaceGallery();
+    if (!state.seriesByLayer.size) return;
+    render(false);
     if (state.layout === "all" && !reducedMotion && nodes.galleryGrid) {
       animate(
         nodes.galleryGrid,
@@ -574,29 +707,34 @@ if (root) {
   }
 
   async function loadCards() {
-    if (!dataBase) {
+    if (!cardDefinition.dataUrl) {
       showFailure("Benchmark history could not load.");
       signalReady();
       return;
     }
 
     try {
-      const cards = await Promise.all(
-        families.map(async (family) => {
-          const url = cardUrl(family, dataBase);
-          const response = await fetch(url, { cache: "no-store" });
-          if (!response.ok) throw new Error(`${response.status} ${url}`);
-          const payload = await response.json();
-          if (
-            payload?.contract !== "compute_bazaar_card" ||
-            payload?.card_type !== "gpu_benchmark"
-          ) {
-            throw new Error(`Unsupported benchmark card at ${url}`);
-          }
-          return [family, normalizeCard(payload, family)];
-        }),
+      const response = await fetch(cardDefinition.dataUrl);
+      if (!response.ok) {
+        throw new Error(`${response.status} ${cardDefinition.dataUrl}`);
+      }
+      const payload = await response.json();
+      if (!Number.isInteger(payload?.version) || !payload?.series) {
+        throw new Error(`Unsupported card data at ${cardDefinition.dataUrl}`);
+      }
+
+      state.seriesByLayer = new Map(
+        cardDefinition.layers
+          .map((layer) => [
+            layer.id,
+            normalizeRuntimeSeries(payload.series[layer.id], layer.id),
+          ])
+          .filter(([, rows]) => rows.length),
       );
-      state.cards = new Map(cards);
+      root.dataset.cardDataVersion = String(payload.version);
+      if (!state.seriesByLayer.has(state.selected)) {
+        throw new Error(`Missing ${state.selected} data`);
+      }
       setShareReady(true);
       updateFamilyQuoteNodes();
       render(true);
@@ -609,26 +747,22 @@ if (root) {
     }
   }
 
-  function normalizeCard(payload, family) {
-    const rows = Array.isArray(payload.series)
-      ? payload.series
-          .map((row) => normalizeRow(row, family))
-          .filter(Boolean)
-          .sort((left, right) => left.date - right.date)
-      : [];
-    return { payload, rows };
+  function normalizeRuntimeSeries(points, layerId) {
+    if (!Array.isArray(points)) return [];
+    return points
+      .map((point) => normalizeRuntimePoint(point, layerId))
+      .filter(Boolean)
+      .sort((left, right) => left.date - right.date);
   }
 
-  function normalizeRow(row, family) {
-    const value = Number(row?.value);
-    const date = new Date(row?.observed_at);
+  function normalizeRuntimePoint(point, layerId) {
+    const value = Number(point?.[1]);
+    const date = new Date(Number(point?.[0]) * 1000);
     if (!Number.isFinite(value) || Number.isNaN(date.getTime())) return null;
-    const lower =
-      row?.lower === null || row?.lower === "" ? NaN : Number(row?.lower);
-    const upper =
-      row?.upper === null || row?.upper === "" ? NaN : Number(row?.upper);
+    const lower = Number(point?.[2]);
+    const upper = Number(point?.[3]);
     return {
-      family,
+      layerId,
       date,
       value,
       lower: Number.isFinite(lower) ? lower : value,
@@ -647,11 +781,17 @@ if (root) {
         selectValue(getValue(button), event);
       });
       button.addEventListener("keydown", (event) => {
-        if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+          return;
+        }
         event.preventDefault();
         const direction = event.key === "ArrowRight" ? 1 : -1;
         const nextIndex =
-          (index + direction + buttons.length) % buttons.length;
+          event.key === "Home"
+            ? 0
+            : event.key === "End"
+              ? buttons.length - 1
+              : (index + direction + buttons.length) % buttons.length;
         buttons[nextIndex].focus();
         selectValue(getValue(buttons[nextIndex]), event);
       });
@@ -664,6 +804,13 @@ if (root) {
     if (!families.includes(family)) return;
     const changed = family !== state.selected;
     if (!changed) return;
+    markCardChanged();
+    const previous = state.selected;
+    if (state.layers.size === 1 && state.layers.has(previous)) {
+      state.layers = new Set([family]);
+    } else {
+      state.layers.add(family);
+    }
     state.selected = family;
     state.zoomWindow = null;
     syncControls();
@@ -680,18 +827,91 @@ if (root) {
   }
 
   function openPublishedCard(family, moveFocus) {
-    selectFamily(family);
+    if (!families.includes(family)) return;
+    markCardChanged();
+    state.selected = family;
+    state.layers = new Set([family]);
+    state.scale = "price";
+    state.zoomWindow = null;
+    syncControls();
+    render(true);
     showPanel("share", true, "focus", moveFocus);
   }
 
   function selectRange(range) {
     if (Date.now() < state.controlsReadyAt) return;
     if (!ranges[range] || range === state.range) return;
+    markCardChanged();
     state.range = range;
     state.zoomWindow = null;
     syncControls();
     render(true);
     updateLocation(state.panel);
+  }
+
+  function selectScale(scale) {
+    if (
+      !cardDefinition.visualizations.some(
+        (visualization) => visualization.id === scale,
+      ) ||
+      scale === state.scale
+    ) {
+      return;
+    }
+    markCardChanged();
+    state.scale = scale;
+    if (scale === "price") {
+      state.layers = new Set(
+        Array.from(state.layers).filter(
+          (layerId) =>
+            getLayerDefinition(cardDefinition, layerId)?.unit === "usd-hour",
+        ),
+      );
+      state.layers.add(state.selected);
+    }
+    state.zoomWindow = null;
+    syncControls();
+    render(true);
+    updateLocation(state.panel);
+  }
+
+  function toggleLayer(layerId) {
+    const layer = getLayerDefinition(cardDefinition, layerId);
+    if (!layer) return;
+    if (state.layers.has(layerId)) {
+      if (layerId === state.selected) {
+        announceCard(`${layer.label} is the main layer`);
+        return;
+      }
+      markCardChanged();
+      state.layers.delete(layerId);
+    } else {
+      markCardChanged();
+      state.layers.add(layerId);
+      if (!layer.views.includes(state.scale)) {
+        state.scale = "index";
+        announceCard("Index view selected for the sample token");
+      }
+    }
+    state.zoomWindow = null;
+    syncControls();
+    render(true);
+    updateLocation(state.panel);
+  }
+
+  function toggleCardLock() {
+    state.locked = !state.locked;
+    syncComposerControls();
+    updateLocation(state.panel);
+    announceCard(state.locked ? "Card locked" : "Card unlocked");
+  }
+
+  function announceCard(message) {
+    if (!nodes.cardAnnounce) return;
+    nodes.cardAnnounce.textContent = "";
+    window.requestAnimationFrame(() => {
+      nodes.cardAnnounce.textContent = message;
+    });
   }
 
   function syncControls() {
@@ -717,6 +937,48 @@ if (root) {
       button.tabIndex = selected ? 0 : -1;
     });
     if (nodes.zoomReset) nodes.zoomReset.hidden = !state.zoomWindow;
+    syncComposerControls();
+  }
+
+  function syncComposerControls() {
+    nodes.scaleButtons.forEach((button) => {
+      const selected = button.dataset.cardScale === state.scale;
+      button.setAttribute("aria-pressed", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
+    nodes.layerButtons.forEach((button) => {
+      const selected = state.layers.has(button.dataset.cardLayer);
+      const layer = getLayerDefinition(cardDefinition, button.dataset.cardLayer);
+      button.setAttribute("aria-pressed", String(selected));
+      button.dataset.primary = String(button.dataset.cardLayer === state.selected);
+      button.setAttribute(
+        "aria-label",
+        button.dataset.cardLayer === state.selected
+          ? `${layer.label} main layer`
+          : selected
+            ? `Remove ${layer.sample ? "sample " : ""}${layer.label} layer`
+            : `Add ${layer.sample ? "sample " : ""}${layer.label} layer`,
+      );
+    });
+    if (nodes.lockButton) {
+      nodes.lockButton.setAttribute("aria-pressed", String(state.locked));
+      nodes.lockButton.textContent = state.locked ? "Locked" : "Lock";
+    }
+    root.dataset.cardScale = state.scale;
+    root.dataset.cardLocked = String(state.locked);
+    if (nodes.chartDescription) {
+      const labels = activeLayerDefinitions().map((layer) => layer.label).join(", ");
+      nodes.svg?.setAttribute(
+        "aria-label",
+        state.scale === "index"
+          ? `${labels} comparison index`
+          : `${labels} price history`,
+      );
+      nodes.chartDescription.textContent =
+        state.scale === "index"
+          ? `${labels} rebased to 100 at the start of the selected range.`
+          : `${labels} hourly prices. The band shows the middle range of quotes for ${state.selected}.`;
+    }
   }
 
   function resetCustomZoom(event) {
@@ -733,7 +995,7 @@ if (root) {
 
   function updateFamilyQuoteNodes() {
     for (const family of families) {
-      const latest = state.cards.get(family)?.rows?.at(-1);
+      const latest = state.seriesByLayer.get(family)?.at(-1);
       const value = latest ? formatUsd(latest.value) : "pending";
       const node = nodes.familyValues.get(family);
       if (node) node.textContent = value;
@@ -825,7 +1087,9 @@ if (root) {
         state.layout === "all"
           ? galleryCards.get(state.selected)?.button
           : state.panel === "share"
-            ? nodes.galleryToggle
+            ? nodes.familyButtons.find(
+                (button) => button.dataset.gpuFamily === state.selected,
+              )
             : nodes.viewToggle;
       fallbackFocus?.focus({ preventScroll: true });
     } else {
@@ -836,52 +1100,56 @@ if (root) {
   }
 
   function updateLocation(view) {
-    const url = new URL(window.location.href);
-    url.searchParams.set("card", cardId);
-    url.searchParams.set(
-      "view",
+    replaceCardLocation(
+      cardId,
       view === "detail"
         ? "full"
         : state.layout === "all"
           ? "gallery"
           : "card",
+      currentCardState(),
     );
-    url.searchParams.set("gpu", state.selected);
-    url.searchParams.set("range", state.range);
-    url.searchParams.set("palette", currentPalette());
-    url.searchParams.delete("layout");
-    url.hash = root.id;
-    window.history.replaceState({}, "", url);
+  }
+
+  function currentCardState() {
+    return {
+      gpu: state.selected,
+      layers: serializeLayerIds(state.layers, cardDefinition),
+      scale: state.scale,
+      range: state.range,
+      palette: currentPalette(),
+      theme: currentTheme(),
+      locked: state.locked,
+    };
   }
 
   async function copyCardLink() {
-    await copyText(shareUrl(), "Link copied");
+    const copied = await copyText(shareUrl(), "Link copied");
+    if (copied) announceCard("Link copied");
   }
 
   function shareUrl() {
     if (state.panel === "detail") {
-      return cardPermalink(cardId, {
-        gpu: state.selected,
-        range: state.range,
-        palette: currentPalette(),
-      }).toString();
+      return cardPermalink(cardId, currentCardState()).toString();
     }
-    if (state.layout === "focus") {
+    const isPublishedPreset =
+      state.layout === "focus" &&
+      state.scale === "price" &&
+      state.layers.size === 1 &&
+      state.layers.has(state.selected) &&
+      !state.locked;
+    if (isPublishedPreset) {
       const publishedUrl = new URL(
-        `/cards/gpu-price-index/${state.selected.toLowerCase()}/${state.range}/${currentPalette()}/${currentTheme()}/`,
+        `${cardDefinition.sharePath}/${state.selected.toLowerCase()}/${state.range}/${currentPalette()}/${currentTheme()}/`,
         window.location.origin,
       );
       return publishedUrl.toString();
     }
-    const url = new URL(window.location.href);
-    url.search = "";
-    url.searchParams.set("card", cardId);
-    url.searchParams.set("view", state.layout === "all" ? "gallery" : "card");
-    url.searchParams.set("gpu", state.selected);
-    url.searchParams.set("range", state.range);
-    url.searchParams.set("palette", currentPalette());
-    url.hash = root.id;
-    return url.toString();
+    return cardUrl(
+      cardId,
+      state.layout === "all" ? "gallery" : "card",
+      currentCardState(),
+    ).toString();
   }
 
   async function copyText(value, successMessage) {
@@ -905,8 +1173,8 @@ if (root) {
 
   function syncShareStatus() {
     if (!nodes.shareStatus) return;
-    const rows = visibleRows(state.cards.get(state.selected)?.rows || []);
-    const latest = rows.at(-1);
+    const primary = createLayerSeries(state.selected, { scale: state.scale });
+    const latest = primary?.rows.at(-1);
     if (!latest) {
       nodes.shareStatus.textContent = "";
       if (nodes.shareObserved) {
@@ -915,16 +1183,19 @@ if (root) {
       }
       return;
     }
+    const layerNames = activeLayerDefinitions()
+      .map((layer) => layer.shortLabel || layer.label)
+      .join(", ");
     nodes.shareStatus.textContent =
-      `GPU Price Index ${state.selected} ${ranges[state.range].label} ` +
-      `${formatUsd(latest.value)} per GPU hour`;
+      `${layerNames} ${ranges[state.range].label} ` +
+      `${formatPlotValue(latest.plotValue, state.scale)}`;
     if (nodes.shareObserved) {
       nodes.shareObserved.textContent = formatUtcDateTime(latest.date);
       nodes.shareObserved.setAttribute("datetime", latest.date.toISOString());
     }
     nodes.shareArtifactSvg?.setAttribute(
       "aria-label",
-      `${state.selected} ${formatUsd(latest.value)} per GPU hour ${ranges[state.range].label}`,
+      `${layerNames} ${formatPlotValue(latest.plotValue, state.scale)} ${ranges[state.range].label}`,
     );
   }
 
@@ -932,23 +1203,23 @@ if (root) {
     state.shareReady = ready;
     syncViewToggle(false);
     if (nodes.copyLink) nodes.copyLink.disabled = !ready;
+    if (nodes.cardCopy) nodes.cardCopy.disabled = !ready;
     if (nodes.galleryToggle) nodes.galleryToggle.disabled = !ready;
   }
 
   function render(drawAnimation) {
-    const card = state.cards.get(state.selected);
-    const rangeRows = visibleRows(card?.rows || []);
-    const rows = customZoomRows(rangeRows);
-    if (!card || !rangeRows.length) {
+    const rangeSeries = activeSeries({ zoom: false });
+    const chartSeries = activeSeries({ zoom: true });
+    const primary = rangeSeries.find((series) => series.layer.id === state.selected);
+    if (!primary?.rows.length) {
       showFailure(`${state.selected} history is still being collected.`);
       return;
     }
 
-    const latest = card.rows[card.rows.length - 1];
     nodes.chartState.hidden = true;
     nodes.tooltip.hidden = true;
-    updateRangeDates(rows);
-    renderShareArtifact(rangeRows, latest);
+    updateRangeDates(primary.rows);
+    renderShareArtifact(rangeSeries);
     renderWorkspaceGallery();
     syncShareStatus();
 
@@ -957,19 +1228,18 @@ if (root) {
       state.panel === "detail" &&
       nodes.chart.clientWidth > 0
     ) {
-      renderChart(rows, drawAnimation);
+      renderChart(chartSeries, drawAnimation);
     }
   }
 
   function renderWorkspaceGallery() {
-    if (!galleryCards.size || !state.cards.size) return;
+    if (!galleryCards.size || !state.seriesByLayer.size) return;
 
     for (const family of families) {
-      const card = state.cards.get(family);
       const cardNodes = galleryCards.get(family);
-      const rows = visibleRows(card?.rows || []);
-      const latest = card?.rows.at(-1);
-      if (!cardNodes || !rows.length || !latest) continue;
+      const series = createLayerSeries(family, { scale: "price" });
+      const latest = series?.rows.at(-1);
+      if (!cardNodes || !series?.rows.length || !latest) continue;
 
       const value = formatUsd(latest.value);
       const selected = family === state.selected;
@@ -979,8 +1249,9 @@ if (root) {
         "aria-label",
         `Open ${family} card, ${value} per GPU hour`,
       );
-      drawShareArtifact(cardNodes.artifact, family, rows, latest, {
+      drawShareArtifact(cardNodes.artifact, [series], family, {
         compact: true,
+        scale: "price",
       });
     }
 
@@ -988,6 +1259,38 @@ if (root) {
       nodes.galleryStatus.textContent =
         `${families.length} cards ${ranges[state.range].label} range`;
     }
+  }
+
+  function activeLayerDefinitions() {
+    return cardDefinition.layers.filter((layer) => state.layers.has(layer.id));
+  }
+
+  function activeSeries({ zoom = false } = {}) {
+    return activeLayerDefinitions()
+      .map((layer) => createLayerSeries(layer.id, { scale: state.scale, zoom }))
+      .filter((series) => series?.rows.length);
+  }
+
+  function createLayerSeries(layerId, { scale = state.scale, zoom = false } = {}) {
+    const layer = getLayerDefinition(cardDefinition, layerId);
+    const sourceRows = visibleRows(state.seriesByLayer.get(layerId) || []);
+    if (!layer || !sourceRows.length) return null;
+    const baseValue = sourceRows[0].value || 1;
+    const selectedRows = zoom ? customZoomRows(sourceRows) : sourceRows;
+    const rows = selectedRows.map((row) => {
+      const indexed = scale === "index";
+      return {
+        ...row,
+        plotValue: indexed ? (row.value / baseValue) * 100 : row.value,
+        plotLower: indexed ? (row.lower / baseValue) * 100 : row.lower,
+        plotUpper: indexed ? (row.upper / baseValue) * 100 : row.upper,
+      };
+    });
+    return {
+      layer,
+      rows,
+      primary: layerId === state.selected,
+    };
   }
 
   function updateRangeDates(rows) {
@@ -998,25 +1301,25 @@ if (root) {
     if (nodes.rangeEnd) nodes.rangeEnd.textContent = end ? format(end) : "pending";
   }
 
-  function renderShareArtifact(selectedRows, latest) {
-    drawShareArtifact(
-      nodes.shareArtifactSvg,
-      state.selected,
-      selectedRows,
-      latest,
-    );
+  function renderShareArtifact(series) {
+    drawShareArtifact(nodes.shareArtifactSvg, series, state.selected, {
+      scale: state.scale,
+    });
   }
 
   function drawShareArtifact(
     svgNode,
-    family,
-    selectedRows,
-    latest,
+    series,
+    primaryLayerId,
     options = {},
   ) {
-    if (!svgNode || !selectedRows.length) {
+    if (!svgNode || !series.length) {
       return;
     }
+    const primary =
+      series.find((candidate) => candidate.layer.id === primaryLayerId) || series[0];
+    const latest = primary.rows.at(-1);
+    if (!latest) return;
     const svg = d3.select(svgNode);
     svg.selectAll("*").remove();
     svg.attr("viewBox", "0 0 1200 675");
@@ -1026,9 +1329,14 @@ if (root) {
       line: currentLineColor(),
     };
     const compact = options.compact === true;
+    const scale = options.scale || state.scale;
+    const allRows = series.flatMap((candidate) => candidate.rows);
+    const layerTitle = series
+      .map((candidate) => candidate.layer.shortLabel || candidate.layer.label)
+      .join(" + ");
     const typography = compact
-      ? { family: 52, range: 36, price: 104 }
-      : { family: 24, range: 24, price: 64 };
+      ? { family: series.length > 1 ? 34 : 52, range: 36, price: 104 }
+      : { family: 34, range: 32, price: 82 };
     svg
       .append("rect")
       .attr("width", 1200)
@@ -1038,7 +1346,7 @@ if (root) {
     appendShareText(svg, {
       x: 40,
       y: 54,
-      text: family,
+      text: layerTitle,
       fill: palette.line,
       size: typography.family,
       weight: 600,
@@ -1048,7 +1356,10 @@ if (root) {
     appendShareText(svg, {
       x: 1160,
       y: 54,
-      text: shareRangeLabel(selectedRows, state.range),
+      text:
+        scale === "index"
+          ? `${shareRangeLabel(primary.rows, state.range)} INDEX`
+          : shareRangeLabel(primary.rows, state.range),
       fill: palette.line,
       size: typography.range,
       anchor: "end",
@@ -1059,7 +1370,7 @@ if (root) {
     appendShareText(svg, {
       x: 40,
       y: compact ? 160 : 138,
-      text: formatUsd(latest.value),
+      text: formatPlotValue(latest.plotValue, scale),
       fill: palette.line,
       size: typography.price,
       weight: 500,
@@ -1068,16 +1379,16 @@ if (root) {
     });
 
     const chart = compact
-      ? { x: 0, y: 204, width: 1200, height: 360 }
-      : { x: 0, y: 174, width: 1200, height: 390 };
-    let start = d3.min(selectedRows, (row) => row.date);
-    let end = d3.max(selectedRows, (row) => row.date);
+      ? { x: 0, y: 204, width: 1200, height: 445 }
+      : { x: 0, y: 174, width: 1200, height: 475 };
+    let start = d3.min(allRows, (row) => row.date);
+    let end = d3.max(allRows, (row) => row.date);
     if (+start === +end) {
       start = new Date(+start - 30 * 60 * 1000);
       end = new Date(+end + 30 * 60 * 1000);
     }
-    const minimum = d3.min(selectedRows, (row) => row.value) ?? 0;
-    const maximum = d3.max(selectedRows, (row) => row.value) ?? minimum + 1;
+    const minimum = d3.min(allRows, (row) => row.plotValue) ?? 0;
+    const maximum = d3.max(allRows, (row) => row.plotValue) ?? minimum + 1;
     const spread = Math.max(maximum - minimum, maximum * 0.025, 0.12);
     const x = d3
       .scaleTime()
@@ -1094,66 +1405,48 @@ if (root) {
     const line = d3
       .line()
       .x((row) => x(row.date))
-      .y((row) => y(row.value))
+      .y((row) => y(row.plotValue))
       .curve(d3.curveMonotoneX);
     const valueArea = d3
       .area()
       .x((row) => x(row.date))
       // Carry the pale chart field through the date row to the card edge.
       .y0(675)
-      .y1((row) => y(row.value))
+      .y1((row) => y(row.plotValue))
       .curve(d3.curveMonotoneX);
     svg
       .append("path")
-      .datum(selectedRows)
+      .datum(primary.rows)
       .attr("d", valueArea)
       .attr("fill", palette.line)
       .attr("fill-opacity", 0.055);
-    svg
-      .append("path")
-      .datum(selectedRows)
-      .attr("d", line)
-      .attr("fill", "none")
-      .attr("stroke", palette.line)
-      .attr("stroke-linecap", "round")
-      .attr("stroke-linejoin", "round")
-      .attr("stroke-width", compact ? 6 : 3.5);
-
-    if (compact) {
+    series.forEach((candidate) => {
       svg
-        .append("line")
-        .attr("x1", 40)
-        .attr("x2", 1160)
-        .attr("y1", 620)
-        .attr("y2", 620)
+        .append("path")
+        .datum(candidate.rows)
+        .attr("d", line)
+        .attr("fill", "none")
         .attr("stroke", palette.line)
-        .attr("stroke-opacity", 0.16)
-        .attr("stroke-width", 1);
-      appendShareText(svg, {
-        x: 40,
-        y: 654,
-        text: "GPU PRICE INDEX",
-        fill: palette.line,
-        size: 28,
-        weight: 500,
-        family: "Geist Mono, monospace",
-        spacing: 1.6,
-      });
-      appendShareText(svg, {
-        x: 1160,
-        y: 654,
-        text: formatShareDate(latest.date),
-        fill: palette.line,
-        size: 28,
-        anchor: "end",
-        weight: 500,
-        family: "Geist Mono, monospace",
-        spacing: 1.2,
-      });
-    }
+        .attr(
+          "stroke-opacity",
+          candidate.primary ? 1 : candidate.layer.strokeOpacity,
+        )
+        .attr(
+          "stroke-dasharray",
+          candidate.primary ? null : candidate.layer.strokeDasharray || null,
+        )
+        .attr("stroke-linecap", "round")
+        .attr("stroke-linejoin", "round")
+        .attr("stroke-width", candidate.primary ? (compact ? 6 : 3.5) : compact ? 4 : 2.5);
+    });
   }
 
-  function renderChart(selectedRows, drawAnimation) {
+  function renderChart(series, drawAnimation) {
+    const primary =
+      series.find((candidate) => candidate.layer.id === state.selected) || series[0];
+    const selectedRows = primary?.rows || [];
+    const allRows = series.flatMap((candidate) => candidate.rows);
+    if (!selectedRows.length || !allRows.length) return;
     const width = Math.max(300, Math.round(nodes.chart.clientWidth));
     const height = Math.max(180, Math.round(nodes.chart.clientHeight));
     const margin = {
@@ -1164,18 +1457,25 @@ if (root) {
     };
     const innerWidth = width - margin.left - margin.right;
     const innerHeight = height - margin.top - margin.bottom;
-    let start = d3.min(selectedRows, (row) => row.date);
-    let end = d3.max(selectedRows, (row) => row.date);
+    let start = d3.min(allRows, (row) => row.date);
+    let end = d3.max(allRows, (row) => row.date);
     if (+start === +end) {
       start = new Date(+start - 30 * 60 * 1000);
       end = new Date(+end + 30 * 60 * 1000);
     }
 
-    const values = selectedRows.flatMap((row) => [
-      row.lower,
-      row.value,
-      row.upper,
-    ]);
+    const values =
+      state.scale === "price"
+        ? series.flatMap((candidate) =>
+            candidate.primary
+              ? candidate.rows.flatMap((row) => [
+                  row.plotLower,
+                  row.plotValue,
+                  row.plotUpper,
+                ])
+              : candidate.rows.map((row) => row.plotValue),
+          )
+        : allRows.map((row) => row.plotValue);
     const minimum = d3.min(values) ?? 0;
     const maximum = d3.max(values) ?? minimum + 1;
     const spread = Math.max(maximum - minimum, Math.abs(maximum) * 0.06, 0.08);
@@ -1230,26 +1530,43 @@ if (root) {
     const area = d3
       .area()
       .x((row) => x(row.date))
-      .y0((row) => y(Math.min(row.lower, row.upper)))
-      .y1((row) => y(Math.max(row.lower, row.upper)))
+      .y0((row) => y(Math.min(row.plotLower, row.plotUpper)))
+      .y1((row) => y(Math.max(row.plotLower, row.plotUpper)))
       .curve(d3.curveMonotoneX);
-    plot
-      .append("path")
-      .datum(selectedRows)
-      .attr("class", "gpu-benchmark__band")
-      .attr("d", area);
+    if (state.scale === "price" && primary.layer.unit === "usd-hour") {
+      plot
+        .append("path")
+        .datum(selectedRows)
+        .attr("class", "gpu-benchmark__band")
+        .attr("d", area);
+    }
 
     const line = d3
       .line()
       .x((row) => x(row.date))
-      .y((row) => y(row.value))
+      .y((row) => y(row.plotValue))
       .curve(d3.curveMonotoneX);
-    plot
-      .append("path")
-      .datum(selectedRows)
-      .attr("class", "gpu-benchmark__line is-selected")
-      .attr("d", line)
-      .attr("stroke", currentLineColor());
+    series.forEach((candidate) => {
+      plot
+        .append("path")
+        .datum(candidate.rows)
+        .attr(
+          "class",
+          `gpu-benchmark__line${candidate.primary ? " is-selected" : " is-layer"}`,
+        )
+        .attr("data-layer", candidate.layer.id)
+        .attr("d", line)
+        .attr("stroke", currentLineColor())
+        .attr(
+          "stroke-opacity",
+          candidate.primary ? 1 : candidate.layer.strokeOpacity,
+        )
+        .attr(
+          "stroke-dasharray",
+          candidate.primary ? null : candidate.layer.strokeDasharray || null,
+        )
+        .attr("stroke-width", candidate.primary ? 2.4 : 1.8);
+    });
 
     const zoomSelection = plot
       .append("rect")
@@ -1287,7 +1604,7 @@ if (root) {
       .attr("aria-valuenow", focusIndex)
       .attr(
         "aria-label",
-        `${state.selected} observed benchmark history. Use left and right arrow keys to inspect observations.`,
+        `${state.selected} main layer with ${series.length} ${series.length === 1 ? "layer" : "layers"}. Use left and right arrow keys to inspect observations.`,
       )
       .on("focus", () => {
         interaction.style("display", null);
@@ -1444,18 +1761,33 @@ if (root) {
       const selectedRow = selectedRows[focusIndex];
       if (!selectedRow) return;
       const pointX = x(selectedRow.date);
-      const pointY = y(selectedRow.value);
+      const pointY = y(selectedRow.plotValue);
+      const tooltipRows = series
+        .map((candidate) => {
+          const row = nearestRow(candidate.rows, selectedRow.date);
+          return row
+            ? {
+                ...row,
+                layer: candidate.layer,
+                primary: candidate.primary,
+              }
+            : null;
+        })
+        .filter(Boolean);
       crosshair.attr("x1", pointX).attr("x2", pointX);
       point.attr("cx", pointX).attr("cy", pointY);
       overlay
         .attr("aria-valuenow", focusIndex)
         .attr(
           "aria-valuetext",
-          `${formatDateTime(selectedRow.date)}. ${state.selected} ${formatUsd(selectedRow.value)}. Middle range ${formatUsd(selectedRow.lower)} to ${formatUsd(selectedRow.upper)}.`,
+          `${formatDateTime(selectedRow.date)}. ${tooltipRows
+            .map(
+              (row) =>
+                `${row.layer.label} ${formatPlotValue(row.plotValue, state.scale)}`,
+            )
+            .join(". ")}.`,
         );
-      renderTooltip(selectedRow.date, [
-        { ...selectedRow, family: state.selected },
-      ]);
+      renderTooltip(selectedRow.date, tooltipRows);
       positionSvgTooltip({
         tooltipNode: nodes.tooltip,
         chartNode: nodes.chart,
@@ -1481,15 +1813,17 @@ if (root) {
       const value = document.createElement("strong");
       const range = document.createElement("small");
       entry.className = "gpu-benchmark__tooltip-row";
-      if (row.family === state.selected) entry.dataset.selected = "true";
-      swatch.style.backgroundColor =
-        row.family === state.selected
-          ? currentLineColor()
-          : familyColors.get(row.family);
-      label.textContent = row.family;
-      value.textContent = formatUsd(row.value);
+      if (row.primary) entry.dataset.selected = "true";
+      swatch.style.backgroundColor = currentLineColor();
+      swatch.style.opacity = String(row.primary ? 1 : row.layer.strokeOpacity);
+      label.textContent = row.layer.shortLabel || row.layer.label;
+      value.textContent = formatPlotValue(row.plotValue, state.scale);
       range.textContent =
-        row.family === state.selected
+        state.scale === "index"
+          ? row.layer.sample
+            ? "Sample"
+            : formatUsd(row.value)
+          : row.primary
           ? `${formatUsd(row.lower)} to ${formatUsd(row.upper)}`
           : "";
       entry.append(swatch, label, value, range);
@@ -1499,11 +1833,21 @@ if (root) {
     nodes.tooltip.hidden = false;
   }
 
+  function nearestRow(rows, date) {
+    if (!rows.length) return null;
+    const index = d3.bisector((row) => row.date).left(rows, date);
+    const before = rows[Math.max(0, index - 1)];
+    const after = rows[Math.min(rows.length - 1, index)];
+    return Math.abs(after.date - date) < Math.abs(before.date - date)
+      ? after
+      : before;
+  }
+
   function visibleRows(rows) {
     const milliseconds = ranges[state.range]?.milliseconds;
     if (!milliseconds || !rows.length) return rows;
     const latest = d3.max(
-      Array.from(state.cards.values()).flatMap((card) => card.rows),
+      Array.from(state.seriesByLayer.values()).flatMap((series) => series),
       (row) => row.date,
     );
     const cutoff = new Date(latest.getTime() - milliseconds);
@@ -1528,10 +1872,6 @@ if (root) {
   function signalReady() {
     root.dataset.cardReady = "true";
     root.dispatchEvent(new CustomEvent("compute-card:ready", { bubbles: true }));
-  }
-
-  function cardUrl(family, base) {
-    return `${base}/gpu-benchmark/${family.toLowerCase()}.json`;
   }
 
   function appendShareText(
@@ -1569,19 +1909,11 @@ if (root) {
     return `$${number.toFixed(1)}`;
   }
 
-  function formatAxisUsd(value) {
-    if (value === 0) return "$0";
-    if (value < 1) return `$${value.toFixed(2)}`;
-    return `$${value.toFixed(value < 10 ? 1 : 0)}`;
-  }
-
-  function formatObservationWindow(window) {
-    const start = new Date(window?.started_at);
-    const end = new Date(window?.ended_at);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-      return "";
-    }
-    return `${formatDateTime(start)} to ${formatDateTime(end)}`;
+  function formatPlotValue(value, scale = state.scale) {
+    if (scale === "price") return formatUsd(value);
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "pending";
+    return number.toFixed(number >= 100 ? 1 : 2);
   }
 
   function formatDateTime(date) {
@@ -1611,13 +1943,6 @@ if (root) {
       parts.map((part) => [part.type, part.value]),
     );
     return `${values.day} ${values.month} ${values.year} ${values.hour}:${values.minute} UTC`;
-  }
-
-  function formatShareDate(date) {
-    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
-      return "DATE PENDING";
-    }
-    return d3.utcFormat("%d %b %Y")(date).toUpperCase();
   }
 
 }

@@ -1,57 +1,49 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as d3 from "d3";
 import sharp from "sharp";
+import {
+  getCardDefinition,
+  PALETTES,
+  RANGES,
+  SITE_ORIGIN,
+  THEMES,
+} from "../src/card-registry.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const siteOrigin = "https://desk.adamsioud.com";
-const families = ["H100", "H200", "B200", "B300"];
-const palettes = {
-  azure: "#91aecb",
-  linen: "#efede4",
-  sage: "#b7d07b",
-  sand: "#f3c888",
-};
-const themes = ["light", "dark"];
-const ranges = {
-  "1d": { milliseconds: 24 * 60 * 60 * 1000, label: "1 day", badge: "1D" },
-  "7d": { milliseconds: 7 * 24 * 60 * 60 * 1000, label: "7 days", badge: "7D" },
-  all: { milliseconds: null, label: "all history", badge: "ALL" },
-};
-const imageRoot = join(root, "assets", "social", "gpu-index");
-const pageRoot = join(root, "cards", "gpu-price-index");
-
-await rm(imageRoot, { recursive: true, force: true });
-await rm(pageRoot, { recursive: true, force: true });
-
-const cards = await Promise.all(
-  families.map(async (family) => {
-    const file = join(
-      root,
-      "api",
-      "dashboard-snapshots",
-      "gpu-benchmark",
-      `${family.toLowerCase()}.json`,
-    );
-    const payload = JSON.parse(await readFile(file, "utf8"));
-    const rows = payload.series
-      .map((row) => ({
-        date: new Date(row.observed_at),
-        value: Number(row.value),
-      }))
-      .filter((row) => Number.isFinite(row.value) && !Number.isNaN(row.date.getTime()))
-      .sort((left, right) => left.date - right.date);
-    return { family, rows };
-  }),
+const cardDefinition = getCardDefinition("gpu-index");
+const families = cardDefinition.layers.filter(
+  (layer) => layer.unit === "usd-hour",
 );
+const palettes = Object.fromEntries(
+  PALETTES.map((palette) => [palette.id, palette.accent]),
+);
+const imageRoot = join(root, cardDefinition.previewImageDir);
+const pageRoot = join(root, cardDefinition.previewPageDir);
+const manifestPath = join(root, "data", "generated-card-files.json");
+const runtimeData = JSON.parse(
+  await readFile(join(root, cardDefinition.dataFile), "utf8"),
+);
+const generatedFiles = [];
+
+const cards = families.map((family) => ({
+  family: family.id,
+  rows: (runtimeData.series?.[family.id] || []).map((point) => ({
+    date: new Date(Number(point[0]) * 1000),
+    value: Number(point[1]),
+  })),
+}));
 
 const latestDate = new Date(
-  Math.max(...cards.flatMap((card) => card.rows.map((row) => row.date.getTime()))),
+  Math.max(
+    ...cards.flatMap((card) => card.rows.map((row) => row.date.getTime())),
+  ),
 );
 
 for (const card of cards) {
-  for (const [rangeId, range] of Object.entries(ranges)) {
+  for (const [rangeId, range] of Object.entries(RANGES)) {
     const rows = range.milliseconds
       ? card.rows.filter(
           (row) => row.date >= new Date(latestDate.getTime() - range.milliseconds),
@@ -61,7 +53,7 @@ for (const card of cards) {
     if (!rows.length || !latest) continue;
 
     for (const [paletteId, accent] of Object.entries(palettes)) {
-      for (const theme of themes) {
+      for (const theme of THEMES) {
         const imagePath = join(
           imageRoot,
           card.family.toLowerCase(),
@@ -78,11 +70,22 @@ for (const card of cards) {
         );
         await mkdir(dirname(imagePath), { recursive: true });
         await mkdir(dirname(pagePath), { recursive: true });
-        await sharp(
-          Buffer.from(renderCardImage(card.family, range, rows, latest, accent, theme)),
-        )
+        const previewSvg = renderCardImage(
+          card.family,
+          range,
+          rows,
+          latest,
+          accent,
+          theme,
+        );
+        const previewImage = await sharp(Buffer.from(previewSvg))
           .png({ compressionLevel: 9, palette: true })
-          .toFile(imagePath);
+          .toBuffer();
+        const previewRevision = createHash("sha256")
+          .update(previewImage)
+          .digest("hex")
+          .slice(0, 12);
+        await writeFile(imagePath, previewImage);
         await writeFile(
           pagePath,
           renderSharePage(
@@ -92,13 +95,32 @@ for (const card of cards) {
             latest,
             paletteId,
             theme,
+            previewRevision,
           ),
           "utf8",
         );
+        generatedFiles.push(relative(root, imagePath), relative(root, pagePath));
       }
     }
   }
 }
+
+const deskPreviewPath = join(imageRoot, "desk-comparison.png");
+await mkdir(dirname(deskPreviewPath), { recursive: true });
+await writeFile(
+  deskPreviewPath,
+  await sharp(Buffer.from(renderDeskComparisonImage()))
+    .png({ compressionLevel: 9, palette: true })
+    .toBuffer(),
+);
+generatedFiles.push(relative(root, deskPreviewPath));
+
+await retireOldGeneratedFiles(generatedFiles);
+await writeFile(
+  manifestPath,
+  `${JSON.stringify({ revision: runtimeData.revision, files: generatedFiles }, null, 2)}\n`,
+  "utf8",
+);
 
 function renderCardImage(family, range, rows, latest, accent, theme) {
   const colors = themeColors(accent, theme);
@@ -109,10 +131,75 @@ function renderCardImage(family, range, rows, latest, accent, theme) {
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${colors.paper}"/>
       <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="24" font-weight="600" letter-spacing="0.25">${family}</text>
-      <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="24" font-weight="600" text-anchor="end" letter-spacing="1">${range.badge}</text>
+      <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="24" font-weight="600" text-anchor="end" letter-spacing="1">${range.label}</text>
       <text x="40" y="138" fill="${colors.line}" font-family="Geist, sans-serif" font-size="64" font-weight="500" letter-spacing="-2">${formatUsd(latest.value)}</text>
       <path d="${area}" fill="${colors.line}" fill-opacity="0.055"/>
       <path d="${line}" fill="none" stroke="${colors.line}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+}
+
+function renderDeskComparisonImage() {
+  const colors = themeColors(palettes.sage, "dark");
+  const startDate = new Date(latestDate.getTime() - RANGES["7d"].milliseconds);
+  const layerIds = ["H100", "H200", "TOKEN"];
+  const series = layerIds.map((layerId) => {
+    const rows = (runtimeData.series?.[layerId] || [])
+      .map((point) => ({
+        date: new Date(Number(point[0]) * 1000),
+        value: Number(point[1]),
+      }))
+      .filter((row) => row.date >= startDate);
+    const base = rows[0]?.value || 1;
+    return {
+      layerId,
+      rows: rows.map((row) => ({
+        ...row,
+        value: (row.value / base) * 100,
+      })),
+    };
+  });
+  const primary = series.find((item) => item.layerId === "H200");
+  const latest = primary?.rows.at(-1);
+  const allRows = series.flatMap((item) => item.rows);
+  const chart = { x: 0, y: 174, width: 1200, height: 370 };
+  const minimum = d3.min(allRows, (row) => row.value) ?? 0;
+  const maximum = d3.max(allRows, (row) => row.value) ?? minimum + 1;
+  const spread = Math.max(maximum - minimum, maximum * 0.025, 0.12);
+  const x = d3
+    .scaleTime()
+    .domain(d3.extent(allRows, (row) => row.date))
+    .range([chart.x, chart.x + chart.width]);
+  const y = d3
+    .scaleLinear()
+    .domain([Math.max(0, minimum - spread * 0.2), maximum + spread * 0.2])
+    .range([chart.y + chart.height, chart.y]);
+  const line = d3
+    .line()
+    .x((row) => x(row.date))
+    .y((row) => y(row.value))
+    .curve(d3.curveMonotoneX);
+  const area = d3
+    .area()
+    .x((row) => x(row.date))
+    .y0(630)
+    .y1((row) => y(row.value))
+    .curve(d3.curveMonotoneX);
+  const layerMarkup = series
+    .map(({ layerId, rows }) => {
+      const layer = cardDefinition.layers.find((item) => item.id === layerId);
+      const primaryLayer = layerId === "H200";
+      return `<path d="${line(rows)}" fill="none" stroke="${colors.line}" stroke-opacity="${primaryLayer ? 1 : layer.strokeOpacity}" stroke-width="${primaryLayer ? 3.5 : 2.5}" stroke-dasharray="${primaryLayer ? "" : layer.strokeDasharray || ""}" stroke-linecap="round" stroke-linejoin="round"/>`;
+    })
+    .join("");
+
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+      <rect width="1200" height="630" fill="${colors.paper}"/>
+      <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">H100 + H200 + Sample token</text>
+      <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">7D INDEX</text>
+      <text x="40" y="138" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndex(latest?.value)}</text>
+      <path d="${area(primary?.rows || [])}" fill="${colors.line}" fill-opacity="0.055"/>
+      ${layerMarkup}
     </svg>`;
 }
 
@@ -183,14 +270,19 @@ function renderSharePage(
   latest,
   palette,
   theme,
+  previewRevision,
 ) {
   const slug = family.toLowerCase();
-  const pageUrl = `${siteOrigin}/cards/gpu-price-index/${slug}/${rangeId}/${palette}/${theme}/`;
-  const imageUrl = `${siteOrigin}/assets/social/gpu-index/${slug}/${rangeId}/${palette}-${theme}.png`;
+  const pageUrl = `${SITE_ORIGIN}${cardDefinition.sharePath}/${slug}/${rangeId}/${palette}/${theme}/`;
+  const imageUrl = `${SITE_ORIGIN}/${cardDefinition.previewImageDir}/${slug}/${rangeId}/${palette}-${theme}.png?v=${previewRevision}`;
   const title = `${family} GPU Price Index`;
-  const description = `${formatUsd(latest.value)} per GPU hour over ${range.label}`;
+  const description = `${formatUsd(latest.value)} per GPU hour over ${range.longLabel}`;
   const imageAlt = `${title} card showing ${description.toLowerCase()}.`;
-  const destination = `/?card=gpu-index&view=card&gpu=${family}&range=${rangeId}&palette=${palette}&theme=${theme}#gpu-benchmark-card`;
+  const destination =
+    `/?card=${cardDefinition.id}&view=card&gpu=${family}` +
+    `&layers=${family}&scale=price&range=${rangeId}` +
+    `&palette=${palette}&theme=${theme}#${cardDefinition.hash}`;
+  const destinationHref = destination.replaceAll("&", "&amp;");
   const colors = themeColors(palettes[palette], theme);
 
   return `<!doctype html>
@@ -225,7 +317,7 @@ function renderSharePage(
     </style>
   </head>
   <body>
-    <a href="${destination}">Open ${title}</a>
+    <a href="${destinationHref}">Open ${title}</a>
   </body>
 </html>
 `;
@@ -235,4 +327,33 @@ function formatUsd(value) {
   if (value >= 100) return `$${value.toFixed(0)}`;
   if (value >= 10) return `$${value.toFixed(1)}`;
   return `$${value.toFixed(2)}`;
+}
+
+function formatIndex(value) {
+  return Number(value || 0).toFixed(1);
+}
+
+async function retireOldGeneratedFiles(nextFiles) {
+  let previousFiles = [];
+  try {
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    previousFiles = Array.isArray(manifest?.files) ? manifest.files : [];
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+
+  const next = new Set(nextFiles);
+  const allowedRoots = [resolve(imageRoot), resolve(pageRoot)];
+  for (const file of previousFiles) {
+    if (next.has(file)) continue;
+    const target = resolve(root, file);
+    if (!allowedRoots.some((allowedRoot) => target.startsWith(`${allowedRoot}/`))) {
+      throw new Error(`Refusing to remove generated file outside card roots: ${file}`);
+    }
+    try {
+      await unlink(target);
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+  }
 }

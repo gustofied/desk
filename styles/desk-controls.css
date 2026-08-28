@@ -549,7 +549,9 @@ button.compute-share-card-frame:focus-visible {
 .gpu-index-share__window,
 .compute-share-card-frame,
 .gpu-benchmark__line,
-.gpu-benchmark__band {
+.gpu-benchmark__band,
+.gpu-benchmark__composer,
+.gpu-benchmark__composer button {
   transition:
     color 240ms var(--desk-ease-out),
     background-color 240ms var(--desk-ease-out),
@@ -565,6 +567,191 @@ button.compute-share-card-frame:focus-visible {
 
 .gpu-benchmark__band {
   fill: var(--desk-accent);
+}
+
+.compute-card-skin--market .gpu-index-detail::after {
+  display: none;
+}
+
+.gpu-benchmark__composer {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: stretch;
+  width: calc(100% + 16px);
+  min-height: 40px;
+  margin-inline: -8px;
+  color: var(--desk-accent-deep);
+  background: color-mix(in srgb, var(--desk-canvas) 94%, var(--desk-accent));
+  border-bottom: 1px solid var(--market-card-rule);
+}
+
+.gpu-benchmark__measure,
+.gpu-benchmark__layers,
+.gpu-benchmark__composer-actions {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+}
+
+.gpu-benchmark__layers {
+  justify-content: center;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: none;
+}
+
+.gpu-benchmark__layer-heading {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  padding-inline: 10px 7px;
+  color: inherit;
+  font: 520 9px/16px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.42;
+}
+
+.gpu-benchmark__layers::-webkit-scrollbar {
+  display: none;
+}
+
+.gpu-benchmark__composer-actions {
+  justify-content: flex-end;
+}
+
+.gpu-benchmark__composer button {
+  position: relative;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-width: 50px;
+  min-height: 40px;
+  padding: 8px 10px;
+  color: inherit;
+  font: 500 10px/16px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  opacity: 0.68;
+  transition:
+    color 180ms var(--desk-ease-out),
+    background-color 180ms var(--desk-ease-out),
+    opacity 180ms var(--desk-ease-out),
+    transform 140ms var(--desk-ease-out);
+}
+
+.gpu-benchmark__measure button + button,
+.gpu-benchmark__composer-actions button + button {
+  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
+}
+
+.gpu-benchmark__composer button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--desk-accent) 13%, transparent);
+  box-shadow: inset 0 -2px 0 var(--desk-accent-deep);
+  opacity: 0.92;
+}
+
+.gpu-benchmark__layers button[data-primary="true"] {
+  font-weight: 600;
+}
+
+.gpu-benchmark__layers button i {
+  display: block;
+  width: 11px;
+  height: 2px;
+  flex: 0 0 auto;
+  background: currentColor;
+}
+
+.gpu-benchmark__layers button:not([data-primary="true"]) i[data-pattern="h100"] {
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0 4px,
+    transparent 4px 7px
+  );
+}
+
+.gpu-benchmark__layers button:not([data-primary="true"]) i[data-pattern="h200"] {
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0 7px,
+    transparent 7px 10px
+  );
+}
+
+.gpu-benchmark__layers button:not([data-primary="true"]) i[data-pattern="b200"] {
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0 3px,
+    transparent 3px 5px
+  );
+}
+
+.gpu-benchmark__layers button:not([data-primary="true"]) i[data-pattern="b300"] {
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0 8px,
+    transparent 8px 11px
+  );
+}
+
+.gpu-benchmark__layers button:not([data-primary="true"]) i[data-pattern="token"] {
+  background: repeating-linear-gradient(
+    90deg,
+    currentColor 0 1px,
+    transparent 1px 4px
+  );
+}
+
+.gpu-benchmark__composer button:active {
+  transform: translateY(1px);
+}
+
+.gpu-benchmark__composer button:focus-visible {
+  z-index: 1;
+  background: var(--desk-accent-pale);
+  outline: 2px solid var(--desk-accent-deep);
+  outline-offset: -2px;
+  opacity: 1;
+}
+
+.gpu-benchmark__composer button:disabled {
+  cursor: wait;
+  opacity: 0.28;
+}
+
+.gpu-benchmark__announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .gpu-benchmark__composer button:hover {
+    background: color-mix(in srgb, var(--desk-accent) 10%, transparent);
+    opacity: 0.84;
+  }
+}
+
+:root[data-theme="dark"] .gpu-benchmark__composer {
+  background: #181818;
+  border-color: color-mix(in srgb, var(--desk-accent-deep) 22%, transparent);
+}
+
+:root[data-theme="dark"] .gpu-benchmark__composer button[aria-pressed="true"] {
+  color: #f5f5f5;
+  background: color-mix(in srgb, var(--desk-accent) 12%, #181818);
 }
 
 @media (max-width: 640px) {
@@ -590,6 +777,49 @@ button.compute-share-card-frame:focus-visible {
 
   .desk-view-actions {
     position: relative;
+  }
+
+  .gpu-benchmark__composer {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .gpu-benchmark__layers {
+    justify-content: flex-start;
+    padding-inline: 4px;
+    scroll-snap-type: x proximity;
+    mask-image: linear-gradient(
+      90deg,
+      transparent,
+      #000 10px,
+      #000 calc(100% - 10px),
+      transparent
+    );
+  }
+
+  .gpu-benchmark__layers > * {
+    scroll-snap-align: start;
+  }
+
+  .gpu-benchmark__measure {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .gpu-benchmark__composer-actions {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .gpu-benchmark__layers {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-content: flex-start;
+    border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
+  }
+
+  .gpu-benchmark__composer button {
+    min-width: 54px;
+    font-size: 10px;
   }
 
   .desk-corner--top-left,
@@ -668,7 +898,9 @@ button.compute-share-card-frame:focus-visible {
   .gpu-index-share__window,
   .compute-share-card-frame,
   .gpu-benchmark__line,
-  .gpu-benchmark__band {
+  .gpu-benchmark__band,
+  .gpu-benchmark__composer,
+  .gpu-benchmark__composer button {
     transition: none;
   }
 }

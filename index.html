@@ -9,21 +9,21 @@
     <meta name="theme-color" content="#ffffff">
     <link rel="canonical" href="https://desk.adamsioud.com/">
     <meta property="og:title" content="Desk">
-    <meta property="og:description" content="Compare frozen hourly price history for H100, H200, B200, and B300 GPUs.">
+    <meta property="og:description" content="Compare hourly price history for H100, H200, B200, and B300 GPUs.">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Desk">
     <meta property="og:url" content="https://desk.adamsioud.com/">
-    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/h200/7d/azure-light.png">
-    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/h200/7d/azure-light.png">
+    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png">
+    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="H200 GPU Price Index card showing the latest hourly price over seven days.">
+    <meta property="og:image:alt" content="A Desk comparison card showing H100, H200, and a sample token index.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Desk">
-    <meta name="twitter:description" content="Compare frozen hourly price history for H100, H200, B200, and B300 GPUs.">
-    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/h200/7d/azure-light.png">
-    <meta name="twitter:image:alt" content="H200 GPU Price Index card showing the latest hourly price over seven days.">
+    <meta name="twitter:description" content="Compare hourly price history for H100, H200, B200, and B300 GPUs.">
+    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png">
+    <meta name="twitter:image:alt" content="A Desk comparison card showing H100, H200, and a sample token index.">
     <title>Desk</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/favicon.svg">
@@ -66,8 +66,8 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=41">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=15">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=44">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=18">
     <link rel="stylesheet" href="./styles/command-palette.css?v=4">
     <link rel="stylesheet" href="./styles/demo.css?v=11">
   </head>
@@ -100,7 +100,7 @@
         class="gpu-index compute-card-skin compute-card-skin--market"
         id="gpu-benchmark-card"
         data-gpu-benchmark-card
-        data-market-data-base="./api/dashboard-snapshots"
+        data-card-id="gpu-index"
       >
         <nav class="desk-card-rail" aria-label="Open pricing cards">
           <div class="gpu-benchmark__families desk-card-tabs" role="tablist" aria-label="GPU pricing cards">
@@ -130,10 +130,23 @@
 
                   <div class="gpu-benchmark__chart" data-gpu-chart>
                     <svg data-gpu-chart-svg role="img" aria-label="GPU price history">
-                      <desc>The line shows the selected GPU's observed price. The surrounding band shows the middle range of quotes.</desc>
+                      <desc data-gpu-chart-description>The line shows the selected GPU's observed price. The surrounding band shows the middle range of quotes.</desc>
                     </svg>
                     <div class="gpu-benchmark__tooltip" data-gpu-tooltip hidden></div>
                     <p class="gpu-benchmark__state" data-gpu-state>Loading hourly benchmark history</p>
+                  </div>
+
+                  <div class="gpu-benchmark__composer" data-card-composer>
+                    <div class="gpu-benchmark__measure" role="group" aria-label="Value view">
+                      <button type="button" aria-pressed="true" data-card-scale="price">Price</button>
+                      <button type="button" aria-pressed="false" data-card-scale="index">Index</button>
+                    </div>
+                    <div class="gpu-benchmark__layers" role="group" aria-label="Data layers" data-card-layers></div>
+                    <div class="gpu-benchmark__composer-actions">
+                      <button type="button" aria-pressed="false" data-card-lock>Lock</button>
+                      <button type="button" data-card-copy>Copy link</button>
+                    </div>
+                    <p class="gpu-benchmark__announce" aria-live="polite" data-card-announce></p>
                   </div>
 
                   <div class="gpu-benchmark__footer">
@@ -158,7 +171,6 @@
                   <svg class="compute-share-artifact" data-share-artifact-svg viewBox="0 0 1200 675" role="img" aria-label="GPU price card"></svg>
                 </div>
                 <figcaption class="desk-card-preview__meta">
-                  <span class="desk-card-preview__title">GPU Price Index</span>
                   <time class="desk-card-preview__observed" data-share-observed>Loading market data</time>
                   <button class="desk-card-preview__copy" type="button" data-share-copy-link>Copy link</button>
                 </figcaption>
@@ -227,6 +239,6 @@
         <p class="desk-command-menu__status" aria-live="polite" data-command-status></p>
       </section>
     </dialog>
-    <script type="module" src="./desk.js?v=46"></script>
+    <script type="module" src="./desk.js?v=49"></script>
   </body>
 </html>
