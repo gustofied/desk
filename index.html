@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="A standalone GPU Price Index card workspace.">
+    <title>Desk — GPU Price Index</title>
+    <link rel="stylesheet" href="./styles/compute-card.css">
+    <link rel="stylesheet" href="./styles/demo.css">
+  </head>
+  <body>
+    <main class="desk-stage">
+      <section
+        class="gpu-index compute-card-skin compute-card-skin--market"
+        id="gpu-benchmark-card"
+        data-gpu-benchmark-card
+        data-market-data-base="./api/dashboard-snapshots"
+      >
+        <div class="gpu-index__cover-stage" data-index-panel="card" hidden>
+          <div class="compute-card-rail compute-card-rail--cover">
+            <span>GPU Price Index</span>
+            <div>
+              <button type="button" data-index-share>Share</button>
+              <button type="button" aria-expanded="false" aria-controls="gpu-index-detail" data-index-open>Chart</button>
+            </div>
+          </div>
+          <article
+            class="gpu-index-cover"
+            data-index-cover
+            role="button"
+            tabindex="0"
+            aria-label="Open GPU Price Index chart"
+            aria-controls="gpu-index-detail"
+            aria-expanded="false"
+          >
+            <span class="gpu-index-cover__art">
+              <img src="./assets/compute-masthead-03.webp" alt="" width="900" height="507">
+            </span>
+            <span class="gpu-index-cover__copy"><strong>GPU Price Index</strong></span>
+            <span class="compute-card-feed" data-card-feed="gpu" aria-label="Current GPU benchmark prices" aria-live="off">
+              <small class="compute-card-feed__label"><span>Index levels</span><b>4 indices</b></small>
+              <span class="compute-card-feed__window">
+                <span class="compute-card-feed__track" data-card-feed-track></span>
+              </span>
+            </span>
+            <span class="gpu-index-cover__foot">
+              <time data-cover-updated>As of pending</time>
+              <b>USD / GPU-hour</b>
+            </span>
+          </article>
+        </div>
+
+        <div class="gpu-index-detail-stage" data-index-panel="detail">
+          <div class="compute-card-rail">
+            <span>GPU Price Index</span>
+            <div aria-label="Index actions">
+              <button type="button" data-index-card>Card</button>
+              <button type="button" data-index-share>Share</button>
+            </div>
+          </div>
+          <article class="gpu-index-detail" id="gpu-index-detail">
+            <div class="gpu-index-detail__body" role="region" aria-label="GPU price index">
+              <div class="gpu-benchmark">
+                <div class="gpu-benchmark__families" role="tablist" aria-label="GPU benchmark family">
+                  <button type="button" role="tab" aria-selected="false" data-gpu-family="H100">
+                    <span>H100</span><strong data-gpu-family-value="H100">pending</strong>
+                  </button>
+                  <button type="button" role="tab" aria-selected="true" data-gpu-family="H200">
+                    <span>H200</span><strong data-gpu-family-value="H200">pending</strong>
+                  </button>
+                  <button type="button" role="tab" aria-selected="false" data-gpu-family="B200">
+                    <span>B200</span><strong data-gpu-family-value="B200">pending</strong>
+                  </button>
+                  <button type="button" role="tab" aria-selected="false" data-gpu-family="B300">
+                    <span>B300</span><strong data-gpu-family-value="B300">pending</strong>
+                  </button>
+                </div>
+
+                <div class="gpu-benchmark__chart" data-gpu-chart>
+                  <svg data-gpu-chart-svg role="img" aria-label="GPU price history">
+                    <desc>The line shows the selected GPU's observed price. The surrounding band shows the middle range of quotes.</desc>
+                  </svg>
+                  <div class="gpu-benchmark__tooltip" data-gpu-tooltip hidden></div>
+                  <p class="gpu-benchmark__state" data-gpu-state>Loading hourly benchmark history</p>
+                </div>
+
+                <div class="gpu-benchmark__footer">
+                  <time data-gpu-range-start>pending</time>
+                  <div class="gpu-benchmark__ranges" role="group" aria-label="Price history range">
+                    <button type="button" aria-pressed="false" data-gpu-range="1d">1D</button>
+                    <button type="button" aria-pressed="true" data-gpu-range="7d">7D</button>
+                    <button type="button" aria-pressed="false" data-gpu-range="all">ALL</button>
+                    <button class="gpu-benchmark__zoom-reset" type="button" data-gpu-zoom-reset hidden>RESET</button>
+                  </div>
+                  <time data-gpu-range-end>pending</time>
+                </div>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <div class="gpu-index-share" data-index-panel="share" aria-label="Share GPU price index" hidden>
+          <div class="compute-card-rail compute-card-rail--share">
+            <span>GPU Price Index</span>
+            <div>
+              <button type="button" data-share-return>Back</button>
+              <button type="button" data-share-copy-link>Copy link</button>
+              <button type="button" aria-label="Close GPU price index share card" data-index-close>&times;</button>
+            </div>
+          </div>
+          <div class="gpu-index-share__window">
+            <article class="compute-share-card-frame">
+              <svg class="compute-share-artifact" data-share-artifact-svg viewBox="0 0 1200 675" role="img" aria-label="Shareable GPU price chart"></svg>
+            </article>
+          </div>
+          <p class="gpu-index-share__status" data-share-status aria-live="polite"></p>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="./desk.js"></script>
+  </body>
+</html>
