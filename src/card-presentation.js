@@ -10,7 +10,7 @@ export function cardPermalink(cardId, stateParams = {}) {
   url.search = "";
   if (!isDeskCard) return url;
   url.searchParams.set("card", DESK_CARD.id);
-  url.searchParams.set("view", "detail");
+  url.searchParams.set("view", "full");
   for (const [name, value] of Object.entries(stateParams)) {
     if (value !== null && value !== undefined && value !== "") {
       url.searchParams.set(name, value);
@@ -29,7 +29,7 @@ export function normalizeLegacyCardPresentation() {
   const articleUrl = new URL(window.location.href);
   articleUrl.search = "";
   articleUrl.searchParams.set("card", DESK_CARD.id);
-  articleUrl.searchParams.set("view", "detail");
+  articleUrl.searchParams.set("view", "full");
   for (const name of DESK_CARD.stateParams) {
     const value = params.get(name);
     if (value) articleUrl.searchParams.set(name, value);

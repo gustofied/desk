@@ -49,7 +49,7 @@
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
     <link rel="stylesheet" href="./styles/desk-controls.css?v=41">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=14">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=15">
     <link rel="stylesheet" href="./styles/command-palette.css?v=4">
     <link rel="stylesheet" href="./styles/demo.css?v=11">
   </head>
@@ -134,11 +134,18 @@
           </div>
 
           <div class="gpu-index-share" id="gpu-index-publish" data-index-panel="share" aria-label="GPU price card" hidden>
-            <div class="gpu-index-share__window">
-              <button class="compute-share-card-frame" type="button" aria-label="Copy card link" data-share-copy-link>
-                <svg class="compute-share-artifact" data-share-artifact-svg viewBox="0 0 1200 675" role="img" aria-label="GPU price card"></svg>
-              </button>
-            </div>
+            <figure class="desk-card-preview">
+              <div class="gpu-index-share__window">
+                <div class="compute-share-card-frame">
+                  <svg class="compute-share-artifact" data-share-artifact-svg viewBox="0 0 1200 675" role="img" aria-label="GPU price card"></svg>
+                </div>
+                <figcaption class="desk-card-preview__meta">
+                  <span class="desk-card-preview__title">GPU Price Index</span>
+                  <time class="desk-card-preview__observed" data-share-observed>Loading market data</time>
+                  <button class="desk-card-preview__copy" type="button" data-share-copy-link>Copy link</button>
+                </figcaption>
+              </div>
+            </figure>
             <p class="gpu-index-share__status" data-share-status aria-live="polite"></p>
           </div>
         </div>
@@ -202,6 +209,6 @@
         <p class="desk-command-menu__status" aria-live="polite" data-command-status></p>
       </section>
     </dialog>
-    <script type="module" src="./desk.js?v=45"></script>
+    <script type="module" src="./desk.js?v=46"></script>
   </body>
 </html>

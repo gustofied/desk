@@ -39,10 +39,14 @@ if (root) {
     requestedCard === cardId ? params.get("view") : null;
   const requestedLayout = params.get("layout");
   const initialView =
-    (["card", "share"].includes(requestedView) || requestedLayout === "all")
+    (["card", "share", "gallery"].includes(requestedView) ||
+    requestedLayout === "all")
       ? "share"
       : "detail";
-  const initialLayout = requestedLayout === "all" ? "all" : "focus";
+  const initialLayout =
+    requestedView === "gallery" || requestedLayout === "all"
+      ? "all"
+      : "focus";
   const state = {
     cards: new Map(),
     panel: initialView,
@@ -76,6 +80,7 @@ if (root) {
     viewToggle: document.querySelector("[data-index-view-toggle]"),
     galleryToggle: document.querySelector("[data-index-gallery-toggle]"),
     copyLink: document.querySelector("[data-share-copy-link]"),
+    shareObserved: root.querySelector("[data-share-observed]"),
     shareStatus: root.querySelector("[data-share-status]"),
     shareArtifactSvg: root.querySelector("[data-share-artifact-svg]"),
     familyButtons: Array.from(root.querySelectorAll("[data-gpu-family]")),
@@ -178,7 +183,7 @@ if (root) {
         group: "Cards",
         order: 0,
         title: "GPU Price Index",
-        subtitle: "/cards/gpu-price-index",
+        subtitle: "/cards/gpu-price-index/full",
         hint: "Expand",
         keywords: ["desk", "market", "accelerator", "prices", "chart", "compute", "gpu", "index"],
         active: () => state.panel === "detail" && state.layout === "focus",
@@ -188,9 +193,9 @@ if (root) {
         id: "create.gpu-share-card",
         group: "Create",
         order: 0,
-        title: "Open collapsed card",
-        subtitle: "/card",
-        hint: "Collapse",
+        title: "Open card preview",
+        subtitle: "/cards/gpu-price-index/card",
+        hint: "Preview",
         keywords: ["export", "snapshot", "publish", "single"],
         disabled: () => !state.shareReady,
         active: () => state.panel === "share" && state.layout === "focus",
@@ -200,9 +205,9 @@ if (root) {
         id: "create.gpu-share-gallery",
         group: "Create",
         order: 1,
-        title: "Open all cards",
-        subtitle: "/cards",
-        hint: "All",
+        title: "Open card gallery",
+        subtitle: "/cards/gpu-price-index/gallery",
+        hint: "Gallery",
         keywords: ["all", "gallery", "export", "snapshot", "publish"],
         disabled: () => !state.shareReady,
         active: () => state.panel === "share" && state.layout === "all",
@@ -738,7 +743,7 @@ if (root) {
       button?.setAttribute(
         "aria-label",
         latest
-          ? `${family}, ${value} per GPU-hour`
+          ? `${family} ${value} per GPU hour`
           : `${family}, price pending`,
       );
     }
@@ -832,49 +837,44 @@ if (root) {
 
   function updateLocation(view) {
     const url = new URL(window.location.href);
-    if (view === "detail") {
-      url.searchParams.delete("view");
-      if (url.searchParams.get("card") === cardId) {
-        url.searchParams.delete("card");
-      }
-    } else {
-      url.searchParams.set("card", cardId);
-      url.searchParams.set("view", "card");
-    }
+    url.searchParams.set("card", cardId);
+    url.searchParams.set(
+      "view",
+      view === "detail"
+        ? "full"
+        : state.layout === "all"
+          ? "gallery"
+          : "card",
+    );
     url.searchParams.set("gpu", state.selected);
     url.searchParams.set("range", state.range);
     url.searchParams.set("palette", currentPalette());
-    if (view === "share" && state.layout === "all") {
-      url.searchParams.set("layout", "all");
-    } else {
-      url.searchParams.delete("layout");
-    }
+    url.searchParams.delete("layout");
     url.hash = root.id;
     window.history.replaceState({}, "", url);
   }
 
   async function copyCardLink() {
-    await copyText(shareUrl(), "Link copied.");
+    await copyText(shareUrl(), "Link copied");
   }
 
   function shareUrl() {
-    if (state.panel === "share") {
-      const url = new URL(window.location.href);
-      url.search = "";
-      url.searchParams.set("gpu", state.selected);
-      url.searchParams.set("range", state.range);
-      url.searchParams.set("palette", currentPalette());
-      url.searchParams.set("card", cardId);
-      url.searchParams.set("view", "card");
-      if (state.layout === "all") url.searchParams.set("layout", "all");
-      url.hash = root.id;
-      return url.toString();
+    if (state.panel === "detail") {
+      return cardPermalink(cardId, {
+        gpu: state.selected,
+        range: state.range,
+        palette: currentPalette(),
+      }).toString();
     }
-    return cardPermalink(cardId, {
-      gpu: state.selected,
-      range: state.range,
-      palette: currentPalette(),
-    }).toString();
+    const url = new URL(window.location.href);
+    url.search = "";
+    url.searchParams.set("card", cardId);
+    url.searchParams.set("view", state.layout === "all" ? "gallery" : "card");
+    url.searchParams.set("gpu", state.selected);
+    url.searchParams.set("range", state.range);
+    url.searchParams.set("palette", currentPalette());
+    url.hash = root.id;
+    return url.toString();
   }
 
   async function copyText(value, successMessage) {
@@ -902,11 +902,23 @@ if (root) {
     const latest = rows.at(-1);
     if (!latest) {
       nodes.shareStatus.textContent = "";
+      if (nodes.shareObserved) {
+        nodes.shareObserved.textContent = "Market data unavailable";
+        nodes.shareObserved.removeAttribute("datetime");
+      }
       return;
     }
     nodes.shareStatus.textContent =
-      `${state.selected}, ${ranges[state.range].label}, ` +
+      `GPU Price Index ${state.selected} ${ranges[state.range].label} ` +
       `${formatUsd(latest.value)} per GPU hour`;
+    if (nodes.shareObserved) {
+      nodes.shareObserved.textContent = formatUtcDateTime(latest.date);
+      nodes.shareObserved.setAttribute("datetime", latest.date.toISOString());
+    }
+    nodes.shareArtifactSvg?.setAttribute(
+      "aria-label",
+      `${state.selected} ${formatUsd(latest.value)} per GPU hour ${ranges[state.range].label}`,
+    );
   }
 
   function setShareReady(ready) {
@@ -967,8 +979,7 @@ if (root) {
 
     if (nodes.galleryStatus) {
       nodes.galleryStatus.textContent =
-        `${families.length} open cards, ${ranges[state.range].label} range, ` +
-        `${state.layout === "all" ? "gallery" : state.panel} view`;
+        `${families.length} cards ${ranges[state.range].label} range`;
     }
   }
 
@@ -1100,6 +1111,39 @@ if (root) {
       .attr("stroke-linecap", "round")
       .attr("stroke-linejoin", "round")
       .attr("stroke-width", compact ? 6 : 3.5);
+
+    if (compact) {
+      svg
+        .append("line")
+        .attr("x1", 40)
+        .attr("x2", 1160)
+        .attr("y1", 620)
+        .attr("y2", 620)
+        .attr("stroke", palette.line)
+        .attr("stroke-opacity", 0.16)
+        .attr("stroke-width", 1);
+      appendShareText(svg, {
+        x: 40,
+        y: 654,
+        text: "GPU PRICE INDEX",
+        fill: palette.line,
+        size: 28,
+        weight: 500,
+        family: "Geist Mono, monospace",
+        spacing: 1.6,
+      });
+      appendShareText(svg, {
+        x: 1160,
+        y: 654,
+        text: formatShareDate(latest.date),
+        fill: palette.line,
+        size: 28,
+        anchor: "end",
+        weight: 500,
+        family: "Geist Mono, monospace",
+        spacing: 1.2,
+      });
+    }
   }
 
   function renderChart(selectedRows, drawAnimation) {
@@ -1559,7 +1603,14 @@ if (root) {
     const values = Object.fromEntries(
       parts.map((part) => [part.type, part.value]),
     );
-    return `${values.day} ${values.month} ${values.year}, ${values.hour}:${values.minute} UTC`;
+    return `${values.day} ${values.month} ${values.year} ${values.hour}:${values.minute} UTC`;
+  }
+
+  function formatShareDate(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+      return "DATE PENDING";
+    }
+    return d3.utcFormat("%d %b %Y")(date).toUpperCase();
   }
 
 }
