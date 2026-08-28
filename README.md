@@ -3,8 +3,8 @@
 Market data for compute desks.
 
 Desk turns market series into focused cards that can be explored, compared,
-locked, and shared. Every choice is stored in the link, including the card,
-layers, view, range, palette, theme, and lock state.
+and shared. Every choice is stored in the link, including the card,
+layers, view, range, palette, and theme.
 
 Website: <https://desk.adamsioud.com>
 
@@ -36,14 +36,13 @@ Open <http://localhost:4173>.
 
 ## Working with a card
 
-The tabs above the card choose its main GPU. The quiet row below the chart
-controls the value view and comparison layers.
+The tabs above the card open one GPU at a time. The quiet row below the chart
+controls its value view, comparison, and sharing.
 
-- Add GPU layers directly in Price or Index view.
+- Open Compare to add or remove data layers.
 - Adding the sample token switches the card to Index automatically.
-- Lock records the current composition in the URL. Any later change unlocks it.
-- Copy link opens the exact card. Expand returns to the editable view.
-- Copy link uses social artwork that matches the selected layers, value view,
+- Share copies the exact card link. Expand returns to the editable view.
+- Shared links use social artwork that matches the selected layers, value view,
   range, palette, and light or dark theme.
 - Press **Command G** to find cards, layers, views, ranges, and settings.
 - Press **Command H** to hide or show the display controls.

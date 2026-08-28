@@ -16,6 +16,7 @@ import {
   getCardDefinition,
   normalizeCardState,
   PALETTES,
+  PUBLISHED_CARD_VERSION,
   publishedCardPreviewPath,
   publishedCardSharePath,
   RANGES,
@@ -295,9 +296,11 @@ function previewModel(state) {
       normalized.scale === "index"
         ? formatIndex(latest.plotValue)
         : formatUsd(latest.plotValue),
-    layerTitle: series
+    primaryTitle: primary.layer.shortLabel || primary.layer.label,
+    comparisonTitle: series
+      .filter((candidate) => !candidate.primary)
       .map(({ layer }) => layer.shortLabel || layer.label)
-      .join(" + "),
+      .join(" "),
     rangeLabel:
       normalized.scale === "index"
         ? `${shareRangeLabel(primary.rows, normalized.range)} INDEX`
@@ -306,8 +309,10 @@ function previewModel(state) {
 }
 
 function renderPublishedCardImage(model) {
-  const chart = { x: 0, y: 174, width: 1200, height: 430 };
-  const titleSize = model.series.length >= 5 ? 28 : 34;
+  const hasComparisons = model.comparisonTitle.length > 0;
+  const chart = hasComparisons
+    ? { x: 0, y: 194, width: 1200, height: 410 }
+    : { x: 0, y: 174, width: 1200, height: 430 };
   const allRows = model.series.flatMap((candidate) => candidate.rows);
   const { line, area } = layeredChartPaths(
     allRows,
@@ -315,12 +320,15 @@ function renderPublishedCardImage(model) {
     chart,
     630,
   );
-  const layerMarkup = model.series
+  const layerMarkup = [...model.series]
+    .sort((left, right) => Number(left.primary) - Number(right.primary))
     .map((candidate) => {
-      const strokeWidth = candidate.primary ? 3.5 : 2.5;
+      const strokeWidth = candidate.primary ? 3.5 : 1.8;
       const strokeOpacity = candidate.primary
         ? 1
-        : candidate.layer.strokeOpacity;
+        : model.series.length > 2
+          ? Math.min(0.42, candidate.layer.strokeOpacity)
+          : candidate.layer.strokeOpacity;
       const dash = candidate.primary
         ? ""
         : candidate.layer.strokeDasharray || "";
@@ -331,9 +339,10 @@ function renderPublishedCardImage(model) {
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${model.colors.paper}"/>
-      <text x="40" y="54" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="${titleSize}" font-weight="600" letter-spacing="0.25">${escapeXml(model.layerTitle)}</text>
+      <text x="40" y="54" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">${escapeXml(model.primaryTitle)}</text>
+      ${hasComparisons ? `<text x="40" y="88" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">${escapeXml(`with ${model.comparisonTitle}`)}</text>` : ""}
       <text x="1160" y="54" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(model.rangeLabel)}</text>
-      <text x="40" y="138" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
+      <text x="40" y="${hasComparisons ? 158 : 138}" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
       <path d="${area}" fill="${model.colors.line}" fill-opacity="0.055"/>
       ${layerMarkup}
     </svg>`;
@@ -345,15 +354,18 @@ function renderPublishedSharePage(
   imageHref,
   previewRevision,
 ) {
-  const pageUrl = `${SITE_ORIGIN}${pageHref}?v=${runtimeData.revision}`;
+  const pageUrl = `${SITE_ORIGIN}${pageHref}?v=${PUBLISHED_CARD_VERSION}-${runtimeData.revision}`;
   const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
   const rangeDescription = RANGES[model.range]?.longLabel || model.range;
-  const title = `${model.layerTitle} ${model.rangeLabel}`;
+  const cardTitle = model.comparisonTitle
+    ? `${model.primaryTitle} with ${model.comparisonTitle}`
+    : model.primaryTitle;
+  const title = `${cardTitle} ${model.rangeLabel}`;
   const description =
     model.scale === "index"
       ? `${model.headline} index over ${rangeDescription}`
       : `${model.headline} per GPU hour over ${rangeDescription}`;
-  const imageAlt = `${model.layerTitle} card showing ${description.toLowerCase()}`;
+  const imageAlt = `${cardTitle} card showing ${description.toLowerCase()}`;
   const destinationParams = new URLSearchParams({
     card: cardDefinition.id,
     view: "card",
@@ -395,9 +407,6 @@ function renderPublishedSharePage(
     <title>${escapeHtml(title)} | Desk</title>
     <script>
       const target = new URL(${redirectScript}, window.location.origin);
-      if (new URLSearchParams(window.location.search).get("locked") === "1") {
-        target.searchParams.set("locked", "1");
-      }
       window.location.replace(target);
     </script>
     <style>
@@ -471,20 +480,25 @@ function renderDefaultComparisonImage() {
     .y0(630)
     .y1((row) => y(row.value))
     .curve(d3.curveMonotoneX);
-  const layerMarkup = series
+  const layerMarkup = [...series]
+    .sort(
+      (left, right) =>
+        Number(left.layerId === "H200") - Number(right.layerId === "H200"),
+    )
     .map(({ layerId, rows }) => {
       const layer = cardDefinition.layers.find((item) => item.id === layerId);
       const primaryLayer = layerId === "H200";
-      return `<path d="${line(rows)}" fill="none" stroke="${colors.line}" stroke-opacity="${primaryLayer ? 1 : layer.strokeOpacity}" stroke-width="${primaryLayer ? 3.5 : 2.5}" stroke-dasharray="${primaryLayer ? "" : layer.strokeDasharray || ""}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      return `<path d="${line(rows)}" fill="none" stroke="${colors.line}" stroke-opacity="${primaryLayer ? 1 : Math.min(0.42, layer.strokeOpacity)}" stroke-width="${primaryLayer ? 3.5 : 1.8}" stroke-dasharray="${primaryLayer ? "" : layer.strokeDasharray || ""}" stroke-linecap="round" stroke-linejoin="round"/>`;
     })
     .join("");
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${colors.paper}"/>
-      <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">H100 + H200 + Sample token</text>
+      <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">H200</text>
+      <text x="40" y="88" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="18" font-weight="500" letter-spacing="0.3">with H100 Sample token</text>
       <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">7D INDEX</text>
-      <text x="40" y="138" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndex(latest?.value)}</text>
+      <text x="40" y="158" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndex(latest?.value)}</text>
       <path d="${area(primary?.rows || [])}" fill="${colors.line}" fill-opacity="0.055"/>
       ${layerMarkup}
     </svg>`;

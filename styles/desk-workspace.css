@@ -380,6 +380,7 @@
 
   .compute-card-skin--market .desk-card-rail .desk-card-tabs button {
     flex: 1 1 0;
+    width: auto;
     min-width: 0;
     min-height: 24px;
     padding-inline: 5px;

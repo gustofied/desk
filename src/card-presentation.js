@@ -11,7 +11,6 @@ export const CARD_STATE_PARAMS = Object.freeze([
   "range",
   "palette",
   "theme",
-  "locked",
 ]);
 
 export function cardUrl(cardId, view, stateParams = {}) {
@@ -78,6 +77,5 @@ function normalizedStateValue(name, value, card) {
       card,
     );
   }
-  if (name === "locked") return value === true || value === "1" ? "1" : "";
   return value === null || value === undefined ? "" : String(value);
 }

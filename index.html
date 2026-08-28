@@ -63,8 +63,8 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=44">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=18">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=45">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=19">
     <link rel="stylesheet" href="./styles/command-palette.css?v=4">
     <link rel="stylesheet" href="./styles/demo.css?v=11">
   </head>
@@ -138,10 +138,28 @@
                       <button type="button" aria-pressed="true" data-card-scale="price">Price</button>
                       <button type="button" aria-pressed="false" data-card-scale="index">Index</button>
                     </div>
-                    <div class="gpu-benchmark__layers" role="group" aria-label="Data layers" data-card-layers></div>
+                    <button
+                      class="gpu-benchmark__compare-toggle"
+                      type="button"
+                      aria-expanded="false"
+                      aria-controls="gpu-index-compare-options"
+                      data-card-compare-toggle
+                    >
+                      <span>Compare</span>
+                      <strong data-card-compare-count hidden></strong>
+                    </button>
                     <div class="gpu-benchmark__composer-actions">
-                      <button type="button" aria-pressed="false" data-card-lock>Lock</button>
-                      <button type="button" data-card-copy>Copy link</button>
+                      <button type="button" data-card-copy>Share</button>
+                    </div>
+                    <div
+                      class="gpu-benchmark__compare-panel"
+                      id="gpu-index-compare-options"
+                      data-card-compare-panel
+                      hidden
+                      inert
+                    >
+                      <span class="gpu-benchmark__compare-label">Add data</span>
+                      <div class="gpu-benchmark__layers" role="group" aria-label="Comparison data" data-card-layers></div>
                     </div>
                     <p class="gpu-benchmark__announce" aria-live="polite" data-card-announce></p>
                   </div>
@@ -236,6 +254,6 @@
         <p class="desk-command-menu__status" aria-live="polite" data-command-status></p>
       </section>
     </dialog>
-    <script type="module" src="./desk.js?v=49"></script>
+    <script type="module" src="./desk.js?v=50"></script>
   </body>
 </html>

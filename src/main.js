@@ -6,6 +6,7 @@ import {
   getLayerDefinition,
   paletteIds,
   parseLayerIds,
+  PUBLISHED_CARD_VERSION,
   publishedCardSharePath,
   RANGES,
   serializeLayerIds,
@@ -74,7 +75,8 @@ if (root) {
     (params.has("layers") &&
       params.get("layers") !== serializeLayerIds(initialLayers, cardDefinition)) ||
     (params.has("scale") && params.get("scale") !== initialScale) ||
-    (params.has("range") && !ranges[params.get("range")]);
+    (params.has("range") && !ranges[params.get("range")]) ||
+    params.has("locked");
   const state = {
     seriesByLayer: new Map(),
     panel: initialView,
@@ -83,7 +85,7 @@ if (root) {
     layers: initialLayers,
     scale: initialScale,
     range: ranges[params.get("range")] ? params.get("range") : cardDefinition.defaults.range,
-    locked: params.get("locked") === "1",
+    compareOpen: false,
     dataRevision: null,
     shareReady: false,
     resizeTimer: null,
@@ -128,7 +130,9 @@ if (root) {
     scaleButtons: Array.from(root.querySelectorAll("[data-card-scale]")),
     layerGroup: root.querySelector("[data-card-layers]"),
     layerButtons: [],
-    lockButton: root.querySelector("[data-card-lock]"),
+    compareToggle: root.querySelector("[data-card-compare-toggle]"),
+    comparePanel: root.querySelector("[data-card-compare-panel]"),
+    compareCount: root.querySelector("[data-card-compare-count]"),
     cardCopy: root.querySelector("[data-card-copy]"),
     cardAnnounce: root.querySelector("[data-card-announce]"),
     chart: root.querySelector("[data-gpu-chart]"),
@@ -185,7 +189,10 @@ if (root) {
     });
     nodes.copyLink?.addEventListener("click", copyCardLink);
     nodes.cardCopy?.addEventListener("click", copyCardLink);
-    nodes.lockButton?.addEventListener("click", toggleCardLock);
+    nodes.compareToggle?.addEventListener("click", (event) => {
+      setCompareOpen(!state.compareOpen, event.detail === 0);
+    });
+    nodes.comparePanel?.addEventListener("keydown", handleComparePanelKeydown);
     nodes.zoomReset?.addEventListener("click", resetCustomZoom);
 
     if ("ResizeObserver" in window && nodes.chart) {
@@ -231,10 +238,7 @@ if (root) {
         button.addEventListener("click", () => toggleLayer(layer.id));
         return button;
       });
-      const heading = document.createElement("span");
-      heading.className = "gpu-benchmark__layer-heading";
-      heading.textContent = "Compare";
-      nodes.layerGroup.replaceChildren(heading, ...nodes.layerButtons);
+      nodes.layerGroup.replaceChildren(...nodes.layerButtons);
     }
 
     configureChoiceButtons(
@@ -243,6 +247,62 @@ if (root) {
       selectScale,
       "aria-pressed",
     );
+  }
+
+  function handleComparePanelKeydown(event) {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    setCompareOpen(false);
+    nodes.compareToggle?.focus({ preventScroll: true });
+  }
+
+  function setCompareOpen(open, moveFocus = false) {
+    if (!nodes.comparePanel || !nodes.compareToggle) return;
+    const nextOpen = Boolean(open);
+    const panel = nodes.comparePanel;
+    state.compareOpen = nextOpen;
+    nodes.compareToggle.setAttribute("aria-expanded", String(nextOpen));
+    panel.getAnimations().forEach((animation) => animation.cancel());
+    panel.toggleAttribute("inert", !nextOpen);
+
+    if (nextOpen) {
+      panel.hidden = false;
+      if (!reducedMotion) {
+        panel.animate(
+          [
+            { opacity: 0, transform: "translateY(-4px)" },
+            { opacity: 1, transform: "translateY(0)" },
+          ],
+          {
+            duration: 240,
+            easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+          },
+        );
+      }
+      if (moveFocus) {
+        window.requestAnimationFrame(() => {
+          nodes.layerButtons.find((button) => !button.hidden)?.focus();
+        });
+      }
+    } else if (reducedMotion || panel.hidden) {
+      panel.hidden = true;
+    } else {
+      const animation = panel.animate(
+        [
+          { opacity: 1, transform: "translateY(0)" },
+          { opacity: 0, transform: "translateY(-4px)" },
+        ],
+        {
+          duration: 200,
+          easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+        },
+      );
+      animation.finished.then(() => {
+        if (!state.compareOpen) panel.hidden = true;
+      }).catch(() => {});
+    }
+
+    syncComposerControls();
   }
 
   function configureAppearanceControls() {
@@ -306,20 +366,9 @@ if (root) {
         run: copyCardLink,
       },
       {
-        id: "actions.toggle-card-lock",
-        group: "Actions",
-        order: 1,
-        title: () => (state.locked ? "Unlock card" : "Lock card"),
-        subtitle: "/actions/lock-card",
-        hint: () => (state.locked ? "Locked" : "Lock"),
-        keywords: ["save", "pin", "composition", "state"],
-        active: () => state.locked,
-        run: toggleCardLock,
-      },
-      {
         id: "actions.toggle-display-controls",
         group: "Actions",
-        order: 2,
+        order: 1,
         title: () =>
           document.documentElement.dataset.displayToolbar === "collapsed"
             ? "Show display controls"
@@ -526,7 +575,6 @@ if (root) {
       updateLocation(state.panel);
       return;
     }
-    markCardChanged();
     document.documentElement.dataset.theme = theme;
     try {
       window.localStorage.setItem("desk-theme", theme);
@@ -542,7 +590,6 @@ if (root) {
       updateLocation(state.panel);
       return;
     }
-    markCardChanged();
     document.documentElement.dataset.palette = palette;
     try {
       window.localStorage.setItem("desk-palette", palette);
@@ -550,13 +597,6 @@ if (root) {
     syncAppearanceControls();
     updateLocation(state.panel);
     refreshAppearance();
-  }
-
-  function markCardChanged() {
-    if (!state.locked) return;
-    state.locked = false;
-    announceCard("Card unlocked by changes");
-    syncComposerControls();
   }
 
   function syncAppearanceControls() {
@@ -806,14 +846,9 @@ if (root) {
     if (!families.includes(family)) return;
     const changed = family !== state.selected;
     if (!changed) return;
-    markCardChanged();
-    const previous = state.selected;
-    if (state.layers.size === 1 && state.layers.has(previous)) {
-      state.layers = new Set([family]);
-    } else {
-      state.layers.add(family);
-    }
+    state.layers = new Set([family]);
     state.selected = family;
+    setCompareOpen(false);
     state.zoomWindow = null;
     syncControls();
     render(changed);
@@ -830,7 +865,6 @@ if (root) {
 
   function openPublishedCard(family, moveFocus) {
     if (!families.includes(family)) return;
-    markCardChanged();
     state.selected = family;
     state.layers = new Set([family]);
     state.scale = "price";
@@ -843,7 +877,6 @@ if (root) {
   function selectRange(range) {
     if (Date.now() < state.controlsReadyAt) return;
     if (!ranges[range] || range === state.range) return;
-    markCardChanged();
     state.range = range;
     state.zoomWindow = null;
     syncControls();
@@ -860,7 +893,6 @@ if (root) {
     ) {
       return;
     }
-    markCardChanged();
     state.scale = scale;
     if (scale === "price") {
       state.layers = new Set(
@@ -885,10 +917,8 @@ if (root) {
         announceCard(`${layer.label} is the main layer`);
         return;
       }
-      markCardChanged();
       state.layers.delete(layerId);
     } else {
-      markCardChanged();
       state.layers.add(layerId);
       if (!layer.views.includes(state.scale)) {
         state.scale = "index";
@@ -899,13 +929,6 @@ if (root) {
     syncControls();
     render(true);
     updateLocation(state.panel);
-  }
-
-  function toggleCardLock() {
-    state.locked = !state.locked;
-    syncComposerControls();
-    updateLocation(state.panel);
-    announceCard(state.locked ? "Card locked" : "Card unlocked");
   }
 
   function announceCard(message) {
@@ -951,23 +974,35 @@ if (root) {
     nodes.layerButtons.forEach((button) => {
       const selected = state.layers.has(button.dataset.cardLayer);
       const layer = getLayerDefinition(cardDefinition, button.dataset.cardLayer);
+      const primary = button.dataset.cardLayer === state.selected;
       button.setAttribute("aria-pressed", String(selected));
-      button.dataset.primary = String(button.dataset.cardLayer === state.selected);
+      button.dataset.primary = String(primary);
+      button.hidden = primary;
       button.setAttribute(
         "aria-label",
-        button.dataset.cardLayer === state.selected
+        primary
           ? `${layer.label} main layer`
           : selected
             ? `Remove ${layer.sample ? "sample " : ""}${layer.label} layer`
             : `Add ${layer.sample ? "sample " : ""}${layer.label} layer`,
       );
     });
-    if (nodes.lockButton) {
-      nodes.lockButton.setAttribute("aria-pressed", String(state.locked));
-      nodes.lockButton.textContent = state.locked ? "Locked" : "Lock";
+    const comparisonCount = Math.max(0, state.layers.size - 1);
+    if (nodes.compareCount) {
+      nodes.compareCount.textContent = String(comparisonCount);
+      nodes.compareCount.hidden = comparisonCount === 0;
+    }
+    if (nodes.compareToggle) {
+      nodes.compareToggle.setAttribute("aria-expanded", String(state.compareOpen));
+      nodes.compareToggle.setAttribute(
+        "aria-label",
+        comparisonCount
+          ? `Compare data, ${comparisonCount} added`
+          : "Compare data",
+      );
     }
     root.dataset.cardScale = state.scale;
-    root.dataset.cardLocked = String(state.locked);
+    root.dataset.comparisonCount = String(comparisonCount);
     if (nodes.chartDescription) {
       const labels = activeLayerDefinitions().map((layer) => layer.label).join(", ");
       nodes.svg?.setAttribute(
@@ -1033,6 +1068,9 @@ if (root) {
       !nodes.panels.has(nextName)
     ) {
       return;
+    }
+    if (nextName !== "detail" && state.compareOpen) {
+      setCompareOpen(false);
     }
     state.transitionPending = true;
     const previousLayout = nodes.layoutPanels.get(state.layout);
@@ -1121,7 +1159,6 @@ if (root) {
       range: state.range,
       palette: currentPalette(),
       theme: currentTheme(),
-      locked: state.locked,
     };
   }
 
@@ -1144,9 +1181,11 @@ if (root) {
       window.location.origin,
     );
     if (state.dataRevision) {
-      publishedUrl.searchParams.set("v", state.dataRevision);
+      publishedUrl.searchParams.set(
+        "v",
+        `${PUBLISHED_CARD_VERSION}-${state.dataRevision}`,
+      );
     }
-    if (state.locked) publishedUrl.searchParams.set("locked", "1");
     return publishedUrl.toString();
   }
 
@@ -1329,13 +1368,16 @@ if (root) {
     const compact = options.compact === true;
     const scale = options.scale || state.scale;
     const allRows = series.flatMap((candidate) => candidate.rows);
-    const layerTitle = series
+    const primaryTitle = primary.layer.shortLabel || primary.layer.label;
+    const comparisonTitle = series
+      .filter((candidate) => !candidate.primary)
       .map((candidate) => candidate.layer.shortLabel || candidate.layer.label)
-      .join(" + ");
+      .join(" ");
+    const hasComparisons = comparisonTitle.length > 0;
     const typography = compact
       ? { family: series.length > 1 ? 34 : 52, range: 36, price: 104 }
       : {
-          family: series.length >= 5 ? 28 : 34,
+          family: 34,
           range: 32,
           price: 82,
         };
@@ -1348,13 +1390,25 @@ if (root) {
     appendShareText(svg, {
       x: 40,
       y: 54,
-      text: layerTitle,
+      text: primaryTitle,
       fill: palette.line,
       size: typography.family,
       weight: 600,
       family: "Geist, Avenir Next, sans-serif",
       spacing: 0.25,
     });
+    if (hasComparisons) {
+      appendShareText(svg, {
+        x: 40,
+        y: 88,
+        text: `with ${comparisonTitle}`,
+        fill: palette.line,
+        size: 18,
+        weight: 500,
+        family: "Geist Mono, monospace",
+        spacing: 0.3,
+      });
+    }
     appendShareText(svg, {
       x: 1160,
       y: 54,
@@ -1371,7 +1425,7 @@ if (root) {
     });
     appendShareText(svg, {
       x: 40,
-      y: compact ? 160 : 138,
+      y: compact ? 160 : hasComparisons ? 158 : 138,
       text: formatPlotValue(latest.plotValue, scale),
       fill: palette.line,
       size: typography.price,
@@ -1382,7 +1436,9 @@ if (root) {
 
     const chart = compact
       ? { x: 0, y: 204, width: 1200, height: 445 }
-      : { x: 0, y: 174, width: 1200, height: 475 };
+      : hasComparisons
+        ? { x: 0, y: 194, width: 1200, height: 455 }
+        : { x: 0, y: 174, width: 1200, height: 475 };
     let start = d3.min(allRows, (row) => row.date);
     let end = d3.max(allRows, (row) => row.date);
     if (+start === +end) {
@@ -1422,7 +1478,10 @@ if (root) {
       .attr("d", valueArea)
       .attr("fill", palette.line)
       .attr("fill-opacity", 0.055);
-    series.forEach((candidate) => {
+    const orderedSeries = [...series].sort(
+      (left, right) => Number(left.primary) - Number(right.primary),
+    );
+    orderedSeries.forEach((candidate) => {
       svg
         .append("path")
         .datum(candidate.rows)
@@ -1431,7 +1490,11 @@ if (root) {
         .attr("stroke", palette.line)
         .attr(
           "stroke-opacity",
-          candidate.primary ? 1 : candidate.layer.strokeOpacity,
+          candidate.primary
+            ? 1
+            : series.length > 2
+              ? Math.min(0.42, candidate.layer.strokeOpacity)
+              : candidate.layer.strokeOpacity,
         )
         .attr(
           "stroke-dasharray",
@@ -1439,7 +1502,7 @@ if (root) {
         )
         .attr("stroke-linecap", "round")
         .attr("stroke-linejoin", "round")
-        .attr("stroke-width", candidate.primary ? (compact ? 6 : 3.5) : compact ? 4 : 2.5);
+        .attr("stroke-width", candidate.primary ? (compact ? 6 : 3.5) : compact ? 4 : 1.8);
     });
   }
 
@@ -1453,7 +1516,7 @@ if (root) {
     const height = Math.max(180, Math.round(nodes.chart.clientHeight));
     const margin = {
       top: 8,
-      right: 0,
+      right: series.length > 1 ? 64 : 0,
       bottom: 8,
       left: 0,
     };
@@ -1548,7 +1611,10 @@ if (root) {
       .x((row) => x(row.date))
       .y((row) => y(row.plotValue))
       .curve(d3.curveMonotoneX);
-    series.forEach((candidate) => {
+    const orderedSeries = [...series].sort(
+      (left, right) => Number(left.primary) - Number(right.primary),
+    );
+    orderedSeries.forEach((candidate) => {
       plot
         .append("path")
         .datum(candidate.rows)
@@ -1561,7 +1627,11 @@ if (root) {
         .attr("stroke", currentLineColor())
         .attr(
           "stroke-opacity",
-          candidate.primary ? 1 : candidate.layer.strokeOpacity,
+          candidate.primary
+            ? 1
+            : series.length > 2
+              ? Math.min(0.42, candidate.layer.strokeOpacity)
+              : candidate.layer.strokeOpacity,
         )
         .attr(
           "stroke-dasharray",
@@ -1569,6 +1639,42 @@ if (root) {
         )
         .attr("stroke-width", candidate.primary ? 2.4 : 1.8);
     });
+
+    if (series.length > 1) {
+      const labelPositions = spreadLineLabels(
+        series.map((candidate) => ({
+          candidate,
+          lineY: y(candidate.rows.at(-1).plotValue),
+        })),
+        8,
+        innerHeight - 8,
+        16,
+      );
+      labelPositions.forEach(({ candidate, lineY, labelY }) => {
+        const stateClass = candidate.primary ? "is-selected" : "is-layer";
+        plot
+          .append("line")
+          .attr(
+            "class",
+            `gpu-benchmark__line-label-connector ${stateClass}`,
+          )
+          .attr("aria-hidden", "true")
+          .attr("x1", innerWidth - 4)
+          .attr("x2", innerWidth + 4)
+          .attr("y1", lineY)
+          .attr("y2", labelY)
+          .attr("stroke", currentLineColor());
+        plot
+          .append("text")
+          .attr("class", `gpu-benchmark__line-label ${stateClass}`)
+          .attr("aria-hidden", "true")
+          .attr("x", innerWidth + 8)
+          .attr("y", labelY)
+          .attr("dominant-baseline", "middle")
+          .attr("fill", currentLineColor())
+          .text(candidate.layer.id);
+      });
+    }
 
     const zoomSelection = plot
       .append("rect")
@@ -1816,15 +1922,32 @@ if (root) {
       const range = document.createElement("small");
       entry.className = "gpu-benchmark__tooltip-row";
       if (row.primary) entry.dataset.selected = "true";
-      swatch.style.backgroundColor = currentLineColor();
-      swatch.style.opacity = String(row.primary ? 1 : row.layer.strokeOpacity);
+      const lineColor = currentLineColor();
+      const [dashLength = 4, gapLength = 3] = String(
+        row.layer.strokeDasharray || "4 3",
+      )
+        .split(/\s+/)
+        .map(Number);
+      swatch.style.backgroundColor = row.primary ? lineColor : "transparent";
+      if (!row.primary) {
+        swatch.style.backgroundImage =
+          `repeating-linear-gradient(90deg, ${lineColor} 0 ${dashLength}px, ` +
+          `transparent ${dashLength}px ${dashLength + gapLength}px)`;
+      }
+      swatch.style.opacity = String(
+        row.primary
+          ? 1
+          : rows.length > 2
+            ? Math.min(0.42, row.layer.strokeOpacity)
+            : row.layer.strokeOpacity,
+      );
       label.textContent = row.layer.shortLabel || row.layer.label;
       value.textContent = formatPlotValue(row.plotValue, state.scale);
       range.textContent =
         state.scale === "index"
-          ? row.layer.sample
-            ? "Sample"
-            : formatUsd(row.value)
+          ? row.primary
+            ? formatUsd(row.value)
+            : ""
           : row.primary
           ? `${formatUsd(row.lower)} to ${formatUsd(row.upper)}`
           : "";
@@ -1843,6 +1966,38 @@ if (root) {
     return Math.abs(after.date - date) < Math.abs(before.date - date)
       ? after
       : before;
+  }
+
+  function spreadLineLabels(entries, minimum, maximum, gap) {
+    const positions = entries
+      .map((entry) => ({ ...entry, labelY: entry.lineY }))
+      .sort((left, right) => left.lineY - right.lineY);
+    positions.forEach((entry, index) => {
+      entry.labelY = Math.max(
+        minimum,
+        entry.lineY,
+        index ? positions[index - 1].labelY + gap : minimum,
+      );
+    });
+    const overflow = (positions.at(-1)?.labelY ?? maximum) - maximum;
+    if (overflow > 0) {
+      positions.forEach((entry) => {
+        entry.labelY -= overflow;
+      });
+    }
+    for (let index = positions.length - 2; index >= 0; index -= 1) {
+      positions[index].labelY = Math.min(
+        positions[index].labelY,
+        positions[index + 1].labelY - gap,
+      );
+    }
+    const underflow = minimum - (positions[0]?.labelY ?? minimum);
+    if (underflow > 0) {
+      positions.forEach((entry) => {
+        entry.labelY += underflow;
+      });
+    }
+    return positions;
   }
 
   function visibleRows(rows) {
