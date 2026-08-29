@@ -187,7 +187,7 @@ export function gpuPriceBarMarkup(
   const inner = `
     <desc>${escapeXml(ariaLabel)}</desc>
     <rect width="${SVG_WIDTH}" height="${canvasHeight}" fill="${palette.paper}"/>
-    <line data-price-ladder-rail="" x1="${plotLeft}" x2="${plotRight}" y1="${railY}" y2="${railY}"
+    <line data-price-ladder-rail="" x1="0" x2="${SVG_WIDTH}" y1="${railY}" y2="${railY}"
       stroke="${palette.line}" stroke-width="${railWidth}" stroke-opacity="0.28"
       stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="0"/>
     ${rowMarkup}`;
