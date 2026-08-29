@@ -61,6 +61,7 @@ if (root) {
     ?.setAttribute("aria-label", cardDefinition.title);
   const craftDraftStorageKey = `desk.craft-draft.v1.${cardId}`;
   const catalogColorStorageKey = "desk.catalog-colors.v1";
+  const catalogScrollStorageKey = "desk.catalog-scroll.v1";
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
@@ -74,10 +75,14 @@ if (root) {
   const requestedView =
     requestedCard === cardId ? params.get("view") : null;
   const requestedLayout = params.get("layout");
+  const mobileCardView =
+    mobileViewport.matches && requestedView === "card";
   const initialMode =
     requestedView === "craft"
       ? "craft"
-      : requestedView === "monitor" || requestedView === "full"
+      : requestedView === "monitor" ||
+          requestedView === "full" ||
+          mobileCardView
         ? "monitor"
         : "catalog";
   const initialView = initialMode === "catalog" ? "share" : "detail";
@@ -85,7 +90,11 @@ if (root) {
     initialMode === "craft" && params.get("draft") === "new";
   const initialLayout =
     initialMode === "catalog" &&
-    (requestedView === "gallery" || requestedLayout === "all")
+    (
+      mobileViewport.matches ||
+      requestedView === "gallery" ||
+      requestedLayout === "all"
+    )
       ? "all"
       : "focus";
   const selected = families.includes(params.get("gpu"))
@@ -134,6 +143,7 @@ if (root) {
       : null;
   const initialCraftDraft =
     initialMode === "craft" ? null : loadCraftDraft(savedCatalog);
+  const initialViewNeedsRepair = mobileCardView;
   const initialStateNeedsRepair =
     (params.has("gpu") && params.get("gpu") !== selected) ||
     (params.has("layers") &&
@@ -170,7 +180,7 @@ if (root) {
     craftDirty: false,
     craftBaseline: null,
     craftDraft: initialCraftDraft,
-    catalogScrollY: null,
+    catalogScrollY: readCatalogScrollPosition(),
   };
   const nodes = {
     layoutPanels: new Map(
@@ -284,7 +294,7 @@ if (root) {
     configureCommandPalette();
     syncSavedCatalogCommands();
     configureUtcClock();
-    if (initialStateNeedsRepair) updateLocation();
+    if (initialStateNeedsRepair || initialViewNeedsRepair) updateLocation();
     configureChoiceButtons(
       nodes.familyButtons,
       (button) => button.dataset.gpuFamily,
@@ -312,6 +322,7 @@ if (root) {
       });
     }
     nodes.commandOpen?.addEventListener("click", () => commandPalette.open());
+    mobileViewport.addEventListener("change", handleMobileViewportChange);
     nodes.galleryToggle?.addEventListener("click", (event) => {
       showPanel("share", true, "all", event.detail === 0, "catalog");
     });
@@ -1856,6 +1867,16 @@ if (root) {
     }
   }
 
+  function catalogDestinationLayout() {
+    return mobileViewport.matches ||
+      state.layout === "all" ||
+      state.activeCatalogId ||
+      state.craftDirty ||
+      state.craftDraft
+      ? "all"
+      : "focus";
+  }
+
   function syncModeActions(animateChange) {
     const label = workspaceLabel();
     for (const button of nodes.modeButtons) {
@@ -1868,7 +1889,9 @@ if (root) {
       if (mode === "catalog") {
         button.setAttribute(
           "aria-controls",
-          state.layout === "all" ? "desk-card-gallery" : "desk-card-focus",
+          catalogDestinationLayout() === "all"
+            ? "desk-card-gallery"
+            : "desk-card-focus",
         );
       }
       button.setAttribute(
@@ -2038,6 +2061,17 @@ if (root) {
     window.requestAnimationFrame(() => revealCardRailTab(tabs[nextIndex]));
   }
 
+  function handleMobileViewportChange(event) {
+    syncModeActions(false);
+    if (
+      event.matches &&
+      state.mode === "catalog" &&
+      state.layout === "focus"
+    ) {
+      showPanel("detail", true, "focus", false, "monitor");
+    }
+  }
+
   function revealCardRailTab(button) {
     if (!mobileViewport.matches || !button) return;
     const scroller = button.closest(".desk-card-tabs");
@@ -2095,6 +2129,7 @@ if (root) {
       theme: currentTheme(),
       ...stateOverrides,
     });
+    persistCatalogScrollPosition();
     window.location.assign(cardUrl(nextCard.id, view, nextState));
   }
 
@@ -2125,6 +2160,7 @@ if (root) {
     if (entryCard.id !== cardId) {
       const url = cardUrl(entryCard.id, "monitor", entryState);
       if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
+      persistCatalogScrollPosition();
       window.location.assign(url);
       return;
     }
@@ -2541,11 +2577,7 @@ if (root) {
       await showPanel(
         "share",
         true,
-        mobileViewport.matches
-          ? "all"
-          : (state.activeCatalogId || state.craftDirty || state.craftDraft)
-            ? "all"
-            : "focus",
+        catalogDestinationLayout(),
         false,
         mode,
       );
@@ -2567,7 +2599,10 @@ if (root) {
     requestedMode = null,
   ) {
     const targetLayout =
-      nextName === "share" && nextLayout === "all" ? "all" : "focus";
+      nextName === "share" &&
+      (nextLayout === "all" || mobileViewport.matches)
+        ? "all"
+        : "focus";
     const targetMode =
       nextName === "share" || targetLayout === "all"
         ? "catalog"
@@ -2667,9 +2702,7 @@ if (root) {
       targetLayout === "all" &&
       Number.isFinite(state.catalogScrollY)
     ) {
-      window.requestAnimationFrame(() => {
-        window.scrollTo({ top: state.catalogScrollY, behavior: "auto" });
-      });
+      restoreCatalogScrollPosition();
     }
   }
 
@@ -2741,6 +2774,81 @@ if (root) {
       url.searchParams.set("item", state.activeCatalogId);
     }
     window.history.replaceState({}, "", url);
+  }
+
+  function persistCatalogScrollPosition() {
+    if (!mobileViewport.matches || state.layout !== "all") return;
+    try {
+      window.sessionStorage.setItem(
+        catalogScrollStorageKey,
+        JSON.stringify({
+          position: window.scrollY,
+          savedAt: Date.now(),
+        }),
+      );
+    } catch {}
+  }
+
+  function readCatalogScrollPosition() {
+    try {
+      const stored = window.sessionStorage.getItem(catalogScrollStorageKey);
+      if (stored === null) return null;
+      let position = Number(stored);
+      if (!Number.isFinite(position)) {
+        const snapshot = JSON.parse(stored);
+        if (
+          !snapshot ||
+          Date.now() - Number(snapshot.savedAt) > 10 * 60 * 1000
+        ) {
+          clearCatalogScrollPosition();
+          return null;
+        }
+        position = Number(snapshot.position);
+      }
+      return Number.isFinite(position) && position >= 0 ? position : null;
+    } catch {
+      clearCatalogScrollPosition();
+      return null;
+    }
+  }
+
+  function restoreCatalogScrollPosition() {
+    const position = state.catalogScrollY;
+    if (!Number.isFinite(position)) return;
+    let attempts = 0;
+    let stableFrames = 0;
+    const restore = () => {
+      if (
+        !mobileViewport.matches ||
+        state.mode !== "catalog" ||
+        state.layout !== "all"
+      ) {
+        return;
+      }
+      const maxScroll = Math.max(
+        0,
+        document.documentElement.scrollHeight - window.innerHeight,
+      );
+      const target = Math.min(position, maxScroll);
+      window.scrollTo({ top: target, behavior: "auto" });
+      attempts += 1;
+      stableFrames = Math.abs(window.scrollY - target) < 1
+        ? stableFrames + 1
+        : 0;
+      if ((maxScroll >= position && stableFrames >= 2) || attempts >= 8) {
+        state.catalogScrollY = window.scrollY;
+        clearCatalogScrollPosition();
+        return;
+      }
+      window.requestAnimationFrame(restore);
+    };
+    window.requestAnimationFrame(restore);
+  }
+
+  function clearCatalogScrollPosition() {
+    try {
+      window.sessionStorage.removeItem(catalogScrollStorageKey);
+    } catch {}
   }
 
   function currentCardState() {

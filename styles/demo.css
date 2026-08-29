@@ -84,7 +84,7 @@ body {
 @media (max-width: 640px) {
   body {
     align-items: start;
-    padding: calc(96px + 32px) 12px 64px;
+    padding: calc(96px + 16px) 12px 64px;
   }
 
   .desk-stage {
@@ -106,7 +106,7 @@ body {
   }
 
   :root[data-desk-layout="all"] body {
-    padding-top: calc(96px + 32px);
+    padding-top: calc(96px + 16px);
   }
 
   :root[data-display-toolbar="expanded"] body,
@@ -115,7 +115,7 @@ body {
   }
 
   .desk-stage .gpu-index {
-    scroll-margin-top: calc(96px + 32px);
+    scroll-margin-top: calc(96px + 16px);
   }
 
   :root[data-display-toolbar="expanded"] .desk-stage .gpu-index {
@@ -133,6 +133,26 @@ body {
     height: min(244px, calc((100vw - 24px) * 2 / 3));
     margin-inline: 0;
     aspect-ratio: auto;
+  }
+}
+
+@media (min-width: 421px) and (max-width: 640px) {
+  body,
+  :root[data-desk-layout="all"] body {
+    padding-top: calc(96px + 24px);
+  }
+
+  :root[data-display-toolbar="expanded"] body,
+  :root[data-display-toolbar="expanded"][data-desk-layout="all"] body {
+    padding-top: calc(96px + 64px + 8px);
+  }
+
+  .desk-stage .gpu-index {
+    scroll-margin-top: calc(96px + 24px);
+  }
+
+  :root[data-display-toolbar="expanded"] .desk-stage .gpu-index {
+    scroll-margin-top: calc(96px + 64px + 8px);
   }
 }
 

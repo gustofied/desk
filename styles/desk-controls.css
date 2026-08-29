@@ -1154,6 +1154,7 @@ button.compute-share-card-frame:focus-visible {
   .desk-top-controls {
     top: 64px;
     left: 50%;
+    gap: 4px;
   }
 
   .desk-mobile-search {
@@ -1359,10 +1360,6 @@ button.compute-share-card-frame:focus-visible {
 
   .compute-card-skin--market .gpu-benchmark__footer {
     padding-inline: 8px;
-  }
-
-  .desk-top-controls {
-    gap: 4px;
   }
 
   .desk-display-option {

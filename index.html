@@ -41,6 +41,9 @@
           ? params.get("view")
           : null;
         const requestedLayout = params.get("layout");
+        const mobileViewport = window.matchMedia("(max-width: 640px)");
+        const mobileCardView =
+          mobileViewport.matches && requestedView === "card";
         let theme = requestedTheme === "light" || requestedTheme === "dark"
           ? requestedTheme
           : systemTheme;
@@ -63,11 +66,17 @@
         document.documentElement.dataset.palette = palette;
         const deskView = requestedView === "craft"
           ? "craft"
-          : requestedView === "monitor" || requestedView === "full"
+          : requestedView === "monitor" ||
+              requestedView === "full" ||
+              mobileCardView
             ? "monitor"
             : "catalog";
         const isGallery = deskView === "catalog" &&
-          (requestedView === "gallery" || requestedLayout === "all");
+          (
+            mobileViewport.matches ||
+            requestedView === "gallery" ||
+            requestedLayout === "all"
+          );
         document.documentElement.dataset.deskView = deskView;
         document.documentElement.dataset.deskLayout = isGallery ? "all" : "focus";
         document.querySelector('meta[name="theme-color"]')?.setAttribute(
@@ -77,10 +86,10 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=65">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=43">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=66">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=44">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
-    <link rel="stylesheet" href="./styles/demo.css?v=15">
+    <link rel="stylesheet" href="./styles/demo.css?v=17">
   </head>
   <body>
     <div class="desk-top-controls">
@@ -364,6 +373,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=93"></script>
+    <script type="module" src="./desk.js?v=96"></script>
   </body>
 </html>

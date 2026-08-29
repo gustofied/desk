@@ -482,7 +482,7 @@
   .desk-card-gallery__grid[data-card-count] {
     grid-auto-flow: row;
     grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+    gap: 8px;
     width: 100%;
     margin: 0;
     padding: 0;
