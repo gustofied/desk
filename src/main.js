@@ -251,7 +251,6 @@ if (root) {
   const catalogCards = new Map();
   const catalogReflowAnimations = new WeakMap();
   let catalogPointerDrag = null;
-  let catalogKeyboardMove = null;
   let suppressedCatalogClickKey = null;
   let unregisterSavedCatalogCommands = () => {};
   initialize();
@@ -1234,7 +1233,6 @@ if (root) {
     const cards = entries.map((entry) => {
       const item = document.createElement("div");
       const button = document.createElement("button");
-      const handle = document.createElement("button");
       item.className = "desk-gallery-item";
       item.dataset.catalogId = entry.key;
       item.setAttribute("role", "listitem");
@@ -1244,11 +1242,6 @@ if (root) {
       button.dataset.catalogKind = entry.kind;
       button.innerHTML = `
         <svg class="compute-share-artifact desk-gallery-card__artifact" viewBox="0 0 1200 675" aria-hidden="true" data-gallery-artifact></svg>`;
-      handle.className = "desk-gallery-card__handle";
-      handle.type = "button";
-      handle.dataset.catalogHandle = entry.key;
-      handle.setAttribute("aria-pressed", "false");
-      handle.innerHTML = `<span aria-hidden="true">${"<i></i>".repeat(6)}</span>`;
       button.addEventListener("click", (event) => {
         if (
           event.detail !== 0 &&
@@ -1265,11 +1258,10 @@ if (root) {
         entry,
         item,
         button,
-        handle,
         artifact: button.querySelector("[data-gallery-artifact]"),
       };
       configureCatalogCardReordering(cardNodes);
-      item.append(button, handle);
+      item.append(button);
       catalogCards.set(entry.key, cardNodes);
       return item;
     });
@@ -1322,39 +1314,24 @@ if (root) {
   }
 
   function configureCatalogCardReordering(cardNodes) {
-    const { button, handle, item, entry } = cardNodes;
+    const { button } = cardNodes;
     button.addEventListener("pointerdown", (event) => {
-      if (event.pointerType === "touch") return;
       beginCatalogPointerReorder(event, cardNodes);
     });
-    handle.addEventListener("pointerdown", (event) => {
-      event.stopPropagation();
-      beginCatalogPointerReorder(event, cardNodes);
-    });
-    handle.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      if (
-        event.detail !== 0 &&
-        suppressedCatalogClickKey === entry.key
-      ) {
-        suppressedCatalogClickKey = null;
-        return;
-      }
-      toggleCatalogKeyboardMove(cardNodes);
-    });
-    handle.addEventListener("keydown", (event) => {
-      handleCatalogReorderKeydown(event, cardNodes);
-    });
-    handle.addEventListener("blur", () => {
-      window.queueMicrotask(() => {
+    button.addEventListener(
+      "touchmove",
+      (event) => {
         if (
-          catalogKeyboardMove?.item === item &&
-          document.activeElement !== handle
+          catalogPointerDrag?.surface === button &&
+          catalogPointerDrag.armed
         ) {
-          finishCatalogKeyboardMove(true);
+          event.preventDefault();
         }
-      });
+      },
+      { passive: false },
+    );
+    button.addEventListener("keydown", (event) => {
+      handleCatalogReorderKeydown(event, cardNodes);
     });
   }
 
@@ -1367,7 +1344,6 @@ if (root) {
     ) {
       return;
     }
-    if (catalogKeyboardMove) finishCatalogKeyboardMove(true);
     const surface = event.currentTarget;
     const drag = {
       ...cardNodes,
@@ -1380,12 +1356,18 @@ if (root) {
       offsetX: 0,
       offsetY: 0,
       frame: 0,
+      holdTimer: 0,
+      held: false,
+      movedBeforeHold: false,
+      armed: event.pointerType !== "touch",
       dragging: false,
       originalKeys: catalogDomKeys(),
     };
     drag.move = (nextEvent) => updateCatalogPointerReorder(nextEvent, drag);
     drag.end = (nextEvent) => {
       if (nextEvent.pointerId === drag.pointerId) {
+        drag.currentX = nextEvent.clientX;
+        drag.currentY = nextEvent.clientY;
         finishCatalogPointerReorder(true);
       }
     };
@@ -1399,8 +1381,30 @@ if (root) {
     surface.addEventListener("pointerup", drag.end);
     surface.addEventListener("pointercancel", drag.cancel);
     surface.addEventListener("lostpointercapture", drag.cancel);
-    surface.setPointerCapture?.(event.pointerId);
-    if (event.pointerType === "touch") event.preventDefault();
+    if (drag.armed) {
+      captureCatalogPointer(drag);
+    } else {
+      drag.holdTimer = window.setTimeout(() => {
+        armCatalogPointerReorder(drag);
+      }, 320);
+    }
+  }
+
+  function armCatalogPointerReorder(drag) {
+    if (catalogPointerDrag !== drag || drag.armed) return;
+    drag.armed = true;
+    drag.held = true;
+    drag.holdTimer = 0;
+    drag.item.dataset.reorderReady = "true";
+    captureCatalogPointer(drag);
+  }
+
+  function captureCatalogPointer(drag) {
+    try {
+      drag.surface.setPointerCapture?.(drag.pointerId);
+    } catch {
+      // The existing listeners still cover a pointer that remains over the card.
+    }
   }
 
   function updateCatalogPointerReorder(event, drag) {
@@ -1412,15 +1416,22 @@ if (root) {
     }
     drag.currentX = event.clientX;
     drag.currentY = event.clientY;
+    const distance = Math.hypot(
+      drag.currentX - drag.startX,
+      drag.currentY - drag.startY,
+    );
+    if (!drag.armed) {
+      if (distance >= 8) {
+        drag.movedBeforeHold = true;
+        finishCatalogPointerReorder(false);
+      }
+      return;
+    }
     if (!drag.dragging) {
-      const distance = Math.hypot(
-        drag.currentX - drag.startX,
-        drag.currentY - drag.startY,
-      );
       if (distance < 8) return;
       drag.dragging = true;
+      drag.item.removeAttribute("data-reorder-ready");
       drag.item.dataset.dragging = "true";
-      drag.handle.setAttribute("aria-pressed", "true");
       nodes.galleryGrid.dataset.reordering = "true";
       document.documentElement.dataset.catalogReordering = "true";
     }
@@ -1507,7 +1518,7 @@ if (root) {
       activeDrag.offsetY += draggedRect.top - nextRect.top;
       applyCatalogDragPosition(activeDrag);
     }
-    animateCatalogReflow(beforeRects, item);
+    animateCatalogReflow(beforeRects, activeDrag ? item : null);
     syncCatalogCardPositions();
     return true;
   }
@@ -1516,7 +1527,15 @@ if (root) {
     const drag = catalogPointerDrag;
     if (!drag) return;
     catalogPointerDrag = null;
-    if (drag.frame) window.cancelAnimationFrame(drag.frame);
+    if (drag.frame) {
+      window.cancelAnimationFrame(drag.frame);
+      drag.frame = 0;
+      if (drag.dragging) {
+        applyCatalogDragPosition(drag);
+        reorderCatalogItemAtPointer(drag);
+      }
+    }
+    if (drag.holdTimer) window.clearTimeout(drag.holdTimer);
     drag.surface.removeEventListener("pointermove", drag.move);
     drag.surface.removeEventListener("pointerup", drag.end);
     drag.surface.removeEventListener("pointercancel", drag.cancel);
@@ -1524,11 +1543,16 @@ if (root) {
     if (drag.surface.hasPointerCapture?.(drag.pointerId)) {
       drag.surface.releasePointerCapture(drag.pointerId);
     }
-    if (!drag.dragging) return;
+    drag.item.removeAttribute("data-reorder-ready");
+    if (!drag.dragging) {
+      if (drag.held || drag.movedBeforeHold) {
+        suppressCatalogPointerClick(drag.entry.key);
+      }
+      return;
+    }
 
     if (!commit) restoreCatalogDomOrder(drag.originalKeys, drag.item, drag);
     drag.item.removeAttribute("data-dragging");
-    drag.handle.setAttribute("aria-pressed", "false");
     nodes.galleryGrid.removeAttribute("data-reordering");
     document.documentElement.removeAttribute("data-catalog-reordering");
     settleCatalogDragItem(drag.item);
@@ -1539,16 +1563,20 @@ if (root) {
         persistCatalogDomOrder();
         announceCatalogPosition(drag.entry, drag.item, "moved");
       }
-      suppressedCatalogClickKey = drag.entry.key;
-      window.setTimeout(() => {
-        if (suppressedCatalogClickKey === drag.entry.key) {
-          suppressedCatalogClickKey = null;
-        }
-      }, 0);
     } else {
       announceWorkspace("Catalog move cancelled");
     }
+    suppressCatalogPointerClick(drag.entry.key);
     syncCatalogCardPositions();
+  }
+
+  function suppressCatalogPointerClick(key) {
+    suppressedCatalogClickKey = key;
+    window.setTimeout(() => {
+      if (suppressedCatalogClickKey === key) {
+        suppressedCatalogClickKey = null;
+      }
+    }, 0);
   }
 
   function settleCatalogDragItem(item) {
@@ -1575,47 +1603,22 @@ if (root) {
     animation.addEventListener("cancel", cleanUp, { once: true });
   }
 
-  function toggleCatalogKeyboardMove(cardNodes) {
-    if (catalogPointerDrag) return;
-    if (catalogKeyboardMove?.item === cardNodes.item) {
-      finishCatalogKeyboardMove(true);
-      return;
-    }
-    if (catalogKeyboardMove) finishCatalogKeyboardMove(true);
-    catalogKeyboardMove = {
-      ...cardNodes,
-      originalKeys: catalogDomKeys(),
-    };
-    cardNodes.item.dataset.keyboardMoving = "true";
-    cardNodes.handle.setAttribute("aria-pressed", "true");
-    syncCatalogCardPositions();
-    announceWorkspace(
-      `Moving ${catalogEntryTitle(cardNodes.entry)}. Use arrow keys to choose a position.`,
-    );
-  }
-
   function handleCatalogReorderKeydown(event, cardNodes) {
-    if ([" ", "Spacebar", "Enter"].includes(event.key)) {
-      event.preventDefault();
-      event.stopPropagation();
-      toggleCatalogKeyboardMove(cardNodes);
-      return;
-    }
-    if (event.key === "Escape" && catalogKeyboardMove?.item === cardNodes.item) {
-      event.preventDefault();
-      finishCatalogKeyboardMove(false);
-      return;
-    }
     if (
-      !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
+      !event.altKey ||
+      ![
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "ArrowDown",
+        "Home",
+        "End",
+      ].includes(event.key)
     ) {
       return;
     }
     event.preventDefault();
     event.stopPropagation();
-    if (catalogKeyboardMove?.item !== cardNodes.item) {
-      toggleCatalogKeyboardMove(cardNodes);
-    }
     const items = catalogDomItems();
     const currentIndex = items.indexOf(cardNodes.item);
     const columns = catalogGridColumnCount();
@@ -1634,30 +1637,14 @@ if (root) {
                     : columns
             );
     if (moveCatalogItemToIndex(cardNodes.item, nextIndex)) {
-      cardNodes.handle.focus({ preventScroll: true });
-      announceCatalogPosition(cardNodes.entry, cardNodes.item, "position");
+      persistCatalogDomOrder();
+      cardNodes.button.focus({ preventScroll: true });
+      announceCatalogPosition(cardNodes.entry, cardNodes.item, "moved to");
     }
-  }
-
-  function finishCatalogKeyboardMove(commit) {
-    const move = catalogKeyboardMove;
-    if (!move) return;
-    catalogKeyboardMove = null;
-    if (!commit) restoreCatalogDomOrder(move.originalKeys, move.item);
-    else persistCatalogDomOrder();
-    move.item.removeAttribute("data-keyboard-moving");
-    move.handle.setAttribute("aria-pressed", "false");
-    syncCatalogCardPositions();
-    announceCatalogPosition(
-      move.entry,
-      move.item,
-      commit ? "placed" : "restored",
-    );
   }
 
   function cancelCatalogReorder() {
     if (catalogPointerDrag) finishCatalogPointerReorder(false);
-    if (catalogKeyboardMove) finishCatalogKeyboardMove(false);
   }
 
   function catalogDomItems() {
@@ -1744,20 +1731,13 @@ if (root) {
     items.forEach((item, index) => {
       const card = catalogCards.get(item.dataset.catalogId);
       if (!card) return;
-      const moving = catalogKeyboardMove?.item === item;
-      const title = catalogEntryTitle(card.entry);
       item.setAttribute("aria-posinset", String(index + 1));
       item.setAttribute("aria-setsize", String(total));
-      card.handle.setAttribute(
-        "aria-label",
-        moving
-          ? `Moving ${title}. Position ${index + 1} of ${total}. Use arrow keys, then press Space to place.`
-          : `Move ${title}. Position ${index + 1} of ${total}.`,
-      );
-      card.handle.setAttribute(
+      card.button.setAttribute(
         "aria-keyshortcuts",
-        "Space ArrowLeft ArrowRight ArrowUp ArrowDown Home End Escape",
+        "Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown Alt+Home Alt+End",
       );
+      card.button.setAttribute("aria-describedby", "desk-catalog-reorder-help");
     });
   }
 
