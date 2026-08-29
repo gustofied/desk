@@ -77,6 +77,10 @@ body {
   aspect-ratio: 2 / 1;
 }
 
+.desk-stage .gpu-index[data-card-renderer="categorical-bar"] .gpu-benchmark__chart {
+  aspect-ratio: 1200 / 630;
+}
+
 @media (max-width: 640px) {
   body {
     align-items: start;

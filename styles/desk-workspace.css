@@ -259,6 +259,59 @@
   outline-offset: 4px;
 }
 
+.gpu-index[data-card-renderer="categorical-bar"] .gpu-benchmark__footer {
+  display: none;
+}
+
+.gpu-index[data-card-renderer="categorical-bar"] .gpu-benchmark__compare-panel {
+  position: relative;
+  top: auto;
+}
+
+.gpu-index[data-card-renderer="categorical-bar"] .gpu-benchmark__chart {
+  border-bottom: 1px solid var(--market-card-rule);
+}
+
+.compute-card-skin--market.gpu-index[data-card-renderer="categorical-bar"] .gpu-index-detail {
+  background: var(--market-card-pale);
+  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 52%, transparent);
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
+}
+
+.compute-card-skin--market.gpu-index[data-card-renderer="categorical-bar"] .gpu-index-detail::after {
+  display: none;
+}
+
+:root[data-theme="dark"] .compute-card-skin--market.gpu-index[data-card-renderer="categorical-bar"] .gpu-index-detail {
+  background: #272727;
+  border-color: color-mix(in srgb, var(--desk-accent-deep) 32%, transparent);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 32%);
+}
+
+.gpu-price-bar__row {
+  outline: none;
+  transition: opacity 240ms var(--desk-ease-out);
+}
+
+.gpu-price-bar__row .gpu-price-bar__hit {
+  cursor: default;
+  transition: fill 240ms var(--desk-ease-out);
+}
+
+.gpu-price-bar__row[data-active="true"] {
+  opacity: 1;
+}
+
+.gpu-price-bar__row[data-active="true"] .gpu-price-bar__hit,
+.gpu-price-bar__row:focus .gpu-price-bar__hit {
+  fill: color-mix(in srgb, var(--desk-accent-pale) 48%, transparent);
+}
+
+.gpu-price-bar__row:focus-visible .gpu-price-bar__hit {
+  stroke: var(--desk-accent-deep);
+  stroke-width: 2px;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .desk-gallery-card.compute-share-card-frame:hover {
     z-index: 1;
@@ -380,6 +433,11 @@
 @media (prefers-reduced-motion: reduce) {
   .compute-card-skin--market .desk-card-rail :is(.desk-card-tabs button, .desk-card-gallery-tab),
   .desk-gallery-card {
+    transition: none;
+  }
+
+  .gpu-price-bar__row,
+  .gpu-price-bar__row .gpu-price-bar__hit {
     transition: none;
   }
 

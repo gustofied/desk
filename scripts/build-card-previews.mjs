@@ -30,12 +30,15 @@ import {
   INDEX_BASELINE,
   spreadLineLabels,
 } from "../src/chart-domain.js";
+import { createGpuPriceBarModel } from "../src/gpu-price-bar-model.js";
+import { renderGpuPriceBarSvg } from "../src/gpu-price-bar-presentation.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 await mkdir(join(root, ".cache", "fontconfig"), { recursive: true });
 process.env.FONTCONFIG_FILE = join(root, "scripts", "fontconfig.xml");
 const { default: sharp } = await import("sharp");
 const cardDefinition = getCardDefinition("gpu-index");
+const barCardDefinition = getCardDefinition("gpu-price-snapshot");
 const gpuLayers = cardDefinition.layers.filter(
   (layer) => layer.unit === "usd-hour",
 );
@@ -44,6 +47,9 @@ const palettes = Object.fromEntries(
 );
 const imageRoot = join(root, cardDefinition.previewImageDir);
 const pageRoot = join(root, cardDefinition.previewPageDir);
+const barImageRoot = join(root, barCardDefinition.previewImageDir);
+const barPageRoot = join(root, barCardDefinition.previewPageDir);
+const generatedRoots = [imageRoot, pageRoot, barImageRoot, barPageRoot];
 const manifestPath = join(root, ".cache", "generated-card-files.json");
 const runtimeData = JSON.parse(
   await readFile(join(root, cardDefinition.dataFile), "utf8"),
@@ -77,15 +83,13 @@ const latestDate = new Date(
 
 await installWebFonts();
 await generateLegacyPreviews();
-const publishedCount = await generatePublishedPreviews();
+const publishedLineCount = await generatePublishedPreviews();
+const publishedBarCount = await generatePublishedBarPreviews();
 await generateDefaultPreview();
 
 generatedFiles.sort();
 await retireOldGeneratedFiles(generatedFiles);
-await Promise.all([
-  pruneEmptyDirectories(imageRoot),
-  pruneEmptyDirectories(pageRoot),
-]);
+await Promise.all(generatedRoots.map(pruneEmptyDirectories));
 await mkdir(dirname(manifestPath), { recursive: true });
 await writeFile(
   manifestPath,
@@ -94,7 +98,9 @@ await writeFile(
 );
 
 console.log(
-  `Built ${publishedCount} exact card previews with ${workerCount} workers.`,
+  `Built ${publishedLineCount + publishedBarCount} exact card previews ` +
+    `(${publishedLineCount} line, ${publishedBarCount} bar) with ` +
+    `${workerCount} workers.`,
 );
 
 async function installWebFonts() {
@@ -209,6 +215,47 @@ async function generatePublishedPreviews() {
   return states.length;
 }
 
+async function generatePublishedBarPreviews() {
+  const states = publishedBarStates();
+  await runWithConcurrency(states, workerCount, async (state) => {
+    const model = barPreviewModel(state);
+    const pageHref = publishedCardSharePath(barCardDefinition.id, state);
+    const imageHref = publishedCardPreviewPath(
+      barCardDefinition.id,
+      state,
+      runtimeData.revision,
+    );
+    const pagePath = join(root, pageHref, "index.html");
+    const imagePath = join(root, imageHref);
+    const svg = renderGpuPriceBarSvg(model, {
+      colors: model.colors,
+      title: barCardDefinition.title,
+      primaryId: model.gpu,
+    });
+    const previewImage = await encodePreview(svg);
+    const previewRevision = imageRevision(previewImage);
+
+    await mkdir(dirname(imagePath), { recursive: true });
+    await mkdir(dirname(pagePath), { recursive: true });
+    await Promise.all([
+      writeFile(imagePath, previewImage),
+      writeFile(
+        pagePath,
+        renderPublishedBarSharePage(
+          model,
+          pageHref,
+          imageHref,
+          previewRevision,
+        ),
+        "utf8",
+      ),
+    ]);
+    track(imagePath, pagePath);
+  });
+
+  return states.length;
+}
+
 async function generateDefaultPreview() {
   const deskPreviewPath = join(imageRoot, "desk-comparison.png");
   await mkdir(dirname(deskPreviewPath), { recursive: true });
@@ -265,6 +312,44 @@ function publishedStates() {
   return Array.from(statesByPath.values());
 }
 
+function publishedBarStates() {
+  const statesByPath = new Map();
+  for (const primary of barCardDefinition.layers) {
+    const optionalLayers = barCardDefinition.layers.filter(
+      (layer) => layer.id !== primary.id,
+    );
+    for (let mask = 0; mask < 2 ** optionalLayers.length; mask += 1) {
+      const layers = [
+        primary.id,
+        ...optionalLayers
+          .filter((_, index) => mask & (1 << index))
+          .map((layer) => layer.id),
+      ];
+      for (const palette of Object.keys(palettes)) {
+        for (const theme of THEMES) {
+          const state = normalizeCardState(barCardDefinition.id, {
+            gpu: primary.id,
+            layers,
+            scale: barCardDefinition.defaults.scale,
+            range: barCardDefinition.defaults.range,
+            palette,
+            theme,
+          });
+          const pageHref = publishedCardSharePath(
+            barCardDefinition.id,
+            state,
+          );
+          if (statesByPath.has(pageHref)) {
+            throw new Error(`Duplicate published bar card route: ${pageHref}`);
+          }
+          statesByPath.set(pageHref, state);
+        }
+      }
+    }
+  }
+  return Array.from(statesByPath.values());
+}
+
 function previewModel(state) {
   const normalized = normalizeCardState(cardDefinition.id, state);
   const series = normalized.layers.map((layerId) => {
@@ -308,6 +393,21 @@ function previewModel(state) {
       .map(({ layer }) => layer.shortLabel || layer.label)
       .join(", "),
     rangeLabel: shareRangeLabel(primary.rows, normalized.range),
+  };
+}
+
+function barPreviewModel(state) {
+  const normalized = normalizeCardState(barCardDefinition.id, state);
+  const model = createGpuPriceBarModel(runtimeData, barCardDefinition, {
+    layerIds: normalized.layers,
+  });
+  return {
+    ...model,
+    ...normalized,
+    colors: themeColors(
+      palettes[normalized.palette],
+      normalized.theme,
+    ),
   };
 }
 
@@ -395,6 +495,80 @@ function renderPublishedSharePage(
     theme: model.theme,
   });
   const destination = `/?${destinationParams.toString()}#${cardDefinition.hash}`;
+  const destinationHref = escapeHtml(destination);
+  const redirectScript = JSON.stringify(destination).replaceAll("<", "\\u003c");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="${escapeHtml(description)}">
+    <meta name="theme-color" content="${model.colors.paper}">
+    <link rel="canonical" href="${pageUrl}">
+    <meta property="og:title" content="${escapeHtml(title)}">
+    <meta property="og:description" content="${escapeHtml(description)}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Desk">
+    <meta property="og:url" content="${pageUrl}">
+    <meta property="og:image" content="${imageUrl}">
+    <meta property="og:image:secure_url" content="${imageUrl}">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="${escapeHtml(imageAlt)}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${escapeHtml(title)}">
+    <meta name="twitter:description" content="${escapeHtml(description)}">
+    <meta name="twitter:image" content="${imageUrl}">
+    <meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">
+    <title>${escapeHtml(title)} | Desk</title>
+    <script>
+      const target = new URL(${redirectScript}, window.location.origin);
+      window.location.replace(target);
+    </script>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: ${model.colors.paper}; color: ${model.colors.line}; font: 500 16px/24px Geist, system-ui, sans-serif; }
+      a { color: inherit; text-underline-offset: 0.2em; }
+    </style>
+  </head>
+  <body>
+    <a href="${destinationHref}">Open card</a>
+  </body>
+</html>
+`;
+}
+
+function renderPublishedBarSharePage(
+  model,
+  pageHref,
+  imageHref,
+  previewRevision,
+) {
+  const pageUrl = `${SITE_ORIGIN}${pageHref}?v=${PUBLISHED_CARD_VERSION}-${runtimeData.revision}`;
+  const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
+  const primary = model.bars.find((bar) => bar.id === model.gpu);
+  const labels = model.bars.map((bar) => bar.label).join(", ");
+  const observed = formatSnapshotDate(model.asOf);
+  const title = `${barCardDefinition.title}: ${labels}`;
+  const description =
+    `Latest observed USD per GPU-hour comparison for ${labels}; ` +
+    `${primary?.label || model.gpu} highlighted. Observed ${observed}.`;
+  const imageAlt =
+    `Bar chart comparing ${model.bars
+      .map((bar) => `${bar.label} ${formatUsd(bar.value)}`)
+      .join(", ")}. ${primary?.label || model.gpu} highlighted.`;
+  const destinationParams = new URLSearchParams({
+    card: barCardDefinition.id,
+    view: "card",
+    gpu: model.gpu,
+    layers: model.layers.join(","),
+    scale: model.scale,
+    range: model.range,
+    palette: model.palette,
+    theme: model.theme,
+  });
+  const destination = `/?${destinationParams.toString()}#${barCardDefinition.hash}`;
   const destinationHref = escapeHtml(destination);
   const redirectScript = JSON.stringify(destination).replaceAll("<", "\\u003c");
 
@@ -675,7 +849,7 @@ function renderLegacySharePage(
   const slug = family.toLowerCase();
   const pageUrl = `${SITE_ORIGIN}${cardDefinition.sharePath}/${slug}/${rangeId}/${palette}/${theme}/`;
   const imageUrl = `${SITE_ORIGIN}/${cardDefinition.previewImageDir}/${slug}/${rangeId}/${palette}-${theme}.png?v=${previewRevision}`;
-  const title = `${family} GPU Price Index`;
+  const title = `${family} price`;
   const description = `${formatUsd(latest.value)} per GPU hour over ${range.longLabel}`;
   const imageAlt = `${title} card showing ${description.toLowerCase()}.`;
   const destination =
@@ -736,6 +910,17 @@ function formatIndexChange(value) {
   return `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}%`;
 }
 
+function formatSnapshotDate(timestamp) {
+  const date = new Date(Number(timestamp) * 1000);
+  if (Number.isNaN(date.getTime())) return "an unavailable date";
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
 function imageRevision(buffer) {
   return createHash("sha256").update(buffer).digest("hex").slice(0, 12);
 }
@@ -794,7 +979,7 @@ async function retireOldGeneratedFiles(nextFiles) {
   }
 
   const next = new Set(nextFiles);
-  const allowedRoots = [resolve(imageRoot), resolve(pageRoot)];
+  const allowedRoots = generatedRoots.map((directory) => resolve(directory));
   for (const file of previousFiles) {
     if (next.has(file)) continue;
     const target = resolve(root, file);

@@ -2,9 +2,11 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const GPU_INDEX_ID = "gpu-index";
 const GPU_INDEX_SLUG = "gpu-price-index";
 const GPU_INDEX_DATA_FILE = "data/gpu-price-index.json";
+const GPU_PRICE_SNAPSHOT_ID = "gpu-price-snapshot";
+const GPU_PRICE_SNAPSHOT_SLUG = "gpu-price-snapshot";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
-export const PUBLISHED_CARD_VERSION = "v8";
+export const PUBLISHED_CARD_VERSION = "v9";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),
@@ -79,11 +81,16 @@ export const GPU_LAYERS = Object.freeze([
   }),
 ]);
 
+export const GPU_PRICE_LAYERS = Object.freeze(
+  GPU_LAYERS.filter((layer) => layer.unit === "usd-hour"),
+);
+
 export const CARD_REGISTRY = Object.freeze([
   Object.freeze({
     id: GPU_INDEX_ID,
     slug: GPU_INDEX_SLUG,
     hash: "gpu-benchmark-card",
+    renderer: "line",
     title: "Compute Prices",
     description: "Hourly accelerator prices and Token Index.",
     sourceDir: "api/dashboard-snapshots/gpu-benchmark",
@@ -100,10 +107,40 @@ export const CARD_REGISTRY = Object.freeze([
       palette: "azure",
       theme: "light",
     }),
+    ranges: Object.freeze(["1d", "7d", "all"]),
     layers: GPU_LAYERS,
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Price", unit: "usd-hour" }),
       Object.freeze({ id: "index", label: "Index", unit: "index" }),
+    ]),
+  }),
+  Object.freeze({
+    id: GPU_PRICE_SNAPSHOT_ID,
+    slug: GPU_PRICE_SNAPSHOT_SLUG,
+    hash: "gpu-benchmark-card",
+    renderer: "categorical-bar",
+    title: "Accelerator prices",
+    description: "Current hourly benchmark price by GPU.",
+    sourceCardId: GPU_INDEX_ID,
+    sourceDir: "api/dashboard-snapshots/gpu-benchmark",
+    dataFile: GPU_INDEX_DATA_FILE,
+    dataUrl: `./${GPU_INDEX_DATA_FILE}`,
+    sharePath: `/cards/${GPU_PRICE_SNAPSHOT_SLUG}`,
+    previewImageDir: `assets/social/${GPU_PRICE_SNAPSHOT_ID}`,
+    previewPageDir: `cards/${GPU_PRICE_SNAPSHOT_SLUG}`,
+    defaults: Object.freeze({
+      layer: "H200",
+      layers: Object.freeze(GPU_PRICE_LAYERS.map((layer) => layer.id)),
+      range: "1d",
+      scale: "price",
+      palette: "azure",
+      theme: "light",
+      order: "price-desc",
+    }),
+    ranges: Object.freeze(["1d"]),
+    layers: GPU_PRICE_LAYERS,
+    visualizations: Object.freeze([
+      Object.freeze({ id: "price", label: "Price", unit: "usd-hour" }),
     ]),
   }),
 ]);
@@ -153,10 +190,13 @@ export function normalizeCardState(cardId, stateParams = {}) {
   const gpu = primaryLayers.some((layer) => layer.id === requestedGpu)
     ? requestedGpu
     : card.defaults.layer;
+  const fallbackLayers = stateParams.gpu
+    ? [gpu]
+    : card.defaults.layers;
   const requestedLayers = parseLayerIds(
     layerStateValue(stateParams.layers),
     card,
-    [gpu],
+    fallbackLayers,
   );
   const requestedScale = card.visualizations.some(
     (visualization) => visualization.id === stateParams.scale,
@@ -177,7 +217,8 @@ export function normalizeCardState(cardId, stateParams = {}) {
     .map((layer) => layer.id)
     .filter((layerId) => compatibleLayers.has(layerId));
   const requestedRange = String(stateParams.range || "").toLowerCase();
-  const range = RANGES[requestedRange]
+  const allowedRanges = card.ranges || Object.keys(RANGES);
+  const range = allowedRanges.includes(requestedRange)
     ? requestedRange
     : card.defaults.range;
   const requestedPalette = String(stateParams.palette || "").toLowerCase();

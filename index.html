@@ -5,24 +5,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="application-name" content="Desk">
     <meta name="apple-mobile-web-app-title" content="Desk">
-    <meta name="description" content="Desk is an interactive GPU Price Index for comparing hourly accelerator prices.">
+    <meta name="description" content="Desk turns accelerator market data into clean, interactive cards.">
     <meta name="theme-color" content="#ffffff">
     <link rel="canonical" href="https://desk.adamsioud.com/">
     <meta property="og:title" content="Desk">
-    <meta property="og:description" content="Compare hourly price history for H100, H200, B200, and B300 GPUs.">
+    <meta property="og:description" content="Read, compare, and share accelerator prices in clean market cards.">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Desk">
     <meta property="og:url" content="https://desk.adamsioud.com/">
-    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=8">
-    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=8">
+    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=9">
+    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=9">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:image:alt" content="A Desk comparison card showing H100, H200, and Token Index.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Desk">
-    <meta name="twitter:description" content="Compare hourly price history for H100, H200, B200, and B300 GPUs.">
-    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=8">
+    <meta name="twitter:description" content="Read, compare, and share accelerator prices in clean market cards.">
+    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=9">
     <meta name="twitter:image:alt" content="A Desk comparison card showing H100, H200, and Token Index.">
     <title>Desk</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
@@ -36,7 +36,8 @@
         const params = new URL(window.location.href).searchParams;
         const requestedTheme = params.get("theme");
         const requestedPalette = params.get("palette");
-        const requestedView = params.get("card") === "gpu-index"
+        const requestedCard = params.get("card");
+        const requestedView = ["gpu-index", "gpu-price-snapshot"].includes(requestedCard)
           ? params.get("view")
           : null;
         const requestedLayout = params.get("layout");
@@ -77,9 +78,9 @@
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
     <link rel="stylesheet" href="./styles/desk-controls.css?v=63">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=34">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=35">
     <link rel="stylesheet" href="./styles/command-palette.css?v=4">
-    <link rel="stylesheet" href="./styles/demo.css?v=11">
+    <link rel="stylesheet" href="./styles/demo.css?v=12">
   </head>
   <body>
     <div class="desk-top-controls">
@@ -131,7 +132,7 @@
         data-card-id="gpu-index"
       >
         <header class="desk-card-rail">
-          <div class="desk-card-tabs" role="tablist" aria-label="GPU pricing cards">
+          <div class="desk-card-tabs" role="tablist" aria-label="Market cards">
             <button id="gpu-card-tab-h100" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-gpu-family="H100">
               <span>H100</span><strong data-gpu-family-value="H100">pending</strong>
             </button>
@@ -143,6 +144,9 @@
             </button>
             <button id="gpu-card-tab-b300" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-gpu-family="B300">
               <span>B300</span><strong data-gpu-family-value="B300">pending</strong>
+            </button>
+            <button id="gpu-card-tab-prices" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-card-preset="gpu-price-snapshot">
+              <span>Prices</span>
             </button>
           </div>
           <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog cards" data-index-gallery-toggle>All</button>
@@ -161,7 +165,7 @@
               tabindex="-1"
             >
               <h2 class="desk-workspace-heading" id="desk-workspace-title">Monitor H200 7D</h2>
-              <div class="gpu-index-detail__body" role="region" aria-label="GPU price index">
+              <div class="gpu-index-detail__body" role="region" aria-label="Compute prices">
                 <div class="gpu-benchmark">
 
                   <div class="gpu-benchmark__composer" data-card-composer>
@@ -190,7 +194,7 @@
                       inert
                     >
                       <div class="gpu-benchmark__data-row">
-                        <span class="gpu-benchmark__compare-label">Main</span>
+                        <span class="gpu-benchmark__compare-label" data-card-primary-label>Main</span>
                         <div
                           class="gpu-benchmark__primary"
                           role="radiogroup"
@@ -198,7 +202,7 @@
                           aria-describedby="gpu-index-craft-main-help"
                           data-card-primary-layers
                         ></div>
-                        <div class="gpu-benchmark__scale-control">
+                        <div class="gpu-benchmark__scale-control" data-card-scale-control>
                           <span class="gpu-benchmark__compare-label">View</span>
                           <div class="gpu-benchmark__scales" role="group" aria-label="Chart view">
                             <button type="button" aria-pressed="true" data-card-scale="price">Price</button>
@@ -207,7 +211,7 @@
                         </div>
                       </div>
                       <div class="gpu-benchmark__data-row">
-                        <span class="gpu-benchmark__compare-label">Compare</span>
+                        <span class="gpu-benchmark__compare-label" data-card-layer-label>Compare</span>
                         <div class="gpu-benchmark__layers" role="group" aria-label="Comparison data" data-card-layers></div>
                       </div>
                     </div>
@@ -352,6 +356,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=82"></script>
+    <script type="module" src="./desk.js?v=83"></script>
   </body>
 </html>

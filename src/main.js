@@ -1,6 +1,6 @@
 import * as d3 from "d3";
 import { animate } from "motion";
-import { replaceCardLocation } from "./card-presentation.js";
+import { cardUrl, replaceCardLocation } from "./card-presentation.js";
 import {
   compositionKey,
   createComposition,
@@ -12,6 +12,7 @@ import {
   getCardDefinition,
   getLayerDefinition,
   normalizeCardState,
+  CARD_REGISTRY,
   PALETTES,
   paletteIds,
   parseLayerIds,
@@ -20,6 +21,8 @@ import {
   RANGES,
   serializeLayerIds,
 } from "./card-registry.js";
+import { createGpuPriceBarModel } from "./gpu-price-bar-model.js";
+import { paintGpuPriceBarChart } from "./gpu-price-bar-presentation.js";
 import { createCommandPalette } from "./command-palette.js";
 import {
   loadSavedCatalog,
@@ -42,8 +45,15 @@ import {
 const root = document.querySelector("[data-gpu-benchmark-card]");
 
 if (root) {
-  const cardDefinition = getCardDefinition(root.dataset.cardId);
+  const params = new URL(window.location.href).searchParams;
+  const cardDefinition = getCardDefinition(params.get("card") || root.dataset.cardId);
   const cardId = cardDefinition.id;
+  const isBarCard = cardDefinition.renderer === "categorical-bar";
+  root.dataset.cardId = cardId;
+  root.dataset.cardRenderer = cardDefinition.renderer || "line";
+  root
+    .querySelector(".gpu-index-detail__body")
+    ?.setAttribute("aria-label", cardDefinition.title);
   const craftDraftStorageKey = `desk.craft-draft.v1.${cardId}`;
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
@@ -53,7 +63,6 @@ if (root) {
     .map((layer) => layer.id);
   const palettes = paletteIds();
   const ranges = RANGES;
-  const params = new URL(window.location.href).searchParams;
   const requestedCard = params.get("card");
   const requestedView =
     requestedCard === cardId ? params.get("view") : null;
@@ -77,7 +86,7 @@ if (root) {
     : cardDefinition.defaults.layer;
   const requestedLayers = params.has("layers")
     ? parseLayerIds(params.get("layers"), cardDefinition, [selected])
-    : [selected];
+    : [...cardDefinition.defaults.layers];
   const requestedScale = cardDefinition.visualizations.some(
     (visualization) => visualization.id === params.get("scale"),
   )
@@ -100,6 +109,9 @@ if (root) {
     ? new Set([selected])
     : initialLayers;
   const initialCompositionScale = initialCraftEmpty ? "price" : initialScale;
+  const initialRange = cardDefinition.ranges?.includes(params.get("range"))
+    ? params.get("range")
+    : cardDefinition.defaults.range;
   const savedCatalog = loadSavedCatalog(cardId);
   const hasCompleteCatalogSnapshot = [
     "gpu",
@@ -121,18 +133,19 @@ if (root) {
       params.get("layers") !==
         serializeLayerIds(initialCompositionLayers, cardDefinition)) ||
     (params.has("scale") && params.get("scale") !== initialCompositionScale) ||
-    (params.has("range") && !ranges[params.get("range")]) ||
+    (params.has("range") && params.get("range") !== initialRange) ||
     (params.has("item") && !requestedCatalogItem) ||
     params.has("locked");
   const state = {
     seriesByLayer: new Map(),
+    runtimePayload: null,
     mode: initialMode,
     panel: initialView,
     layout: initialLayout,
     selected,
     layers: initialCompositionLayers,
     scale: initialCompositionScale,
-    range: ranges[params.get("range")] ? params.get("range") : cardDefinition.defaults.range,
+    range: initialRange,
     compareOpen: false,
     dataRevision: null,
     shareReady: false,
@@ -176,6 +189,7 @@ if (root) {
     shareStatus: root.querySelector("[data-share-status]"),
     shareArtifactSvg: root.querySelector("[data-share-artifact-svg]"),
     familyButtons: Array.from(root.querySelectorAll("[data-gpu-family]")),
+    cardPresetButtons: Array.from(root.querySelectorAll("[data-card-preset]")),
     familyValues: new Map(
       Array.from(root.querySelectorAll("[data-gpu-family-value]")).map(
         (node) => [node.dataset.gpuFamilyValue, node],
@@ -188,8 +202,11 @@ if (root) {
     layerGroup: root.querySelector("[data-card-layers]"),
     layerButtons: [],
     primaryGroup: root.querySelector("[data-card-primary-layers]"),
+    primaryLabel: root.querySelector("[data-card-primary-label]"),
     primaryButtons: [],
     scaleButtons: Array.from(root.querySelectorAll("[data-card-scale]")),
+    scaleControl: root.querySelector("[data-card-scale-control]"),
+    layerLabel: root.querySelector("[data-card-layer-label]"),
     compareToggle: root.querySelector("[data-card-compare-toggle]"),
     comparePanel: root.querySelector("[data-card-compare-panel]"),
     compareCount: root.querySelector("[data-card-compare-count]"),
@@ -259,6 +276,11 @@ if (root) {
       "aria-selected",
       "horizontal",
     );
+    nodes.cardPresetButtons.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        openCardPreset(button.dataset.cardPreset, "card", event.detail === 0);
+      });
+    });
     configureChoiceButtons(
       nodes.rangeButtons,
       (button) => button.dataset.gpuRange,
@@ -276,6 +298,7 @@ if (root) {
     nodes.galleryToggle?.addEventListener("click", (event) => {
       showPanel("share", true, "all", event.detail === 0, "catalog");
     });
+    nodes.cardRail?.addEventListener("keydown", handleCardRailKeydown, true);
     nodes.compareToggle?.addEventListener("click", (event) => {
       setCompareOpen(!state.compareOpen, event.detail === 0);
     });
@@ -435,7 +458,7 @@ if (root) {
     syncSavedCatalogCommands();
     syncControls();
     await showPanel("share", true, "all", false, "catalog");
-    const card = catalogCards.get(savedCatalogKey(saved.id));
+    const card = catalogCards.get(savedCatalogKey(cardId, saved.id));
     card?.button.focus({ preventScroll: true });
     card?.button.scrollIntoView({
       behavior: reducedMotion ? "auto" : "smooth",
@@ -446,6 +469,7 @@ if (root) {
   }
 
   function suggestedCatalogName() {
+    if (isBarCard) return "Accelerator prices";
     const labels = orderedLayerLabels({
       gpu: state.selected,
       layers: Array.from(state.layers),
@@ -726,6 +750,18 @@ if (root) {
         run: () => showPanel("share", true, "all", true, "catalog"),
       },
       {
+        id: "catalog.accelerator-prices",
+        group: "Catalog",
+        order: 1,
+        title: "Open Accelerator prices",
+        subtitle: "Bar chart",
+        hint: "Prices",
+        keywords: ["bar", "bars", "ranking", "snapshot", "gpu", "market"],
+        disabled: () => !state.shareReady,
+        active: () => isBarCard && state.mode === "catalog",
+        run: () => openCardPreset("gpu-price-snapshot", "card", true),
+      },
+      {
         id: "actions.copy-card-link",
         group: "Actions",
         order: 0,
@@ -770,14 +806,15 @@ if (root) {
         group: "Catalog",
         order: index + 1,
         title: `Open ${family} in Catalog`,
-        subtitle: `${cardDefinition.sharePath}/gpu/${family.toLowerCase()}`,
+        subtitle: `${getCardDefinition("gpu-index").sharePath}/gpu/${family.toLowerCase()}`,
         hint: family,
         keywords: ["card", "catalog", "accelerator", "family", "chip"],
         active: () =>
+          !isBarCard &&
           state.mode === "catalog" &&
           state.layout === "focus" &&
           state.selected === family,
-        run: () => openPublishedCard(family, true),
+        run: () => selectCardTab(family, { detail: 0 }),
       })),
       ...cardDefinition.layers.map((layer, index) => ({
         id: `layer.${layer.id.toLowerCase()}`,
@@ -802,12 +839,14 @@ if (root) {
       })),
       ...families.map((family, index) => ({
         id: `primary.${family.toLowerCase()}`,
-        group: "Main data",
+        group: isBarCard ? "Highlight" : "Main data",
         order: index,
-        title: `Use ${family} as main series`,
+        title: isBarCard
+          ? `Highlight ${family}`
+          : `Use ${family} as main series`,
         subtitle: `${cardDefinition.sharePath}/main/${family.toLowerCase()}`,
-        hint: "Main",
-        keywords: ["primary", "main", "series", "data", family],
+        hint: isBarCard ? "Highlight" : "Main",
+        keywords: ["primary", "main", "highlight", "series", "data", family],
         active: () =>
           state.mode === "craft" &&
           !state.craftEmpty &&
@@ -830,7 +869,7 @@ if (root) {
         disabled: () => state.mode !== "craft" || state.craftEmpty,
         run: () => selectScale(visualization.id),
       })),
-      ...Object.keys(ranges).map((range, index) => ({
+      ...(isBarCard ? [] : Object.keys(ranges)).map((range, index) => ({
         id: `range.${range}`,
         group: "Range",
         order: index,
@@ -907,8 +946,9 @@ if (root) {
         run: () =>
           monitorCatalogEntry(
             {
-              key: savedCatalogKey(item.id),
+              key: savedCatalogKey(cardId, item.id),
               kind: "saved",
+              cardId,
               item,
             },
             true,
@@ -918,6 +958,9 @@ if (root) {
   }
 
   function describeCatalogState(cardState) {
+    if (isBarCard) {
+      return `${cardState.layers.length} accelerator price${cardState.layers.length === 1 ? "" : "s"}`;
+    }
     const labels = orderedLayerLabels(cardState);
     const composition = labels.length > 1
       ? `${labels[0]} with ${labels.slice(1).join(" + ")}`
@@ -1131,33 +1174,56 @@ if (root) {
   }
 
   function catalogEntries() {
-    return [
-      ...state.savedCatalog.map((item) => ({
-        key: savedCatalogKey(item.id),
+    const savedEntries = CARD_REGISTRY.flatMap((card) =>
+      loadSavedCatalog(card.id).map((item) => ({
+        key: savedCatalogKey(card.id, item.id),
         kind: "saved",
+        cardId: card.id,
         item,
       })),
-      ...families.map((family) => ({
-        key: presetCatalogKey(family),
+    );
+    const lineCard = getCardDefinition("gpu-index");
+    const barCard = getCardDefinition("gpu-price-snapshot");
+    return [
+      ...savedEntries,
+      ...lineCard.layers
+        .filter((layer) => layer.unit === "usd-hour")
+        .map((layer) => ({
+        key: presetCatalogKey(lineCard.id, layer.id),
         kind: "preset",
-        family,
+        cardId: lineCard.id,
+        family: layer.id,
+        state: normalizeCardState(lineCard.id, {
+          ...lineCard.defaults,
+          gpu: layer.id,
+          layers: layer.id,
+        }),
       })),
+      {
+        key: presetCatalogKey(barCard.id, "prices"),
+        kind: "preset",
+        cardId: barCard.id,
+        family: "Prices",
+        state: normalizeCardState(barCard.id, barCard.defaults),
+      },
     ];
   }
 
-  function savedCatalogKey(id) {
-    return `saved-${id}`;
+  function savedCatalogKey(entryCardId, id) {
+    return `saved-${entryCardId}-${id}`;
   }
 
-  function presetCatalogKey(family) {
-    return `preset-${family.toLowerCase()}`;
+  function presetCatalogKey(entryCardId, family) {
+    return `preset-${entryCardId}-${family.toLowerCase()}`;
   }
 
   function activeCatalogKey() {
     if (state.craftDraft && !state.craftDraft.activeCatalogId) return null;
     return state.activeCatalogId
-      ? savedCatalogKey(state.activeCatalogId)
-      : presetCatalogKey(state.selected);
+      ? savedCatalogKey(cardId, state.activeCatalogId)
+      : isBarCard
+        ? presetCatalogKey(cardId, "prices")
+        : presetCatalogKey(cardId, state.selected);
   }
 
   function syncLayout(animateChange) {
@@ -1273,9 +1339,13 @@ if (root) {
         throw new Error(`Missing card data revision at ${cardDefinition.dataUrl}`);
       }
 
+      const sourceDefinition = getCardDefinition(
+        cardDefinition.sourceCardId || cardDefinition.id,
+      );
+      state.runtimePayload = payload;
       state.dataRevision = payload.revision;
       state.seriesByLayer = new Map(
-        cardDefinition.layers
+        sourceDefinition.layers
           .map((layer) => [
             layer.id,
             normalizeRuntimeSeries(payload.series[layer.id], layer.id),
@@ -1363,9 +1433,70 @@ if (root) {
     });
   }
 
+  function handleCardRailKeydown(event) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const tabs = [
+      ...nodes.familyButtons,
+      ...nodes.cardPresetButtons,
+    ].filter((button) => button && !button.disabled);
+    const current = tabs.indexOf(event.target);
+    if (current < 0) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? tabs.length - 1
+          : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
+            tabs.length;
+    tabs[nextIndex].focus({ preventScroll: true });
+    tabs[nextIndex].click();
+  }
+
   function selectCardTab(family, event) {
     if (!families.includes(family)) return;
+    if (cardId !== "gpu-index") {
+      openCardPreset("gpu-index", "card", event?.detail === 0, {
+        gpu: family,
+        layers: family,
+        scale: "price",
+      });
+      return;
+    }
     openPublishedCard(family, event?.detail === 0);
+  }
+
+  function openCardPreset(
+    nextCardId,
+    view = "card",
+    moveFocus = false,
+    stateOverrides = {},
+  ) {
+    const nextCard = getCardDefinition(nextCardId);
+    if (nextCard.id === cardId) {
+      if (nextCard.renderer === "categorical-bar") {
+        preserveCraftDraft();
+        applyCardState({
+          ...nextCard.defaults,
+          palette: currentPalette(),
+          theme: currentTheme(),
+          ...stateOverrides,
+        });
+        syncControls();
+        showPanel("share", true, "focus", moveFocus, "catalog");
+      }
+      return;
+    }
+
+    preserveCraftDraft();
+    const nextState = normalizeCardState(nextCard.id, {
+      ...nextCard.defaults,
+      palette: currentPalette(),
+      theme: currentTheme(),
+      ...stateOverrides,
+    });
+    window.location.assign(cardUrl(nextCard.id, view, nextState));
   }
 
   async function openPublishedCard(family, moveFocus) {
@@ -1390,6 +1521,14 @@ if (root) {
   async function monitorCatalogEntry(entry, focusNavigation) {
     if (!entry) return;
     preserveCraftDraft();
+    const entryCard = getCardDefinition(entry.cardId || cardId);
+    const entryState = catalogEntryState(entry);
+    if (entryCard.id !== cardId) {
+      const url = cardUrl(entryCard.id, "monitor", entryState);
+      if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
+      window.location.assign(url);
+      return;
+    }
     const alreadyMonitoring =
       state.mode === "monitor" &&
       state.panel === "detail" &&
@@ -1399,6 +1538,8 @@ if (root) {
         catalogId: entry.item.id,
         catalogName: entry.item.name,
       });
+    } else if (entry.state) {
+      applyCardState(entryState);
     } else if (families.includes(entry.family)) {
       applyCardState(publishedCardState(entry.family));
     } else {
@@ -1425,6 +1566,16 @@ if (root) {
       gpu: family,
       layers: family,
       scale: "price",
+    });
+  }
+
+  function catalogEntryState(entry) {
+    if (entry.kind === "saved") return entry.item.state;
+    const entryCard = getCardDefinition(entry.cardId || cardId);
+    return normalizeCardState(entryCard.id, {
+      ...entry.state,
+      palette: currentPalette(),
+      theme: currentTheme(),
     });
   }
 
@@ -1456,6 +1607,7 @@ if (root) {
 
   function selectRange(range) {
     if (Date.now() < state.controlsReadyAt) return;
+    if (isBarCard) return;
     if (state.mode === "craft" && state.craftEmpty) return;
     if (!ranges[range] || range === state.range) return;
     if (state.mode === "craft") {
@@ -1500,23 +1652,38 @@ if (root) {
     const activeFamilyButton = nodes.familyButtons.find(
       (button) => button.dataset.gpuFamily === state.selected,
     );
+    const activePresetButton = nodes.cardPresetButtons.find(
+      (button) => button.dataset.cardPreset === cardId,
+    );
     nodes.familyButtons.forEach((button) => {
       const selected =
+        cardId === "gpu-index" &&
         state.layout === "focus" &&
         state.panel === "share" &&
         button === activeFamilyButton;
       button.setAttribute("aria-selected", String(selected));
       button.tabIndex = selected ? 0 : -1;
     });
+    nodes.cardPresetButtons.forEach((button) => {
+      const selected =
+        state.layout === "focus" &&
+        state.panel === "share" &&
+        button === activePresetButton;
+      button.setAttribute("aria-selected", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+    });
     if (nodes.galleryToggle) nodes.galleryToggle.tabIndex = 0;
     if (nodes.focusPanel) {
+      const labelledBy = isBarCard
+        ? activePresetButton?.id
+        : activeFamilyButton?.id;
       if (
         state.panel === "share" &&
         state.layout === "focus" &&
-        activeFamilyButton?.id
+        labelledBy
       ) {
         nodes.focusPanel.setAttribute("role", "tabpanel");
-        nodes.focusPanel.setAttribute("aria-labelledby", activeFamilyButton.id);
+        nodes.focusPanel.setAttribute("aria-labelledby", labelledBy);
         nodes.focusPanel.removeAttribute("aria-label");
         nodes.focusPanel.tabIndex = -1;
       } else {
@@ -1528,7 +1695,7 @@ if (root) {
     }
     nodes.rangeButtons.forEach((button) => {
       const selected = button.dataset.gpuRange === state.range;
-      const unavailable = state.mode === "craft" && state.craftEmpty;
+      const unavailable = isBarCard || (state.mode === "craft" && state.craftEmpty);
       button.setAttribute("aria-pressed", String(selected));
       button.disabled = unavailable;
       button.tabIndex = unavailable ? -1 : 0;
@@ -1540,7 +1707,7 @@ if (root) {
       const titleMode = state.mode === "craft" ? "Craft" : "Monitor";
       nodes.workspaceTitle.textContent = state.mode === "craft" && state.craftEmpty
         ? "Craft new composition"
-        : `${titleMode} ${workspaceLabel()} ${ranges[state.range].label}${state.craftDirty ? " edited" : ""}`;
+        : `${titleMode} ${workspaceLabel()}${isBarCard ? "" : ` ${ranges[state.range].label}`}${state.craftDirty ? " edited" : ""}`;
     }
     updateFamilyQuoteNodes();
     syncModeActions(false);
@@ -1557,6 +1724,17 @@ if (root) {
     if (nodes.primaryGroup) {
       nodes.primaryGroup.setAttribute("aria-required", String(empty));
     }
+    if (nodes.primaryLabel) nodes.primaryLabel.textContent = isBarCard ? "Highlight" : "Main";
+    if (nodes.layerLabel) nodes.layerLabel.textContent = isBarCard ? "Bars" : "Compare";
+    if (nodes.scaleControl) nodes.scaleControl.hidden = isBarCard;
+    nodes.primaryGroup?.setAttribute(
+      "aria-label",
+      isBarCard ? "Highlighted bar" : "Main data",
+    );
+    nodes.layerGroup?.setAttribute(
+      "aria-label",
+      isBarCard ? "Visible bars" : "Comparison data",
+    );
     nodes.primaryButtons.forEach((button, index) => {
       const selected = !empty && button.dataset.cardPrimary === state.selected;
       button.setAttribute("aria-checked", String(selected));
@@ -1565,8 +1743,8 @@ if (root) {
       button.setAttribute(
         "aria-label",
         selected
-          ? `${button.dataset.cardPrimary} main series`
-          : `Use ${button.dataset.cardPrimary} as main series`,
+          ? `${button.dataset.cardPrimary} ${isBarCard ? "highlighted bar" : "main series"}`
+          : `Use ${button.dataset.cardPrimary} as ${isBarCard ? "the highlighted bar" : "main series"}`,
       );
     });
     nodes.layerButtons.forEach((button) => {
@@ -1580,10 +1758,10 @@ if (root) {
       button.setAttribute(
         "aria-label",
         primary
-          ? `${layer.label} is the main series`
+          ? `${layer.label} is ${isBarCard ? "highlighted" : "the main series"}`
           : selected
-            ? `Remove ${layer.label} comparison`
-            : `Add ${layer.label} comparison`,
+            ? `Remove ${layer.label} ${isBarCard ? "bar" : "comparison"}`
+            : `Add ${layer.label} ${isBarCard ? "bar" : "comparison"}`,
       );
     });
     nodes.scaleButtons.forEach((button) => {
@@ -1610,7 +1788,9 @@ if (root) {
         "aria-label",
         empty
           ? "Add data"
-          : `Data, ${state.selected} main series, ${comparisonCount} comparison${comparisonCount === 1 ? "" : "s"}`,
+          : isBarCard
+            ? `Data, ${dataCount} bar${dataCount === 1 ? "" : "s"}, ${state.selected} highlighted`
+            : `Data, ${state.selected} main series, ${comparisonCount} comparison${comparisonCount === 1 ? "" : "s"}`,
       );
     }
     if (nodes.saveButton) {
@@ -1638,12 +1818,16 @@ if (root) {
       const labels = activeLayerDefinitions().map((layer) => layer.label).join(", ");
       nodes.svg?.setAttribute(
         "aria-label",
-        state.scale === "index"
+        isBarCard
+          ? `${labels} hourly price comparison`
+          : state.scale === "index"
           ? `${labels} comparison index`
           : `${labels} price history`,
       );
       nodes.chartDescription.textContent =
-        state.scale === "index"
+        isBarCard
+          ? `${labels} latest hourly benchmark prices. Each wider band shows the middle range of quotes.`
+          : state.scale === "index"
           ? `${labels} rebased to 100 at the start of the selected range.`
           : `${labels} hourly prices. The band shows the middle range of quotes for ${state.selected}.`;
     }
@@ -1834,9 +2018,13 @@ if (root) {
     }
     return panel === "detail"
       ? nodes.detailPanel
-      : nodes.familyButtons.find(
-          (button) => button.dataset.gpuFamily === state.selected,
-        );
+      : isBarCard
+        ? nodes.cardPresetButtons.find(
+            (button) => button.dataset.cardPreset === cardId,
+          )
+        : nodes.familyButtons.find(
+            (button) => button.dataset.gpuFamily === state.selected,
+          );
   }
 
   function announceWorkspaceView() {
@@ -1854,7 +2042,7 @@ if (root) {
 
   function workspaceLabel() {
     if (state.craftEmpty) return "New composition";
-    return state.catalogName || state.selected;
+    return state.catalogName || (isBarCard ? cardDefinition.title : state.selected);
   }
 
   function announceWorkspace(message) {
@@ -1948,7 +2136,7 @@ if (root) {
 
   function shareUrl() {
     const cardState =
-      state.layout === "all" && !state.activeCatalogId
+      state.layout === "all" && !state.activeCatalogId && !isBarCard
         ? {
             ...currentCardState(),
             layers: state.selected,
@@ -1988,6 +2176,16 @@ if (root) {
   }
 
   function syncShareStatus() {
+    if (isBarCard && state.runtimePayload) {
+      try {
+        syncBarShareStatus(
+          createGpuPriceBarModel(state.runtimePayload, cardDefinition, {
+            layerIds: Array.from(state.layers),
+          }),
+        );
+      } catch {}
+      return;
+    }
     if (!nodes.shareStatus) return;
     const primary = createLayerSeries(state.selected, { scale: state.scale });
     const latest = primary?.rows.at(-1);
@@ -2025,6 +2223,25 @@ if (root) {
     );
   }
 
+  function syncBarShareStatus(model) {
+    const prices = model.bars.map((bar) => formatUsd(bar.value));
+    const observed = new Date(model.asOf * 1000);
+    if (nodes.shareStatus) {
+      nodes.shareStatus.textContent =
+        `${model.bars.length} accelerator prices from ${prices.at(-1)} to ${prices[0]}`;
+    }
+    if (nodes.shareObserved) {
+      nodes.shareObserved.textContent = formatUtcDateTime(observed);
+      nodes.shareObserved.setAttribute("datetime", observed.toISOString());
+    }
+    nodes.shareArtifactSvg?.setAttribute(
+      "aria-label",
+      `Accelerator prices. ${model.bars
+        .map((bar) => `${bar.label} ${formatUsd(bar.value)}`)
+        .join(", ")}`,
+    );
+  }
+
   function setShareReady(ready) {
     state.shareReady = ready;
     syncModeActions(false);
@@ -2034,6 +2251,10 @@ if (root) {
   function render(drawAnimation) {
     if (state.mode === "craft" && state.craftEmpty) {
       syncComposerControls();
+      return;
+    }
+    if (isBarCard) {
+      renderBarWorkspace(drawAnimation);
       return;
     }
     const rangeSeries = activeSeries({ zoom: false });
@@ -2061,6 +2282,52 @@ if (root) {
     }
   }
 
+  function renderBarWorkspace(drawAnimation) {
+    if (!state.runtimePayload) return;
+    let model;
+    try {
+      model = createGpuPriceBarModel(state.runtimePayload, cardDefinition, {
+        layerIds: Array.from(state.layers),
+      });
+    } catch (error) {
+      console.error("GPU price bars could not render", error);
+      showFailure("Accelerator prices are temporarily unavailable.");
+      return;
+    }
+
+    nodes.chartState.hidden = true;
+    nodes.tooltip.hidden = true;
+    const observed = new Date(model.asOf * 1000);
+    const format = d3.timeFormat("%d %b");
+    updateRangeDate(nodes.rangeStart, observed, format);
+    updateRangeDate(nodes.rangeEnd, observed, format);
+    const palette = cardPalette(currentCardState());
+    paintGpuPriceBarChart(nodes.shareArtifactSvg, model, {
+      colors: palette,
+      title: state.catalogName || "Accelerator prices",
+      primaryId: state.selected,
+      reducedMotion,
+      interactive: false,
+    });
+    state.catalogDirty = true;
+    if (state.layout === "all") renderWorkspaceGallery();
+    syncBarShareStatus(model);
+
+    if (
+      state.layout === "focus" &&
+      state.panel === "detail" &&
+      nodes.chart.clientWidth > 0
+    ) {
+      paintGpuPriceBarChart(nodes.svg, model, {
+        colors: palette,
+        title: state.catalogName || "Accelerator prices",
+        primaryId: state.selected,
+        reducedMotion: reducedMotion || !drawAnimation,
+        interactive: true,
+      });
+    }
+  }
+
   function renderWorkspaceGallery() {
     if (
       state.layout !== "all" ||
@@ -2073,14 +2340,42 @@ if (root) {
 
     for (const cardNodes of catalogCards.values()) {
       const { entry } = cardNodes;
-      const cardState = entry.kind === "saved"
-        ? entry.item.state
-        : publishedCardState(entry.family);
+      const entryCard = getCardDefinition(entry.cardId || cardId);
+      const cardState = catalogEntryState(entry);
+      const title = entry.kind === "saved"
+        ? entry.item.name
+        : entryCard.renderer === "categorical-bar"
+          ? "Accelerator prices"
+          : entry.family;
+      const selected = entry.key === activeCatalogKey();
+      cardNodes.button.dataset.selected = String(selected);
+
+      if (entryCard.renderer === "categorical-bar") {
+        if (!state.runtimePayload) continue;
+        const model = createGpuPriceBarModel(state.runtimePayload, entryCard, {
+          layerIds: cardState.layers,
+        });
+        cardNodes.button.setAttribute(
+          "aria-label",
+          `Monitor ${title}, ${model.bars.length} accelerator prices`,
+        );
+        paintGpuPriceBarChart(cardNodes.artifact, model, {
+          colors: cardPalette(cardState),
+          compact: true,
+          title,
+          primaryId: cardState.gpu,
+          reducedMotion: true,
+          interactive: false,
+        });
+        continue;
+      }
+
       const cardSeries = cardState.layers
         .map((layerId) => createLayerSeries(layerId, {
           scale: cardState.scale,
           range: cardState.range,
           primaryLayerId: cardState.gpu,
+          definition: entryCard,
         }))
         .filter((series) => series?.rows.length);
       const primary = cardSeries.find(
@@ -2089,10 +2384,7 @@ if (root) {
       const latest = primary?.rows.at(-1);
       if (!cardNodes || !primary?.rows.length || !latest) continue;
 
-      const title = entry.kind === "saved" ? entry.item.name : entry.family;
       const value = formatCardHeadline(latest.plotValue, cardState.scale);
-      const selected = entry.key === activeCatalogKey();
-      cardNodes.button.dataset.selected = String(selected);
       cardNodes.button.setAttribute(
         "aria-label",
         `Monitor ${title}, ${describeCatalogState(cardState)}, ${value}`,
@@ -2108,8 +2400,10 @@ if (root) {
     }
 
     if (nodes.galleryStatus) {
+      const entries = catalogEntries();
+      const savedCount = entries.filter((entry) => entry.kind === "saved").length;
       nodes.galleryStatus.textContent =
-        `${state.savedCatalog.length} saved ${families.length} market cards`;
+        `${savedCount} saved ${entries.length - savedCount} market cards`;
     }
     if (
       state.layout === "all" &&
@@ -2173,9 +2467,10 @@ if (root) {
       zoom = false,
       range = state.range,
       primaryLayerId = state.selected,
+      definition = cardDefinition,
     } = {},
   ) {
-    const layer = getLayerDefinition(cardDefinition, layerId);
+    const layer = getLayerDefinition(definition, layerId);
     const sourceRows = visibleRows(state.seriesByLayer.get(layerId) || [], range);
     if (!layer || !sourceRows.length) return null;
     const baseValue = sourceRows[0].value || 1;

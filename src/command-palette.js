@@ -3,6 +3,9 @@ const defaultGroups = [
   "Catalog",
   "Actions",
   "Layers",
+  "Main data",
+  "Highlight",
+  "View",
   "Range",
   "Appearance",
 ];

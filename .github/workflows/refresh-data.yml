@@ -1,0 +1,133 @@
+name: Refresh Desk market data
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    outputs:
+      changed: ${{ steps.changes.outputs.changed }}
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch and validate market snapshots
+        env:
+          DESK_MAX_SNAPSHOT_AGE_HOURS: ${{ vars.DESK_MAX_SNAPSHOT_AGE_HOURS }}
+          DESK_SNAPSHOT_BASE_URL: ${{ vars.DESK_SNAPSHOT_BASE_URL }}
+          DESK_SNAPSHOT_TOKEN: ${{ secrets.DESK_SNAPSHOT_TOKEN }}
+        run: npm run refresh:data
+
+      - name: Detect source-data changes
+        id: changes
+        shell: bash
+        run: |
+          if git diff --quiet -- api/dashboard-snapshots/gpu-benchmark; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebuild runtime data and previews
+        if: steps.changes.outputs.changed == 'true'
+        run: npm run build
+
+      - name: Assemble deployment
+        if: steps.changes.outputs.changed == 'true'
+        run: npm run build:site
+
+      - name: Verify generated output
+        if: steps.changes.outputs.changed == 'true'
+        shell: bash
+        run: |
+          npm run check:data
+          git diff --check
+          test -s data/gpu-price-index.json
+          test -s _site/data/gpu-price-index.json
+          cmp data/gpu-price-index.json _site/data/gpu-price-index.json
+
+      - name: Upload GitHub Pages artifact
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+          include-hidden-files: true
+
+      - name: Commit refreshed data
+        if: steps.changes.outputs.changed == 'true'
+        shell: bash
+        run: |
+          git fetch origin main
+          test "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)"
+
+          allowed_paths='^(api/dashboard-snapshots/gpu-benchmark/'
+          allowed_paths+='|assets/social/gpu-index/'
+          allowed_paths+='|cards/gpu-price-index/'
+          allowed_paths+='|data/gpu-price-index\.json$'
+          allowed_paths+='|desk\.js$)'
+          if git diff --name-only | grep -Ev "$allowed_paths"; then
+            echo "Build changed an unexpected tracked path" >&2
+            exit 1
+          fi
+
+          git add -- \
+            api/dashboard-snapshots/gpu-benchmark \
+            assets/social/gpu-index \
+            cards/gpu-price-index \
+            data/gpu-price-index.json \
+            desk.js
+
+          test -n "$(git diff --cached --name-only)"
+          if git diff --cached --name-only | grep -Ev "$allowed_paths"; then
+            echo "Refusing to commit an unexpected generated path" >&2
+            exit 1
+          fi
+
+          run_id="$(
+            jq -r '.manifest.run_id' \
+              api/dashboard-snapshots/gpu-benchmark/h100.json
+          )"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Refresh GPU market data (${run_id})"
+          git push origin HEAD:main
+
+  deploy:
+    if: needs.refresh.outputs.changed == 'true'
+    needs: refresh
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
