@@ -54,13 +54,15 @@
   left: 50%;
   z-index: 3;
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  align-items: flex-start;
+  align-items: center;
   transform: translateX(-50%);
 }
 
 .desk-display-controls {
   position: relative;
+  order: 1;
   display: flex;
   gap: 0;
   padding: 2px;
@@ -147,6 +149,7 @@
 
 .desk-view-actions {
   position: relative;
+  order: 0;
   color: var(--desk-accent-deep);
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 12px;
@@ -160,8 +163,8 @@
   display: flex;
   gap: 0;
   padding: 2px;
-  background: #fff;
-  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
+  background: color-mix(in srgb, var(--desk-canvas) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
   transition:
     background-color 240ms var(--desk-ease-out),
     border-color 240ms var(--desk-ease-out);
@@ -173,9 +176,9 @@
 
 .desk-view-action {
   display: grid;
-  width: 72px;
+  width: 84px;
   min-height: 32px;
-  padding: 8px 12px;
+  padding: 8px 10px;
   place-items: center;
   color: inherit;
   font: inherit;
@@ -190,19 +193,22 @@
     color 200ms var(--desk-ease-out),
     background-color 200ms var(--desk-ease-out),
     box-shadow 200ms var(--desk-ease-out),
-    transform 140ms var(--desk-ease-out);
-}
-
-.desk-view-action[data-index-view-toggle] {
-  width: 96px;
+    transform 200ms var(--desk-ease-out);
 }
 
 .desk-view-action + .desk-view-action {
-  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
 }
 
-.desk-view-action--emphasis {
-  background: var(--desk-accent-pale);
+.desk-view-action:not([aria-current="page"]) {
+  opacity: 0.54;
+}
+
+.desk-view-action[aria-current="page"] {
+  color: var(--desk-accent-deep);
+  background: color-mix(in srgb, var(--desk-accent-pale) 72%, var(--desk-canvas));
+  box-shadow: inset 0 -1px 0 var(--desk-accent-deep);
+  opacity: 1;
 }
 
 button.compute-share-card-frame {
@@ -224,15 +230,16 @@ button.compute-share-card-frame:focus-visible {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  :is(.desk-theme-option, .desk-view-action):hover {
+  :is(.desk-theme-option, .desk-view-action:not([aria-current="page"])):hover {
     background: color-mix(in srgb, var(--desk-accent) 16%, transparent);
+    opacity: 0.84;
   }
 
   .desk-palette-option:hover {
     background: color-mix(in srgb, var(--desk-accent) 16%, transparent);
   }
 
-  .desk-view-action--emphasis:hover {
+  .desk-view-action[aria-current="page"]:hover {
     background: color-mix(in srgb, var(--desk-accent) 60%, var(--desk-canvas));
   }
 }
@@ -246,11 +253,6 @@ button.compute-share-card-frame:focus-visible {
 .desk-view-action:focus-visible {
   background: var(--desk-accent-pale);
   outline: 2px solid var(--desk-accent-deep);
-  outline-offset: 2px;
-}
-
-.desk-display-option:focus-visible,
-.desk-view-action:focus-visible {
   outline-offset: -2px;
 }
 
@@ -278,6 +280,9 @@ button.compute-share-card-frame:focus-visible {
   inset: 0;
   z-index: 2;
   pointer-events: none;
+  transition:
+    opacity 240ms var(--desk-ease-out),
+    visibility 240ms var(--desk-ease-out);
 }
 
 .desk-corner {
@@ -441,7 +446,7 @@ button.compute-share-card-frame:focus-visible {
   background: var(--desk-accent-pale);
 }
 
-:root[data-theme="dark"] .desk-view-action--emphasis,
+:root[data-theme="dark"] .desk-view-action[aria-current="page"],
 :root[data-theme="dark"] .desk-theme-option[aria-pressed="true"],
 :root[data-theme="dark"] .desk-view-action:focus-visible {
   color: #f5f5f5;
@@ -449,11 +454,11 @@ button.compute-share-card-frame:focus-visible {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  :root[data-theme="dark"] .desk-view-action:hover {
+  :root[data-theme="dark"] .desk-view-action:not([aria-current="page"]):hover {
     background: rgb(255 255 255 / 8%);
   }
 
-  :root[data-theme="dark"] .desk-view-action--emphasis:hover {
+  :root[data-theme="dark"] .desk-view-action[aria-current="page"]:hover {
     background: color-mix(in srgb, var(--desk-accent) 24%, #272727);
   }
 }
@@ -551,7 +556,6 @@ button.compute-share-card-frame:focus-visible {
 .gpu-index-share__window,
 .compute-share-card-frame,
 .gpu-benchmark__line,
-.gpu-benchmark__line-underlay,
 .gpu-benchmark__band,
 .gpu-benchmark__value-area,
 .gpu-benchmark__reference-line,
@@ -568,15 +572,6 @@ button.compute-share-card-frame:focus-visible {
 
 .gpu-benchmark__line.is-selected {
   stroke: var(--desk-accent-deep) !important;
-}
-
-.gpu-benchmark__line-underlay {
-  fill: none;
-  opacity: 0.94;
-  pointer-events: none;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
 }
 
 .gpu-benchmark__value-area {
@@ -642,10 +637,58 @@ button.compute-share-card-frame:focus-visible {
   display: none;
 }
 
+.compute-card-skin--market .gpu-benchmark {
+  padding-bottom: 0;
+}
+
+:root:is([data-desk-view="monitor"], [data-desk-view="craft"]) .compute-card-skin--market .gpu-benchmark {
+  padding-top: 0;
+}
+
+:root:is([data-desk-view="monitor"], [data-desk-view="craft"]) .compute-card-skin--market .gpu-benchmark__chart {
+  margin-top: 0;
+}
+
+:root[data-desk-view="monitor"] .gpu-benchmark__composer {
+  display: none;
+}
+
+.compute-card-skin--market .gpu-benchmark__footer {
+  border-bottom: 0;
+  min-height: 32px;
+  padding: 0 12px;
+}
+
+.compute-card-skin--market .gpu-benchmark__footer time {
+  color: var(--index-ink-soft);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.compute-card-skin--market .gpu-benchmark__ranges button {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 8px 4px;
+  color: var(--index-ink-soft);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.compute-card-skin--market .gpu-benchmark__ranges button[aria-pressed="true"] {
+  color: var(--index-ink);
+  box-shadow: inset 0 -2px 0 var(--desk-accent-deep);
+}
+
+.compute-card-skin--market .gpu-benchmark__ranges button:focus-visible {
+  outline: 2px solid var(--desk-accent-deep);
+  outline-offset: -2px;
+}
+
 .gpu-benchmark__composer {
   position: relative;
+  z-index: 3;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: stretch;
   width: calc(100% + 16px);
   min-height: 40px;
@@ -672,21 +715,36 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__compare-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  left: 0;
+  z-index: 4;
   grid-column: 1 / -1;
   grid-row: 2;
+  display: grid;
+  min-width: 0;
+  padding-inline: 8px;
+  background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
+  border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--desk-accent-deep) 20%, transparent);
+}
+
+.gpu-benchmark__data-row {
   display: flex;
   min-width: 0;
   min-height: 40px;
   align-items: stretch;
-  padding-inline: 8px;
   overflow-x: auto;
   overscroll-behavior-inline: contain;
-  background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
-  border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
   scrollbar-width: none;
 }
 
-.gpu-benchmark__compare-panel::-webkit-scrollbar {
+.gpu-benchmark__data-row + .gpu-benchmark__data-row {
+  border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
+}
+
+.gpu-benchmark__data-row::-webkit-scrollbar {
   display: none;
 }
 
@@ -694,7 +752,8 @@ button.compute-share-card-frame:focus-visible {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
-  padding-inline: 4px 8px;
+  min-width: 64px;
+  padding-inline: 8px;
   color: inherit;
   font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
   letter-spacing: 0.08em;
@@ -706,6 +765,19 @@ button.compute-share-card-frame:focus-visible {
   display: flex;
   min-width: max-content;
   align-items: stretch;
+}
+
+.gpu-benchmark__primary,
+.gpu-benchmark__scales,
+.gpu-benchmark__scale-control {
+  display: flex;
+  min-width: max-content;
+  align-items: stretch;
+}
+
+.gpu-benchmark__scale-control {
+  margin-left: auto;
+  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
 }
 
 .gpu-benchmark__composer button {
@@ -733,14 +805,37 @@ button.compute-share-card-frame:focus-visible {
     transform 140ms var(--desk-ease-out);
 }
 
+.gpu-benchmark__save {
+  grid-column: 3;
+  grid-row: 1;
+  min-width: 72px !important;
+  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent) !important;
+}
+
+.gpu-benchmark__save:not(:disabled) {
+  opacity: 0.82 !important;
+}
+
 .gpu-benchmark__composer button[aria-pressed="true"] {
   background: color-mix(in srgb, var(--desk-accent) 13%, transparent);
   box-shadow: inset 0 -2px 0 var(--desk-accent-deep);
   opacity: 0.92;
 }
 
+.gpu-benchmark__primary button[aria-checked="true"],
+.gpu-benchmark__scales button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--desk-accent) 13%, transparent);
+  box-shadow: inset 0 -2px 0 var(--desk-accent-deep);
+  opacity: 1;
+}
+
 .gpu-benchmark__layers button[data-primary="true"] {
   font-weight: 600;
+}
+
+.gpu-benchmark__layers button[data-primary="true"]:disabled {
+  cursor: default;
+  opacity: 0.48;
 }
 
 .gpu-benchmark__layers button[aria-pressed="true"] {
@@ -810,8 +905,34 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__composer button:disabled {
-  cursor: wait;
+  cursor: default;
   opacity: 0.28;
+}
+
+.gpu-benchmark__craft-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.gpu-benchmark__craft-empty p {
+  margin: 0;
+  color: var(--desk-accent-deep);
+  font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.48;
+}
+
+.gpu-index[data-craft-empty="true"] .gpu-benchmark__footer {
+  background: #fff;
+}
+
+.gpu-index[data-craft-empty="true"] .gpu-benchmark__footer > * {
+  visibility: hidden;
 }
 
 .gpu-benchmark__announce {
@@ -826,10 +947,14 @@ button.compute-share-card-frame:focus-visible {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .gpu-benchmark__composer button:hover {
+  .gpu-benchmark__composer button:not(:disabled):hover {
     background: color-mix(in srgb, var(--desk-accent) 10%, transparent);
     opacity: 0.84;
   }
+}
+
+:root[data-theme="dark"] .gpu-index[data-craft-empty="true"] .gpu-benchmark__footer {
+  background: #181818;
 }
 
 :root[data-theme="dark"] .gpu-benchmark__composer {
@@ -849,6 +974,150 @@ button.compute-share-card-frame:focus-visible {
 
 :root[data-theme="dark"] .gpu-benchmark__layers button[aria-pressed="true"] {
   background: transparent;
+}
+
+:root[data-theme="dark"] .gpu-benchmark__primary button[aria-checked="true"],
+:root[data-theme="dark"] .gpu-benchmark__scales button[aria-pressed="true"] {
+  color: #f5f5f5;
+  background: color-mix(in srgb, var(--desk-accent) 12%, #181818);
+}
+
+.desk-save-dialog {
+  width: min(420px, calc(100% - 24px));
+  max-width: none;
+  padding: 0;
+  margin: auto;
+  color: var(--desk-accent-deep);
+  background: var(--desk-canvas);
+  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 38%, transparent);
+  border-radius: 4px;
+  box-shadow: 0 24px 64px color-mix(in srgb, var(--desk-accent-deep) 16%, transparent);
+  animation: desk-save-dialog-enter 200ms var(--desk-ease-out);
+}
+
+.desk-save-dialog::backdrop {
+  background: rgb(16 16 16 / 48%);
+}
+
+.desk-save-dialog__form {
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+}
+
+.desk-save-dialog__form header {
+  display: grid;
+  gap: 4px;
+}
+
+.desk-save-dialog__form h2,
+.desk-save-dialog__form p {
+  margin: 0;
+}
+
+.desk-save-dialog__form h2 {
+  font: 600 16px/24px "Geist", "Avenir Next", sans-serif;
+}
+
+.desk-save-dialog__form header p,
+.desk-save-dialog__form label,
+.desk-save-dialog__error {
+  font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+}
+
+.desk-save-dialog__form header p {
+  opacity: 0.58;
+}
+
+.desk-save-dialog__form label {
+  margin-bottom: -8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.68;
+}
+
+.desk-save-dialog__form input {
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 12px;
+  color: inherit;
+  font: 500 14px/20px "Geist", "Avenir Next", sans-serif;
+  background: color-mix(in srgb, var(--desk-canvas) 94%, var(--desk-accent));
+  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 28%, transparent);
+  border-radius: 2px;
+  outline: 0;
+}
+
+.desk-save-dialog__form input:focus-visible {
+  border-color: var(--desk-accent-deep);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--desk-accent) 30%, transparent);
+}
+
+.desk-save-dialog__form input[aria-invalid="true"] {
+  border-color: currentColor;
+}
+
+.desk-save-dialog__error {
+  min-height: 16px;
+  color: inherit;
+  opacity: 0.76;
+}
+
+.desk-save-dialog__form footer {
+  display: flex;
+  gap: 4px;
+  justify-content: flex-end;
+}
+
+.desk-save-dialog__form button {
+  min-width: 72px;
+  min-height: 36px;
+  padding: 8px 12px;
+  color: inherit;
+  font: 600 12px/16px "Geist Mono", ui-monospace, monospace;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+}
+
+.desk-save-dialog__form button[type="submit"] {
+  background: var(--desk-accent-pale);
+  border-color: color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
+}
+
+.desk-save-dialog__form button:focus-visible {
+  outline: 2px solid var(--desk-accent-deep);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desk-save-dialog__form button:hover {
+    background: color-mix(in srgb, var(--desk-accent) 14%, transparent);
+  }
+}
+
+:root[data-theme="dark"] .desk-save-dialog {
+  color: var(--desk-accent-deep);
+  background: #1f1f1f;
+  border-color: color-mix(in srgb, var(--desk-accent-deep) 32%, transparent);
+  box-shadow: 0 24px 64px rgb(0 0 0 / 48%);
+}
+
+:root[data-theme="dark"] .desk-save-dialog__form input {
+  background: #181818;
+}
+
+@keyframes desk-save-dialog-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @media (max-width: 640px) {
@@ -877,7 +1146,7 @@ button.compute-share-card-frame:focus-visible {
   }
 
   .gpu-benchmark__composer {
-    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr) auto;
   }
 
   .gpu-benchmark__composer button {
@@ -890,21 +1159,18 @@ button.compute-share-card-frame:focus-visible {
     min-width: 80px !important;
   }
 
+  .gpu-benchmark__save {
+    min-width: 64px !important;
+  }
+
   .gpu-benchmark__compare-panel {
     padding-inline: 4px;
+  }
+
+  .gpu-benchmark__data-row {
     scroll-padding-inline: 4px 24px;
-    -webkit-mask-image: linear-gradient(
-      90deg,
-      #000 0,
-      #000 calc(100% - 20px),
-      transparent 100%
-    );
-    mask-image: linear-gradient(
-      90deg,
-      #000 0,
-      #000 calc(100% - 20px),
-      transparent 100%
-    );
+    -webkit-mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 20px), transparent 100%);
   }
 
   .gpu-benchmark__layers::after {
@@ -940,20 +1206,32 @@ button.compute-share-card-frame:focus-visible {
 }
 
 @media (max-width: 420px) {
+  .compute-card-skin--market .gpu-benchmark__footer,
+  .compute-card-skin--market .gpu-benchmark__ranges {
+    gap: 8px;
+  }
+
+  .compute-card-skin--market .gpu-benchmark__footer {
+    padding-inline: 8px;
+  }
+
   .desk-top-controls {
     gap: 4px;
   }
 
-  .desk-display-option,
-  .desk-view-action {
+  .desk-display-option {
     width: 44px;
     padding-inline: 4px;
     font-size: 10px;
     letter-spacing: 0.06em;
   }
 
-  .desk-view-action[data-index-view-toggle] {
-    width: 64px;
+  .desk-view-action {
+    width: 76px;
+    min-height: 36px;
+    padding-inline: 6px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
   }
 
   .desk-palette-option {
@@ -980,6 +1258,7 @@ button.compute-share-card-frame:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .desk-display-option,
   .desk-view-action,
+  .desk-corners,
   .gpu-index,
   .gpu-index-detail,
   .gpu-benchmark,
@@ -993,5 +1272,9 @@ button.compute-share-card-frame:focus-visible {
   .gpu-benchmark__composer,
   .gpu-benchmark__composer button {
     transition: none;
+  }
+
+  .desk-save-dialog {
+    animation: none;
   }
 }

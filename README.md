@@ -31,19 +31,30 @@ npm run dev
 
 Open <http://localhost:4173>.
 
-## Working with a card
+## Catalog, Monitor, and Craft
 
-The tabs above the card open one GPU at a time. The quiet row below the chart
-opens comparisons.
+Catalog holds the clean cards and the all-card gallery. Monitor opens one
+composition for interactive reading. Craft keeps that same chart in place and
+adds the controls for changing its data.
 
-- Open Compare to add or remove data layers.
+- Use the tight **Catalog**, **Monitor**, and **Craft** switcher at the top.
+- GPU tabs switch cards inside Catalog. **All** opens the gallery.
+- Monitor keeps one composition fixed for reading, hovering, zooming, and changing range.
+- Opening Craft from Catalog starts a new composition. If unfinished work is
+  waiting, Craft resumes it. Opening Craft from Monitor edits the composition
+  already on screen.
+- Craft keeps the chart central while its Data drawer selects the main series,
+  comparisons, and Price or Index view.
+- **Save** names the current composition and adds it to this browser's Catalog.
+  Saved items keep their data layers, range, palette, and light or dark theme.
+  An unfinished draft remains available in the current browser tab until it is
+  saved or replaced with a new composition.
 - GPU data uses hourly prices. Adding Token Index compares movement from a
   common starting point.
-- Collapse to the card, then use Copy link to share it. Expand returns to editing.
+- Use **Command G** and choose **Copy card link** to share the active card.
 - Shared links use social artwork that matches the selected layers, range,
   palette, and light or dark theme.
-- Press **Command G** to find cards, layers, ranges, and settings.
-- Press **Command /** to hide or show the display controls.
+- Press **Command G** to find cards, layers, ranges, settings, and to show the display controls when needed.
 
 ## Card registry
 
@@ -73,6 +84,8 @@ artifact in `_site`.
 - `src/main.js` owns the current GPU card renderer and interactions.
 - `src/card-registry.js` defines cards, layers, views, ranges, and palettes.
 - `src/card-presentation.js` creates and normalizes exact card links.
+- `src/craft-composition.js` normalizes Craft changes to main data, layers, and view.
+- `src/saved-catalog.js` stores named Craft compositions for the local Catalog.
 - `src/command-palette.js` provides the searchable resource index.
 - `scripts/build-runtime-data.mjs` creates the compact data file.
 - `scripts/build-card-previews.mjs` creates social images and share routes.

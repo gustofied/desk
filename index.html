@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-display-toolbar="collapsed">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,8 +13,8 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Desk">
     <meta property="og:url" content="https://desk.adamsioud.com/">
-    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=6">
-    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=6">
+    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=8">
+    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=8">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -22,7 +22,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Desk">
     <meta name="twitter:description" content="Compare hourly price history for H100, H200, B200, and B300 GPUs.">
-    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=6">
+    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=8">
     <meta name="twitter:image:alt" content="A Desk comparison card showing H100, H200, and Token Index.">
     <title>Desk</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
@@ -36,6 +36,10 @@
         const params = new URL(window.location.href).searchParams;
         const requestedTheme = params.get("theme");
         const requestedPalette = params.get("palette");
+        const requestedView = params.get("card") === "gpu-index"
+          ? params.get("view")
+          : null;
+        const requestedLayout = params.get("layout");
         let theme = requestedTheme === "light" || requestedTheme === "dark"
           ? requestedTheme
           : systemTheme;
@@ -56,6 +60,15 @@
         } catch {}
         document.documentElement.dataset.theme = theme;
         document.documentElement.dataset.palette = palette;
+        const deskView = requestedView === "craft"
+          ? "craft"
+          : requestedView === "monitor" || requestedView === "full"
+            ? "monitor"
+            : "catalog";
+        const isGallery = deskView === "catalog" &&
+          (requestedView === "gallery" || requestedLayout === "all");
+        document.documentElement.dataset.deskView = deskView;
+        document.documentElement.dataset.deskLayout = isGallery ? "all" : "focus";
         document.querySelector('meta[name="theme-color"]')?.setAttribute(
           "content",
           theme === "dark" ? "#181818" : "#ffffff",
@@ -63,14 +76,14 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=47">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=20">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=63">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=34">
     <link rel="stylesheet" href="./styles/command-palette.css?v=4">
     <link rel="stylesheet" href="./styles/demo.css?v=11">
   </head>
   <body>
     <div class="desk-top-controls">
-      <nav class="desk-display-controls" id="desk-display-toolbar" role="toolbar" aria-label="Display settings" aria-keyshortcuts="Meta+/">
+      <nav class="desk-display-controls" id="desk-display-toolbar" role="toolbar" aria-label="Display settings" aria-hidden="true" inert>
         <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Azure palette" aria-pressed="true" data-palette-value="azure">
           <i aria-hidden="true"></i>
         </button>
@@ -86,9 +99,27 @@
           <i aria-hidden="true"></i>
         </button>
       </nav>
-      <nav class="desk-view-actions" aria-label="Card size">
+      <nav class="desk-view-actions" aria-label="Desk sections">
         <div>
-          <button class="desk-view-action desk-view-action--emphasis" type="button" aria-label="Collapse card" data-index-view-toggle>Collapse</button>
+          <button
+            class="desk-view-action"
+            type="button"
+            aria-current="page"
+            aria-controls="desk-card-focus"
+            data-desk-mode="catalog"
+          >Catalog</button>
+          <button
+            class="desk-view-action"
+            type="button"
+            aria-controls="gpu-index-detail"
+            data-desk-mode="monitor"
+          >Monitor</button>
+          <button
+            class="desk-view-action"
+            type="button"
+            aria-controls="gpu-index-detail"
+            data-desk-mode="craft"
+          >Craft</button>
         </div>
       </nav>
     </div>
@@ -99,39 +130,39 @@
         data-gpu-benchmark-card
         data-card-id="gpu-index"
       >
-        <nav class="desk-card-rail" aria-label="Open pricing cards">
-          <div class="gpu-benchmark__families desk-card-tabs" role="tablist" aria-label="GPU pricing cards">
-            <button type="button" role="tab" aria-selected="false" aria-controls="gpu-index-detail" data-gpu-family="H100">
+        <header class="desk-card-rail">
+          <div class="desk-card-tabs" role="tablist" aria-label="GPU pricing cards">
+            <button id="gpu-card-tab-h100" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-gpu-family="H100">
               <span>H100</span><strong data-gpu-family-value="H100">pending</strong>
             </button>
-            <button type="button" role="tab" aria-selected="true" aria-controls="gpu-index-detail" data-gpu-family="H200">
+            <button id="gpu-card-tab-h200" type="button" role="tab" aria-selected="true" aria-controls="desk-card-focus" data-gpu-family="H200">
               <span>H200</span><strong data-gpu-family-value="H200">pending</strong>
             </button>
-            <button type="button" role="tab" aria-selected="false" aria-controls="gpu-index-detail" data-gpu-family="B200">
+            <button id="gpu-card-tab-b200" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-gpu-family="B200">
               <span>B200</span><strong data-gpu-family-value="B200">pending</strong>
             </button>
-            <button type="button" role="tab" aria-selected="false" aria-controls="gpu-index-detail" data-gpu-family="B300">
+            <button id="gpu-card-tab-b300" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-gpu-family="B300">
               <span>B300</span><strong data-gpu-family-value="B300">pending</strong>
             </button>
-            <button type="button" role="tab" aria-selected="false" aria-controls="desk-card-gallery" tabindex="-1" data-index-gallery-toggle>
-              <span>All</span>
-            </button>
           </div>
-        </nav>
-
-        <div class="desk-card-focus" data-card-layout-panel="focus">
+          <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog cards" data-index-gallery-toggle>All</button>
+        </header>
+        <div
+          class="desk-card-focus"
+          id="desk-card-focus"
+          tabindex="-1"
+          data-card-layout-panel="focus"
+        >
           <div class="gpu-index-detail-stage" data-index-panel="detail">
-            <article class="gpu-index-detail" id="gpu-index-detail">
+            <article
+              class="gpu-index-detail"
+              id="gpu-index-detail"
+              aria-labelledby="desk-workspace-title"
+              tabindex="-1"
+            >
+              <h2 class="desk-workspace-heading" id="desk-workspace-title">Monitor H200 7D</h2>
               <div class="gpu-index-detail__body" role="region" aria-label="GPU price index">
                 <div class="gpu-benchmark">
-
-                  <div class="gpu-benchmark__chart" data-gpu-chart>
-                    <svg data-gpu-chart-svg role="img" aria-label="GPU price history">
-                      <desc data-gpu-chart-description>The line shows the selected GPU's observed price. The surrounding band shows the middle range of quotes.</desc>
-                    </svg>
-                    <div class="gpu-benchmark__tooltip" data-gpu-tooltip hidden></div>
-                    <p class="gpu-benchmark__state" data-gpu-state>Loading hourly benchmark history</p>
-                  </div>
 
                   <div class="gpu-benchmark__composer" data-card-composer>
                     <button
@@ -141,25 +172,62 @@
                       aria-controls="gpu-index-compare-options"
                       data-card-compare-toggle
                     >
-                      <span>Compare</span>
+                      <span data-card-data-label>Data</span>
                       <strong data-card-compare-count hidden></strong>
                     </button>
+                    <button
+                      class="gpu-benchmark__save"
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-controls="desk-save-dialog"
+                      data-card-save
+                    >Save</button>
                     <div
-                      class="gpu-benchmark__compare-panel"
+                      class="gpu-benchmark__compare-panel gpu-benchmark__data-panel"
                       id="gpu-index-compare-options"
                       data-card-compare-panel
                       hidden
                       inert
                     >
-                      <span class="gpu-benchmark__compare-label">Add data</span>
-                      <div class="gpu-benchmark__layers" role="group" aria-label="Comparison data" data-card-layers></div>
+                      <div class="gpu-benchmark__data-row">
+                        <span class="gpu-benchmark__compare-label">Main</span>
+                        <div
+                          class="gpu-benchmark__primary"
+                          role="radiogroup"
+                          aria-label="Main data"
+                          aria-describedby="gpu-index-craft-main-help"
+                          data-card-primary-layers
+                        ></div>
+                        <div class="gpu-benchmark__scale-control">
+                          <span class="gpu-benchmark__compare-label">View</span>
+                          <div class="gpu-benchmark__scales" role="group" aria-label="Chart view">
+                            <button type="button" aria-pressed="true" data-card-scale="price">Price</button>
+                            <button type="button" aria-pressed="false" data-card-scale="index">Index</button>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="gpu-benchmark__data-row">
+                        <span class="gpu-benchmark__compare-label">Compare</span>
+                        <div class="gpu-benchmark__layers" role="group" aria-label="Comparison data" data-card-layers></div>
+                      </div>
                     </div>
                     <p class="gpu-benchmark__announce" aria-live="polite" data-card-announce></p>
                   </div>
 
+                  <div class="gpu-benchmark__chart" data-gpu-chart>
+                    <div class="gpu-benchmark__craft-empty" data-craft-empty hidden>
+                      <p id="gpu-index-craft-main-help">Choose a main series</p>
+                    </div>
+                    <svg data-gpu-chart-svg role="img" aria-label="GPU price history">
+                      <desc data-gpu-chart-description>The line shows the selected GPU's observed price. The surrounding band shows the middle range of quotes.</desc>
+                    </svg>
+                    <div class="gpu-benchmark__tooltip" data-gpu-tooltip hidden></div>
+                    <p class="gpu-benchmark__state" data-gpu-state>Loading hourly benchmark history</p>
+                  </div>
+
                   <div class="gpu-benchmark__footer">
                     <time data-gpu-range-start>pending</time>
-                    <div class="gpu-benchmark__ranges" role="group" aria-label="Price history range">
+                    <div class="gpu-benchmark__ranges" role="group" aria-label="History range">
                       <button type="button" aria-pressed="false" data-gpu-range="1d">1D</button>
                       <button type="button" aria-pressed="true" data-gpu-range="7d">7D</button>
                       <button type="button" aria-pressed="false" data-gpu-range="all">ALL</button>
@@ -172,15 +240,20 @@
             </article>
           </div>
 
-          <div class="gpu-index-share" id="gpu-index-publish" data-index-panel="share" aria-label="GPU price card" hidden>
+          <div
+            class="gpu-index-share"
+            id="gpu-index-publish"
+            data-index-panel="share"
+            aria-label="Card preview"
+            hidden
+          >
             <figure class="desk-card-preview">
               <div class="gpu-index-share__window">
                 <div class="compute-share-card-frame">
                   <svg class="compute-share-artifact" data-share-artifact-svg viewBox="0 0 1200 675" role="img" aria-label="GPU price card"></svg>
                 </div>
-                <figcaption class="desk-card-preview__meta">
-                  <time class="desk-card-preview__observed" data-share-observed>Loading market data</time>
-                  <button class="desk-card-preview__copy" type="button" data-share-copy-link>Copy link</button>
+                <figcaption class="desk-card-preview__caption">
+                  Observed <time data-share-observed>Loading market data</time>
                 </figcaption>
               </div>
             </figure>
@@ -188,10 +261,12 @@
           </div>
         </div>
 
-        <section class="desk-card-gallery" id="desk-card-gallery" data-card-layout-panel="all" aria-label="Open pricing cards" hidden inert>
+        <section class="desk-card-gallery" id="desk-card-gallery" data-card-layout-panel="all" aria-labelledby="desk-catalog-title" hidden inert>
+          <h2 class="desk-workspace-heading" id="desk-catalog-title" tabindex="-1">Catalog</h2>
           <div class="desk-card-gallery__grid" data-card-gallery-grid></div>
           <p class="desk-card-gallery__status" aria-live="polite" data-card-gallery-status></p>
         </section>
+        <p class="desk-workspace-status" role="status" aria-live="polite" aria-atomic="true" data-workspace-status></p>
       </section>
     </main>
     <aside class="desk-corners" aria-hidden="true">
@@ -213,7 +288,6 @@
       </time>
       <span class="desk-corner desk-corner--top-right desk-shortcuts">
         <span><kbd>⌘G</kbd> <span class="desk-shortcuts__label">Search</span></span>
-        <span><kbd>⌘/</kbd> <span class="desk-shortcuts__label">Controls</span></span>
       </span>
     </aside>
     <dialog class="desk-command-menu" aria-labelledby="desk-command-title" data-command-palette>
@@ -247,6 +321,37 @@
         <p class="desk-command-menu__status" aria-live="polite" data-command-status></p>
       </section>
     </dialog>
-    <script type="module" src="./desk.js?v=56"></script>
+    <dialog
+      class="desk-save-dialog"
+      id="desk-save-dialog"
+      aria-labelledby="desk-save-title"
+      aria-describedby="desk-save-description"
+      data-save-dialog
+    >
+      <form class="desk-save-dialog__form" data-save-form novalidate>
+        <header>
+          <h2 id="desk-save-title" data-save-title>Save to Catalog</h2>
+          <p id="desk-save-description">Name this view.</p>
+        </header>
+        <label for="desk-save-name">Name</label>
+        <input
+          id="desk-save-name"
+          name="name"
+          type="text"
+          maxlength="48"
+          autocomplete="off"
+          aria-describedby="desk-save-description desk-save-error"
+          aria-errormessage="desk-save-error"
+          required
+          data-save-name
+        >
+        <p class="desk-save-dialog__error" id="desk-save-error" aria-live="polite" data-save-error></p>
+        <footer>
+          <button type="button" data-save-cancel>Cancel</button>
+          <button type="submit" data-save-submit>Save</button>
+        </footer>
+      </form>
+    </dialog>
+    <script type="module" src="./desk.js?v=82"></script>
   </body>
 </html>

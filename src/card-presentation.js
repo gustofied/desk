@@ -30,7 +30,7 @@ export function cardUrl(cardId, view, stateParams = {}) {
 }
 
 export function cardPermalink(cardId, stateParams = {}) {
-  return cardUrl(cardId, "full", stateParams);
+  return cardUrl(cardId, "monitor", stateParams);
 }
 
 export function replaceCardLocation(cardId, view, stateParams = {}) {
@@ -49,7 +49,7 @@ export function normalizeLegacyCardPresentation() {
   const state = Object.fromEntries(
     CARD_STATE_PARAMS.map((name) => [name, params.get(name)]),
   );
-  window.history.replaceState({}, "", cardUrl(card.id, "full", state));
+  window.history.replaceState({}, "", cardUrl(card.id, "monitor", state));
 }
 
 normalizeLegacyCardPresentation();

@@ -315,9 +315,10 @@ function renderPublishedCardImage(model) {
   const hasComparisons = model.comparisonTitle.length > 0;
   const chart = {
     x: 0,
-    y: 174,
+    y: 158,
     width: hasComparisons ? 1040 : 1200,
-    height: 430,
+    height: 446,
+    areaBottom: 630,
   };
   const allRows = model.series.flatMap((candidate) => candidate.rows);
   const { line, area, baselineY, y } = layeredChartPaths(
@@ -336,11 +337,8 @@ function renderPublishedCardImage(model) {
       const dash = candidate.primary
         ? ""
         : candidate.layer.strokeDasharray || "";
-      const underlay = candidate.primary
-        ? `<path d="${line(candidate.rows)}" fill="none" stroke="${model.colors.paper}" stroke-opacity="0.94" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>`
-        : "";
       const color = candidate.primary ? model.colors.line : model.colors.secondary;
-      return `${underlay}<path d="${line(candidate.rows)}" fill="none" stroke="${color}" stroke-opacity="${strokeOpacity}" stroke-width="${strokeWidth}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      return `<path d="${line(candidate.rows)}" fill="none" stroke="${color}" stroke-opacity="${strokeOpacity}" stroke-width="${strokeWidth}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`;
     })
     .join("");
   const areaMarkup =
@@ -443,7 +441,13 @@ function renderPublishedSharePage(
 
 function renderLegacyCardImage(family, range, rows, latest, accent, theme) {
   const colors = themeColors(accent, theme);
-  const chart = { x: 0, y: 174, width: 1200, height: 430 };
+  const chart = {
+    x: 0,
+    y: 158,
+    width: 1200,
+    height: 446,
+    areaBottom: 630,
+  };
   const { line, area } = chartPaths(rows, chart);
 
   return `
@@ -479,7 +483,7 @@ function renderDefaultComparisonImage() {
   const primary = series.find((item) => item.layerId === "H200");
   const latest = primary?.rows.at(-1);
   const allRows = series.flatMap((item) => item.rows);
-  const chart = { x: 0, y: 174, width: 1040, height: 430 };
+  const chart = { x: 0, y: 158, width: 1040, height: 446 };
   const { line, area, baselineY, y } = layeredChartPaths(
     allRows,
     primary?.rows || [],
@@ -494,10 +498,7 @@ function renderDefaultComparisonImage() {
     .map(({ layerId, rows }) => {
       const layer = cardDefinition.layers.find((item) => item.id === layerId);
       const primaryLayer = layerId === "H200";
-      const underlay = primaryLayer
-        ? `<path d="${line(rows)}" fill="none" stroke="${colors.paper}" stroke-opacity="0.94" stroke-width="7.5" stroke-linecap="round" stroke-linejoin="round"/>`
-        : "";
-      return `${underlay}<path d="${line(rows)}" fill="none" stroke="${primaryLayer ? colors.line : colors.secondary}" stroke-opacity="${primaryLayer ? 1 : comparisonStrokeOpacity(colors.theme)}" stroke-width="${primaryLayer ? 3.5 : 2}" stroke-dasharray="${primaryLayer ? "" : layer.strokeDasharray || ""}" stroke-linecap="round" stroke-linejoin="round"/>`;
+      return `<path d="${line(rows)}" fill="none" stroke="${primaryLayer ? colors.line : colors.secondary}" stroke-opacity="${primaryLayer ? 1 : comparisonStrokeOpacity(colors.theme)}" stroke-width="${primaryLayer ? 3.5 : 2}" stroke-dasharray="${primaryLayer ? "" : layer.strokeDasharray || ""}" stroke-linecap="round" stroke-linejoin="round"/>`;
     })
     .join("");
   const endpointLabels = endpointLabelMarkup(series, colors, chart, y);
@@ -575,7 +576,11 @@ function layeredChartPaths(allRows, primaryRows, chart, scale) {
   const area = d3
     .area()
     .x((row) => x(row.date))
-    .y0(scale === "index" ? y(INDEX_BASELINE) : chart.y + chart.height)
+    .y0(
+      scale === "index"
+        ? y(INDEX_BASELINE)
+        : chart.areaBottom ?? chart.y + chart.height,
+    )
     .y1((row) => y(row.plotValue))
     .curve(d3.curveMonotoneX)(primaryRows);
   return {
@@ -610,7 +615,7 @@ function chartPaths(rows, chart) {
     area: d3
       .area()
       .x((row) => x(row.date))
-      .y0(chart.y + chart.height)
+      .y0(chart.areaBottom ?? chart.y + chart.height)
       .y1((row) => y(row.value))
       .curve(d3.curveMonotoneX)(rows),
   };

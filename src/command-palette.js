@@ -1,9 +1,7 @@
 const defaultGroups = [
-  "Cards",
-  "Create",
+  "Workspace",
+  "Catalog",
   "Actions",
-  "GPU",
-  "View",
   "Layers",
   "Range",
   "Appearance",
@@ -81,6 +79,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     if (
       event.defaultPrevented ||
       event.isComposing ||
+      document.querySelector("dialog[open]:not([data-command-palette])") ||
       !event.metaKey ||
       event.ctrlKey ||
       event.altKey ||

@@ -4,7 +4,7 @@ const GPU_INDEX_SLUG = "gpu-price-index";
 const GPU_INDEX_DATA_FILE = "data/gpu-price-index.json";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
-export const PUBLISHED_CARD_VERSION = "v6";
+export const PUBLISHED_CARD_VERSION = "v8";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),
