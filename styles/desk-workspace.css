@@ -167,12 +167,88 @@
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
+.desk-gallery-item {
+  position: relative;
+  z-index: 0;
+  min-width: 0;
+  aspect-ratio: 16 / 9;
+}
+
+.desk-gallery-item[data-dragging="true"],
+.desk-gallery-item[data-keyboard-moving="true"] {
+  z-index: 4;
+}
+
+.desk-gallery-card__handle {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 3;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  color: var(--desk-accent-deep);
+  cursor: grab;
+  background: color-mix(in srgb, var(--desk-canvas, #fff) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
+  border-radius: 4px;
+  opacity: 0;
+  pointer-events: none;
+  place-items: center;
+  touch-action: none;
+  transform: translateY(2px);
+  transition:
+    color 200ms var(--desk-ease-out),
+    background-color 200ms var(--desk-ease-out),
+    border-color 200ms var(--desk-ease-out),
+    opacity 200ms var(--desk-ease-out),
+    transform 200ms var(--desk-ease-out);
+}
+
+.desk-gallery-card__handle > span {
+  display: grid;
+  grid-template-columns: repeat(2, 2px);
+  grid-template-rows: repeat(3, 2px);
+  gap: 2px;
+}
+
+.desk-gallery-card__handle i {
+  width: 2px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 9999px;
+}
+
+.desk-gallery-item:is(:hover, :focus-within) .desk-gallery-card__handle,
+.desk-gallery-item[data-dragging="true"] .desk-gallery-card__handle,
+.desk-gallery-item[data-keyboard-moving="true"] .desk-gallery-card__handle {
+  opacity: 0.72;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.desk-gallery-card__handle:hover,
+.desk-gallery-card__handle:focus-visible,
+.desk-gallery-card__handle[aria-pressed="true"] {
+  color: var(--desk-canvas, #fff);
+  background: var(--desk-accent-deep);
+  border-color: var(--desk-accent-deep);
+  opacity: 1;
+}
+
+.desk-gallery-card__handle:focus-visible {
+  outline: 1px solid var(--desk-accent-deep);
+  outline-offset: 2px;
+}
+
 .desk-gallery-card.compute-share-card-frame {
   position: relative;
   display: block;
   width: 100%;
+  height: 100%;
   min-width: 0;
-  aspect-ratio: 16 / 9;
+  aspect-ratio: auto;
   padding: 0;
   overflow: hidden;
   text-align: left;
@@ -187,6 +263,26 @@
     border-color 200ms var(--desk-ease-out),
     box-shadow 200ms var(--desk-ease-out),
     transform 200ms var(--desk-ease-out);
+}
+
+.desk-gallery-item[data-dragging="true"] .desk-gallery-card.compute-share-card-frame {
+  border-color: var(--desk-accent-deep);
+  box-shadow:
+    0 4px 12px color-mix(in srgb, var(--desk-accent-deep) 12%, transparent),
+    0 24px 48px color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
+  opacity: 0.9;
+  transform: none;
+  transition: none;
+}
+
+.desk-card-gallery__grid[data-reordering="true"] {
+  scroll-snap-type: none;
+}
+
+:root[data-catalog-reordering="true"],
+:root[data-catalog-reordering="true"] * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 .desk-gallery-card.compute-share-card-frame::after {
@@ -313,6 +409,10 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .desk-gallery-card.compute-share-card-frame {
+    cursor: grab;
+  }
+
   .desk-gallery-card.compute-share-card-frame:hover {
     z-index: 1;
     border-color: var(--desk-accent-deep);
@@ -324,6 +424,19 @@
 
   .desk-gallery-card.compute-share-card-frame:active {
     transform: translateY(0) scale(0.98);
+  }
+
+  .desk-gallery-item[data-dragging="true"] .desk-gallery-card.compute-share-card-frame:hover,
+  .desk-gallery-item[data-dragging="true"] .desk-gallery-card.compute-share-card-frame:active {
+    transform: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .desk-gallery-card__handle {
+    opacity: 0.42;
+    pointer-events: auto;
+    transform: translateY(0);
   }
 }
 
@@ -425,14 +538,16 @@
     display: none;
   }
 
-  .desk-gallery-card {
+  .desk-gallery-item {
     scroll-snap-align: center;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .compute-card-skin--market .desk-card-rail :is(.desk-card-tabs button, .desk-card-gallery-tab),
-  .desk-gallery-card {
+  .desk-gallery-card,
+  .desk-gallery-card__handle,
+  .desk-gallery-item {
     transition: none;
   }
 

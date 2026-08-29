@@ -30,6 +30,11 @@ import {
   normalizeCatalogName,
   saveCatalogItem,
 } from "./saved-catalog.js";
+import {
+  loadCatalogOrder,
+  orderCatalogEntries,
+  saveCatalogOrder,
+} from "./catalog-order.js";
 import { shareRangeLabel } from "./share-range-label.js";
 import {
   horizontalHitZones,
@@ -155,6 +160,7 @@ if (root) {
     controlsReadyAt: 0,
     galleryAlignedId: null,
     catalogDirty: true,
+    catalogOrder: loadCatalogOrder(),
     catalogColorMode: loadCatalogColorMode(),
     zoomWindow: null,
     savedCatalog,
@@ -243,6 +249,10 @@ if (root) {
     reducedMotion,
   });
   const catalogCards = new Map();
+  const catalogReflowAnimations = new WeakMap();
+  let catalogPointerDrag = null;
+  let catalogKeyboardMove = null;
+  let suppressedCatalogClickKey = null;
   let unregisterSavedCatalogCommands = () => {};
   initialize();
 
@@ -1215,29 +1225,56 @@ if (root) {
 
   function configureWorkspaceControls() {
     if (!nodes.galleryGrid) return;
+    cancelCatalogReorder();
     state.catalogDirty = true;
     catalogCards.clear();
     const entries = catalogEntries();
     nodes.galleryGrid.dataset.cardCount = String(Math.min(entries.length, 5));
+    nodes.galleryGrid.setAttribute("role", "list");
     const cards = entries.map((entry) => {
+      const item = document.createElement("div");
       const button = document.createElement("button");
+      const handle = document.createElement("button");
+      item.className = "desk-gallery-item";
+      item.dataset.catalogId = entry.key;
+      item.setAttribute("role", "listitem");
       button.className = "desk-gallery-card compute-share-card-frame";
       button.type = "button";
       button.dataset.catalogId = entry.key;
       button.dataset.catalogKind = entry.kind;
       button.innerHTML = `
         <svg class="compute-share-artifact desk-gallery-card__artifact" viewBox="0 0 1200 675" aria-hidden="true" data-gallery-artifact></svg>`;
+      handle.className = "desk-gallery-card__handle";
+      handle.type = "button";
+      handle.dataset.catalogHandle = entry.key;
+      handle.setAttribute("aria-pressed", "false");
+      handle.innerHTML = `<span aria-hidden="true">${"<i></i>".repeat(6)}</span>`;
       button.addEventListener("click", (event) => {
+        if (
+          event.detail !== 0 &&
+          suppressedCatalogClickKey === entry.key
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          suppressedCatalogClickKey = null;
+          return;
+        }
         monitorCatalogEntry(entry, event.detail === 0);
       });
-      catalogCards.set(entry.key, {
+      const cardNodes = {
         entry,
+        item,
         button,
+        handle,
         artifact: button.querySelector("[data-gallery-artifact]"),
-      });
-      return button;
+      };
+      configureCatalogCardReordering(cardNodes);
+      item.append(button, handle);
+      catalogCards.set(entry.key, cardNodes);
+      return item;
     });
     nodes.galleryGrid.replaceChildren(...cards);
+    syncCatalogCardPositions();
   }
 
   function catalogEntries() {
@@ -1251,7 +1288,7 @@ if (root) {
     );
     const lineCard = getCardDefinition("gpu-index");
     const barCard = getCardDefinition("gpu-price-snapshot");
-    return [
+    return orderCatalogEntries([
       ...savedEntries,
       ...lineCard.layers
         .filter((layer) => layer.unit === "usd-hour")
@@ -1273,7 +1310,468 @@ if (root) {
         family: "Prices",
         state: normalizeCardState(barCard.id, barCard.defaults),
       },
-    ];
+    ], state.catalogOrder);
+  }
+
+  function catalogEntryTitle(entry) {
+    if (entry.kind === "saved") return entry.item.name;
+    const entryCard = getCardDefinition(entry.cardId || cardId);
+    return entryCard.renderer === "categorical-bar"
+      ? "Accelerator prices"
+      : entry.family;
+  }
+
+  function configureCatalogCardReordering(cardNodes) {
+    const { button, handle, item, entry } = cardNodes;
+    button.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "touch") return;
+      beginCatalogPointerReorder(event, cardNodes);
+    });
+    handle.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+      beginCatalogPointerReorder(event, cardNodes);
+    });
+    handle.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (
+        event.detail !== 0 &&
+        suppressedCatalogClickKey === entry.key
+      ) {
+        suppressedCatalogClickKey = null;
+        return;
+      }
+      toggleCatalogKeyboardMove(cardNodes);
+    });
+    handle.addEventListener("keydown", (event) => {
+      handleCatalogReorderKeydown(event, cardNodes);
+    });
+    handle.addEventListener("blur", () => {
+      window.queueMicrotask(() => {
+        if (
+          catalogKeyboardMove?.item === item &&
+          document.activeElement !== handle
+        ) {
+          finishCatalogKeyboardMove(true);
+        }
+      });
+    });
+  }
+
+  function beginCatalogPointerReorder(event, cardNodes) {
+    if (
+      !nodes.galleryGrid ||
+      !event.isPrimary ||
+      event.button !== 0 ||
+      catalogPointerDrag
+    ) {
+      return;
+    }
+    if (catalogKeyboardMove) finishCatalogKeyboardMove(true);
+    const surface = event.currentTarget;
+    const drag = {
+      ...cardNodes,
+      surface,
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      offsetX: 0,
+      offsetY: 0,
+      frame: 0,
+      dragging: false,
+      originalKeys: catalogDomKeys(),
+    };
+    drag.move = (nextEvent) => updateCatalogPointerReorder(nextEvent, drag);
+    drag.end = (nextEvent) => {
+      if (nextEvent.pointerId === drag.pointerId) {
+        finishCatalogPointerReorder(true);
+      }
+    };
+    drag.cancel = (nextEvent) => {
+      if (nextEvent.pointerId === drag.pointerId) {
+        finishCatalogPointerReorder(false);
+      }
+    };
+    catalogPointerDrag = drag;
+    surface.addEventListener("pointermove", drag.move);
+    surface.addEventListener("pointerup", drag.end);
+    surface.addEventListener("pointercancel", drag.cancel);
+    surface.addEventListener("lostpointercapture", drag.cancel);
+    surface.setPointerCapture?.(event.pointerId);
+    if (event.pointerType === "touch") event.preventDefault();
+  }
+
+  function updateCatalogPointerReorder(event, drag) {
+    if (
+      catalogPointerDrag !== drag ||
+      event.pointerId !== drag.pointerId
+    ) {
+      return;
+    }
+    drag.currentX = event.clientX;
+    drag.currentY = event.clientY;
+    if (!drag.dragging) {
+      const distance = Math.hypot(
+        drag.currentX - drag.startX,
+        drag.currentY - drag.startY,
+      );
+      if (distance < 8) return;
+      drag.dragging = true;
+      drag.item.dataset.dragging = "true";
+      drag.handle.setAttribute("aria-pressed", "true");
+      nodes.galleryGrid.dataset.reordering = "true";
+      document.documentElement.dataset.catalogReordering = "true";
+    }
+    event.preventDefault();
+    if (drag.frame) return;
+    drag.frame = window.requestAnimationFrame(() => {
+      drag.frame = 0;
+      applyCatalogDragPosition(drag);
+      autoScrollCatalogDrag(drag);
+      reorderCatalogItemAtPointer(drag);
+    });
+  }
+
+  function applyCatalogDragPosition(drag) {
+    const x = drag.currentX - drag.startX + drag.offsetX;
+    const y = drag.currentY - drag.startY + drag.offsetY;
+    drag.item.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    drag.item.style.willChange = "transform";
+  }
+
+  function autoScrollCatalogDrag(drag) {
+    const grid = nodes.galleryGrid;
+    const gridRect = grid.getBoundingClientRect();
+    if (grid.scrollWidth > grid.clientWidth) {
+      if (drag.currentX < gridRect.left + 40) grid.scrollLeft -= 12;
+      else if (drag.currentX > gridRect.right - 40) grid.scrollLeft += 12;
+    }
+    if (drag.currentY < 40) window.scrollBy(0, -12);
+    else if (drag.currentY > window.innerHeight - 40) window.scrollBy(0, 12);
+  }
+
+  function reorderCatalogItemAtPointer(drag) {
+    const items = catalogDomItems();
+    const candidates = items.filter((item) => item !== drag.item);
+    if (!candidates.length) return;
+    let target = null;
+    let targetRect = null;
+    let nearestDistance = Infinity;
+    for (const candidate of candidates) {
+      const rect = candidate.getBoundingClientRect();
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const distance = Math.hypot(drag.currentX - x, drag.currentY - y);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        target = candidate;
+        targetRect = rect;
+      }
+    }
+    if (!target || !targetRect) return;
+    const sameRow =
+      Math.abs(drag.currentY - (targetRect.top + targetRect.height / 2)) <=
+      targetRect.height * 0.45;
+    const before = sameRow
+      ? drag.currentX < targetRect.left + targetRect.width / 2
+      : drag.currentY < targetRect.top + targetRect.height / 2;
+    const remaining = items.filter((item) => item !== drag.item);
+    const targetIndex = remaining.indexOf(target);
+    moveCatalogItemToIndex(
+      drag.item,
+      targetIndex + (before ? 0 : 1),
+      drag,
+    );
+  }
+
+  function moveCatalogItemToIndex(item, requestedIndex, activeDrag = null) {
+    const items = catalogDomItems();
+    const currentIndex = items.indexOf(item);
+    if (currentIndex < 0) return false;
+    const remaining = items.filter((candidate) => candidate !== item);
+    const nextIndex = Math.max(0, Math.min(remaining.length, requestedIndex));
+    const reordered = [...remaining];
+    reordered.splice(nextIndex, 0, item);
+    if (reordered.every((candidate, index) => candidate === items[index])) {
+      return false;
+    }
+
+    const beforeRects = measureCatalogItems(items);
+    const draggedRect = activeDrag ? item.getBoundingClientRect() : null;
+    nodes.galleryGrid.insertBefore(item, remaining[nextIndex] || null);
+    if (activeDrag && draggedRect) {
+      const nextRect = item.getBoundingClientRect();
+      activeDrag.offsetX += draggedRect.left - nextRect.left;
+      activeDrag.offsetY += draggedRect.top - nextRect.top;
+      applyCatalogDragPosition(activeDrag);
+    }
+    animateCatalogReflow(beforeRects, item);
+    syncCatalogCardPositions();
+    return true;
+  }
+
+  function finishCatalogPointerReorder(commit) {
+    const drag = catalogPointerDrag;
+    if (!drag) return;
+    catalogPointerDrag = null;
+    if (drag.frame) window.cancelAnimationFrame(drag.frame);
+    drag.surface.removeEventListener("pointermove", drag.move);
+    drag.surface.removeEventListener("pointerup", drag.end);
+    drag.surface.removeEventListener("pointercancel", drag.cancel);
+    drag.surface.removeEventListener("lostpointercapture", drag.cancel);
+    if (drag.surface.hasPointerCapture?.(drag.pointerId)) {
+      drag.surface.releasePointerCapture(drag.pointerId);
+    }
+    if (!drag.dragging) return;
+
+    if (!commit) restoreCatalogDomOrder(drag.originalKeys, drag.item, drag);
+    drag.item.removeAttribute("data-dragging");
+    drag.handle.setAttribute("aria-pressed", "false");
+    nodes.galleryGrid.removeAttribute("data-reordering");
+    document.documentElement.removeAttribute("data-catalog-reordering");
+    settleCatalogDragItem(drag.item);
+
+    if (commit) {
+      const changed = !sameCatalogOrder(drag.originalKeys, catalogDomKeys());
+      if (changed) {
+        persistCatalogDomOrder();
+        announceCatalogPosition(drag.entry, drag.item, "moved");
+      }
+      suppressedCatalogClickKey = drag.entry.key;
+      window.setTimeout(() => {
+        if (suppressedCatalogClickKey === drag.entry.key) {
+          suppressedCatalogClickKey = null;
+        }
+      }, 0);
+    } else {
+      announceWorkspace("Catalog move cancelled");
+    }
+    syncCatalogCardPositions();
+  }
+
+  function settleCatalogDragItem(item) {
+    const transform = item.style.transform;
+    const cleanUp = () => {
+      item.style.removeProperty("transform");
+      item.style.removeProperty("will-change");
+    };
+    if (reducedMotion || !transform) {
+      cleanUp();
+      return;
+    }
+    const animation = item.animate(
+      [
+        { transform, opacity: 0.86 },
+        { transform: "translate3d(0, 0, 0)", opacity: 1 },
+      ],
+      {
+        duration: 400,
+        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+      },
+    );
+    animation.addEventListener("finish", cleanUp, { once: true });
+    animation.addEventListener("cancel", cleanUp, { once: true });
+  }
+
+  function toggleCatalogKeyboardMove(cardNodes) {
+    if (catalogPointerDrag) return;
+    if (catalogKeyboardMove?.item === cardNodes.item) {
+      finishCatalogKeyboardMove(true);
+      return;
+    }
+    if (catalogKeyboardMove) finishCatalogKeyboardMove(true);
+    catalogKeyboardMove = {
+      ...cardNodes,
+      originalKeys: catalogDomKeys(),
+    };
+    cardNodes.item.dataset.keyboardMoving = "true";
+    cardNodes.handle.setAttribute("aria-pressed", "true");
+    syncCatalogCardPositions();
+    announceWorkspace(
+      `Moving ${catalogEntryTitle(cardNodes.entry)}. Use arrow keys to choose a position.`,
+    );
+  }
+
+  function handleCatalogReorderKeydown(event, cardNodes) {
+    if ([" ", "Spacebar", "Enter"].includes(event.key)) {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleCatalogKeyboardMove(cardNodes);
+      return;
+    }
+    if (event.key === "Escape" && catalogKeyboardMove?.item === cardNodes.item) {
+      event.preventDefault();
+      finishCatalogKeyboardMove(false);
+      return;
+    }
+    if (
+      !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
+    ) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (catalogKeyboardMove?.item !== cardNodes.item) {
+      toggleCatalogKeyboardMove(cardNodes);
+    }
+    const items = catalogDomItems();
+    const currentIndex = items.indexOf(cardNodes.item);
+    const columns = catalogGridColumnCount();
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : currentIndex + (
+              event.key === "ArrowLeft"
+                ? -1
+                : event.key === "ArrowRight"
+                  ? 1
+                  : event.key === "ArrowUp"
+                    ? -columns
+                    : columns
+            );
+    if (moveCatalogItemToIndex(cardNodes.item, nextIndex)) {
+      cardNodes.handle.focus({ preventScroll: true });
+      announceCatalogPosition(cardNodes.entry, cardNodes.item, "position");
+    }
+  }
+
+  function finishCatalogKeyboardMove(commit) {
+    const move = catalogKeyboardMove;
+    if (!move) return;
+    catalogKeyboardMove = null;
+    if (!commit) restoreCatalogDomOrder(move.originalKeys, move.item);
+    else persistCatalogDomOrder();
+    move.item.removeAttribute("data-keyboard-moving");
+    move.handle.setAttribute("aria-pressed", "false");
+    syncCatalogCardPositions();
+    announceCatalogPosition(
+      move.entry,
+      move.item,
+      commit ? "placed" : "restored",
+    );
+  }
+
+  function cancelCatalogReorder() {
+    if (catalogPointerDrag) finishCatalogPointerReorder(false);
+    if (catalogKeyboardMove) finishCatalogKeyboardMove(false);
+  }
+
+  function catalogDomItems() {
+    return nodes.galleryGrid
+      ? Array.from(nodes.galleryGrid.children).filter((item) =>
+          item.classList.contains("desk-gallery-item"),
+        )
+      : [];
+  }
+
+  function catalogDomKeys() {
+    return catalogDomItems().map((item) => item.dataset.catalogId);
+  }
+
+  function persistCatalogDomOrder() {
+    state.catalogOrder = saveCatalogOrder(catalogDomKeys());
+    syncCatalogCardMapOrder();
+  }
+
+  function syncCatalogCardMapOrder() {
+    const orderedCards = catalogDomKeys()
+      .map((key) => [key, catalogCards.get(key)])
+      .filter(([, card]) => card);
+    catalogCards.clear();
+    for (const [key, card] of orderedCards) catalogCards.set(key, card);
+  }
+
+  function restoreCatalogDomOrder(keys, movedItem, activeDrag = null) {
+    const itemsByKey = new Map(
+      catalogDomItems().map((item) => [item.dataset.catalogId, item]),
+    );
+    const ordered = keys.map((key) => itemsByKey.get(key)).filter(Boolean);
+    const beforeRects = measureCatalogItems(catalogDomItems());
+    const draggedRect = activeDrag ? movedItem.getBoundingClientRect() : null;
+    nodes.galleryGrid.append(...ordered);
+    if (activeDrag && draggedRect) {
+      const nextRect = movedItem.getBoundingClientRect();
+      activeDrag.offsetX += draggedRect.left - nextRect.left;
+      activeDrag.offsetY += draggedRect.top - nextRect.top;
+      applyCatalogDragPosition(activeDrag);
+    }
+    animateCatalogReflow(beforeRects, movedItem);
+    syncCatalogCardMapOrder();
+  }
+
+  function measureCatalogItems(items = catalogDomItems()) {
+    return new Map(items.map((item) => [item, item.getBoundingClientRect()]));
+  }
+
+  function animateCatalogReflow(beforeRects, movedItem) {
+    if (reducedMotion) return;
+    for (const item of catalogDomItems()) {
+      if (item === movedItem || !beforeRects.has(item)) continue;
+      catalogReflowAnimations.get(item)?.cancel();
+      const before = beforeRects.get(item);
+      const after = item.getBoundingClientRect();
+      const x = before.left - after.left;
+      const y = before.top - after.top;
+      if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) continue;
+      const animation = item.animate(
+        [
+          { transform: `translate3d(${x}px, ${y}px, 0)` },
+          { transform: "translate3d(0, 0, 0)" },
+        ],
+        {
+          duration: 400,
+          easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+        },
+      );
+      catalogReflowAnimations.set(item, animation);
+    }
+  }
+
+  function catalogGridColumnCount() {
+    const styles = window.getComputedStyle(nodes.galleryGrid);
+    if (styles.gridAutoFlow.includes("column")) return 1;
+    const columns = styles.gridTemplateColumns.trim().split(/\s+/).length;
+    return Math.max(1, columns);
+  }
+
+  function syncCatalogCardPositions() {
+    const items = catalogDomItems();
+    const total = items.length;
+    items.forEach((item, index) => {
+      const card = catalogCards.get(item.dataset.catalogId);
+      if (!card) return;
+      const moving = catalogKeyboardMove?.item === item;
+      const title = catalogEntryTitle(card.entry);
+      item.setAttribute("aria-posinset", String(index + 1));
+      item.setAttribute("aria-setsize", String(total));
+      card.handle.setAttribute(
+        "aria-label",
+        moving
+          ? `Moving ${title}. Position ${index + 1} of ${total}. Use arrow keys, then press Space to place.`
+          : `Move ${title}. Position ${index + 1} of ${total}.`,
+      );
+      card.handle.setAttribute(
+        "aria-keyshortcuts",
+        "Space ArrowLeft ArrowRight ArrowUp ArrowDown Home End Escape",
+      );
+    });
+  }
+
+  function announceCatalogPosition(entry, item, action) {
+    const position = catalogDomItems().indexOf(item) + 1;
+    const total = catalogDomItems().length;
+    announceWorkspace(
+      `${catalogEntryTitle(entry)} ${action} ${position} of ${total}`,
+    );
+  }
+
+  function sameCatalogOrder(left, right) {
+    return left.length === right.length &&
+      left.every((key, index) => key === right[index]);
   }
 
   function savedCatalogKey(entryCardId, id) {
@@ -1323,9 +1821,9 @@ if (root) {
         { duration: 0.22, ease: [0.23, 1, 0.32, 1] },
       );
       if (state.layout === "all") {
-        Array.from(catalogCards.values()).forEach(({ button }, index) => {
+        Array.from(catalogCards.values()).forEach(({ item }, index) => {
           animate(
-            button,
+            item,
             {
               opacity: [0, 1],
               transform: ["translateY(4px)", "translateY(0)"],
@@ -2420,11 +2918,7 @@ if (root) {
       const entryCard = getCardDefinition(entry.cardId || cardId);
       const cardState = catalogEntryState(entry);
       const displayState = catalogEntryDisplayState(entry);
-      const title = entry.kind === "saved"
-        ? entry.item.name
-        : entryCard.renderer === "categorical-bar"
-          ? "Accelerator prices"
-          : entry.family;
+      const title = catalogEntryTitle(entry);
       const selected = entry.key === activeCatalogKey();
       cardNodes.button.dataset.selected = String(selected);
 
@@ -2479,6 +2973,8 @@ if (root) {
         theme: displayState.theme,
       });
     }
+
+    syncCatalogCardPositions();
 
     if (nodes.galleryStatus) {
       const entries = catalogEntries();
