@@ -2317,7 +2317,7 @@ if (root) {
       "aria-label",
       `Accelerator prices. ${model.bars
         .map((bar) => `${bar.label} ${formatUsd(bar.value)}`)
-        .join(", ")}. Observed ${formatUtcDateTime(observed)}`,
+        .join(", ")} per GPU hour. Observed ${formatUtcDateTime(observed)}`,
     );
   }
 
@@ -2437,7 +2437,8 @@ if (root) {
           "aria-label",
           `Monitor ${title}, ${model.bars.length} accelerator prices from ` +
             `${formatUsd(model.bars.at(-1).value)} to ` +
-            `${formatUsd(model.bars[0].value)} per GPU hour`,
+            `${formatUsd(model.bars[0].value)} per GPU hour, observed ` +
+            `${formatUtcDateTime(new Date(model.asOf * 1000))}`,
         );
         paintGpuPriceBarChart(cardNodes.artifact, model, {
           colors: cardPalette(displayState),
@@ -2445,6 +2446,7 @@ if (root) {
           title,
           reducedMotion: true,
           interactive: false,
+          decorative: true,
         });
         continue;
       }

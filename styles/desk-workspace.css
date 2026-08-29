@@ -290,38 +290,25 @@
 
 .gpu-price-bar__row {
   outline: none;
-  transition: opacity 240ms var(--desk-ease-out);
 }
 
 .gpu-price-bar__row .gpu-price-bar__hit {
   cursor: default;
-  transition: fill 240ms var(--desk-ease-out);
 }
 
-.gpu-price-bar__range,
-.gpu-price-bar__interval {
+.gpu-price-bar__halo {
   opacity: 0;
   transition: opacity 240ms var(--desk-ease-out);
 }
 
-.gpu-price-bar__row[data-active="true"] {
-  opacity: 1;
+.gpu-price-bar__row[data-active="true"] .gpu-price-bar__halo,
+.gpu-price-bar__row:focus .gpu-price-bar__halo {
+  opacity: 0.14;
 }
 
-.gpu-price-bar__row[data-active="true"] .gpu-price-bar__hit,
-.gpu-price-bar__row:focus .gpu-price-bar__hit {
-  fill: color-mix(in srgb, var(--desk-accent-pale) 22%, transparent);
-}
-
-.gpu-price-bar__row[data-active="true"] .gpu-price-bar__range,
-.gpu-price-bar__row:focus .gpu-price-bar__range,
-.gpu-price-bar__row[data-active="true"] .gpu-price-bar__interval,
-.gpu-price-bar__row:focus .gpu-price-bar__interval {
-  opacity: 1;
-}
-
-.gpu-price-bar__row:focus-visible .gpu-price-bar__hit {
-  stroke: var(--desk-accent-deep);
+.gpu-price-bar__row:focus-visible .gpu-price-bar__halo {
+  opacity: 0.22;
+  stroke: var(--market-card-ink);
   stroke-width: 2px;
 }
 
@@ -449,10 +436,7 @@
     transition: none;
   }
 
-  .gpu-price-bar__row,
-  .gpu-price-bar__row .gpu-price-bar__hit,
-  .gpu-price-bar__range,
-  .gpu-price-bar__interval {
+  .gpu-price-bar__halo {
     transition: none;
   }
 
