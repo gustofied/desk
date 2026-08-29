@@ -80,29 +80,41 @@ export function paintGpuPriceBarChart(
   }
 
   if (reducedMotion) return;
+  const priceRail = svgNode.querySelector("[data-price-ladder-rail]");
+  priceRail?.animate(
+    [
+      { strokeDashoffset: 1, opacity: 0.42 },
+      { strokeDashoffset: 0, opacity: 1 },
+    ],
+    {
+      duration: 520,
+      easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+      fill: "both",
+    },
+  );
   svgNode.querySelectorAll("[data-price-bar-row]").forEach((row, index) => {
-    const stem = row.querySelector("[data-price-bar-value]");
     const endpoint = row.querySelector("[data-price-bar-marker]");
-    stem.animate(
-      [
-        { transform: "scaleY(0)", opacity: 0.4 },
-        { transform: "scaleY(1)", opacity: 1 },
-      ],
-      {
-        delay: index * 40,
-        duration: 320,
-        easing: "cubic-bezier(0.23, 1, 0.32, 1)",
-        fill: "both",
-      },
-    );
-    endpoint.animate(
+    const copy = row.querySelector("[data-price-ladder-copy]");
+    endpoint?.animate(
       [
         { transform: "scale(0.4)", opacity: 0 },
         { transform: "scale(1)", opacity: 1 },
       ],
       {
-        delay: index * 40 + 150,
-        duration: 200,
+        delay: 180 + index * 45,
+        duration: 220,
+        easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+        fill: "both",
+      },
+    );
+    copy?.animate(
+      [
+        { transform: "translateY(5px)", opacity: 0 },
+        { transform: "translateY(0)", opacity: 1 },
+      ],
+      {
+        delay: 230 + index * 45,
+        duration: 260,
         easing: "cubic-bezier(0.23, 1, 0.32, 1)",
         fill: "both",
       },
@@ -121,26 +133,27 @@ export function gpuPriceBarMarkup(
   assertModel(model);
   const palette = normalizeColors(colors);
   const bars = model.bars;
-  const maxValue = Math.max(...bars.map((bar) => bar.value), 1);
   const canvasHeight = compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
-  const plotTop = compact ? 144 : 136;
-  const baseline = compact ? 552 : 520;
-  const labelY = compact ? 632 : 584;
+  const railY = compact ? 350 : 326;
+  const priceY = compact ? 276 : 250;
+  const labelY = compact ? 430 : 402;
   const plotLeft = 40;
   const plotRight = 1160;
   const columnWidth = (plotRight - plotLeft) / bars.length;
-  const stemWidth = compact ? 6 : 3.5;
+  const railWidth = compact ? 3 : 2;
   const endpointRadius = compact ? 6 : 4;
   const endpointStroke = compact ? 3 : 2;
   const dateLabel = formatObservedDate(model.asOf);
   const labelSize = compact ? 30 : 20;
-  const priceSize = compact ? 96 : 72;
+  const priceSize = 72;
+  const points = bars.map((bar, index) => ({
+    x: plotLeft + columnWidth * (index + 0.5),
+    y: railY,
+  }));
 
   const rowMarkup = bars
     .map((bar, index) => {
-      const x = plotLeft + columnWidth * (index + 0.5);
-      const valueY = baseline - scale(bar.value, maxValue, baseline - plotTop);
-      const priceY = Math.max(64, valueY - 32);
+      const { x, y: valueY } = points[index];
       const rangeLabel = `${formatUsd(bar.lower)} to ${formatUsd(bar.upper)}`;
       const ariaLabel =
         `${bar.label}, ${formatUsd(bar.value)} per GPU hour, ` +
@@ -153,18 +166,17 @@ export function gpuPriceBarMarkup(
             width="${columnWidth}" height="${canvasHeight - 80}" fill="transparent"/>
           <circle class="gpu-price-bar__halo" cx="${x}" cy="${valueY}" r="${compact ? 32 : 24}"
             fill="${palette.line}" opacity="0" aria-hidden="true"/>
-          <line data-price-bar-value="" x1="${x}" x2="${x}" y1="${baseline}" y2="${valueY}"
-            stroke="${palette.line}" stroke-width="${stemWidth}" stroke-linecap="round"
-            style="transform-box:fill-box;transform-origin:center bottom"/>
           <circle class="gpu-price-bar__endpoint" data-price-bar-marker="" cx="${x}" cy="${valueY}"
             r="${endpointRadius}" fill="${palette.paper}" stroke="${palette.line}"
             stroke-width="${endpointStroke}"
             style="transform-box:fill-box;transform-origin:center"/>
-          <text x="${x}" y="${priceY}" fill="${palette.line}" font-family="Geist, sans-serif"
-            font-size="${priceSize}" font-weight="500" text-anchor="middle" letter-spacing="-2"
-            style="font-variant-numeric:tabular-nums">${escapeXml(formatUsd(bar.value))}</text>
-          <text x="${x}" y="${labelY}" fill="${palette.muted}" font-family="Geist Mono, monospace"
-            font-size="${labelSize}" font-weight="600" text-anchor="middle" letter-spacing="1">${escapeXml(bar.label)}</text>
+          <g data-price-ladder-copy="">
+            <text x="${x}" y="${priceY}" fill="${palette.line}" font-family="Geist, sans-serif"
+              font-size="${priceSize}" font-weight="500" text-anchor="middle" letter-spacing="-2"
+              style="font-variant-numeric:tabular-nums">${escapeXml(formatUsd(bar.value))}</text>
+            <text x="${x}" y="${labelY}" fill="${palette.muted}" font-family="Geist Mono, monospace"
+              font-size="${labelSize}" font-weight="600" text-anchor="middle" letter-spacing="1">${escapeXml(bar.label)}</text>
+          </g>
         </g>`;
     })
     .join("");
@@ -175,8 +187,9 @@ export function gpuPriceBarMarkup(
   const inner = `
     <desc>${escapeXml(ariaLabel)}</desc>
     <rect width="${SVG_WIDTH}" height="${canvasHeight}" fill="${palette.paper}"/>
-    <line x1="${plotLeft}" x2="${plotRight}" y1="${baseline}" y2="${baseline}"
-      stroke="${palette.rule}" stroke-width="1"/>
+    <line data-price-ladder-rail="" x1="${plotLeft}" x2="${plotRight}" y1="${railY}" y2="${railY}"
+      stroke="${palette.line}" stroke-width="${railWidth}" stroke-opacity="0.28"
+      stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="0"/>
     ${rowMarkup}`;
 
   return {
@@ -187,12 +200,11 @@ export function gpuPriceBarMarkup(
 
 function normalizeColors(colors = {}) {
   const line = colors.line || "#315f82";
+  const text = colors.text || line;
   return {
     paper: colors.paper || "#ffffff",
     line,
-    text: colors.text || line,
-    muted: colors.muted || withOpacity(colors.text || line, 0.58),
-    rule: colors.rule || withOpacity(line, 0.16),
+    muted: colors.muted || withOpacity(text, 0.58),
   };
 }
 
@@ -205,10 +217,6 @@ function withOpacity(hex, opacity) {
     return `${value}${alpha}`;
   }
   return value;
-}
-
-function scale(value, maxValue, width) {
-  return Math.max(0, Math.min(width, (Number(value) / maxValue) * width));
 }
 
 function formatUsd(value) {
