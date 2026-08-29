@@ -55,6 +55,7 @@ if (root) {
     .querySelector(".gpu-index-detail__body")
     ?.setAttribute("aria-label", cardDefinition.title);
   const craftDraftStorageKey = `desk.craft-draft.v1.${cardId}`;
+  const catalogColorStorageKey = "desk.catalog-colors.v1";
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
@@ -154,6 +155,7 @@ if (root) {
     controlsReadyAt: 0,
     galleryAlignedId: null,
     catalogDirty: true,
+    catalogColorMode: loadCatalogColorMode(),
     zoomWindow: null,
     savedCatalog,
     activeCatalogId: requestedCatalogItem?.id || null,
@@ -926,6 +928,44 @@ if (root) {
         active: () => currentPalette() === palette,
         run: () => setPalette(palette),
       })),
+      {
+        id: "appearance.catalog.match-desk",
+        group: "Appearance",
+        order: 6,
+        title: "Match Desk colors",
+        subtitle: "Use one palette across Catalog",
+        hint: "Catalog",
+        keywords: [
+          "catalog",
+          "cards",
+          "color",
+          "colour",
+          "theme",
+          "same",
+          "reset",
+        ],
+        active: () => state.catalogColorMode === "match-desk",
+        run: () => setCatalogColorMode("match-desk"),
+      },
+      {
+        id: "appearance.catalog.card-colors",
+        group: "Appearance",
+        order: 7,
+        title: "Show card colors",
+        subtitle: "Use each card’s saved appearance",
+        hint: "Catalog",
+        keywords: [
+          "catalog",
+          "cards",
+          "color",
+          "colour",
+          "theme",
+          "individual",
+          "saved",
+        ],
+        active: () => state.catalogColorMode === "card-colors",
+        run: () => setCatalogColorMode("card-colors"),
+      },
     ]);
   }
 
@@ -1020,6 +1060,33 @@ if (root) {
 
   function currentTheme() {
     return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
+  }
+
+  function loadCatalogColorMode() {
+    try {
+      return window.localStorage.getItem(catalogColorStorageKey) === "card-colors"
+        ? "card-colors"
+        : "match-desk";
+    } catch {
+      return "match-desk";
+    }
+  }
+
+  function setCatalogColorMode(mode) {
+    if (mode !== "match-desk" && mode !== "card-colors") return;
+    if (state.catalogColorMode === mode) return;
+    state.catalogColorMode = mode;
+    try {
+      window.localStorage.setItem(catalogColorStorageKey, mode);
+    } catch {}
+    state.catalogDirty = true;
+    if (state.layout === "all") renderWorkspaceGallery();
+    commandPalette.refresh();
+    announceWorkspace(
+      mode === "match-desk"
+        ? "Catalog now matches Desk colors"
+        : "Catalog now shows each card’s colors",
+    );
   }
 
   function configureUtcClock() {
@@ -1522,7 +1589,7 @@ if (root) {
     if (!entry) return;
     preserveCraftDraft();
     const entryCard = getCardDefinition(entry.cardId || cardId);
-    const entryState = catalogEntryState(entry);
+    const entryState = catalogEntryOpenState(entry);
     if (entryCard.id !== cardId) {
       const url = cardUrl(entryCard.id, "monitor", entryState);
       if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
@@ -1572,11 +1639,23 @@ if (root) {
   function catalogEntryState(entry) {
     if (entry.kind === "saved") return entry.item.state;
     const entryCard = getCardDefinition(entry.cardId || cardId);
-    return normalizeCardState(entryCard.id, {
-      ...entry.state,
+    return normalizeCardState(entryCard.id, entry.state);
+  }
+
+  function catalogEntryDisplayState(entry) {
+    const authoredState = catalogEntryState(entry);
+    if (state.catalogColorMode === "card-colors") return authoredState;
+    return {
+      ...authoredState,
       palette: currentPalette(),
       theme: currentTheme(),
-    });
+    };
+  }
+
+  function catalogEntryOpenState(entry) {
+    return entry.kind === "saved"
+      ? catalogEntryState(entry)
+      : catalogEntryDisplayState(entry);
   }
 
   function applyCardState(
@@ -2342,6 +2421,7 @@ if (root) {
       const { entry } = cardNodes;
       const entryCard = getCardDefinition(entry.cardId || cardId);
       const cardState = catalogEntryState(entry);
+      const displayState = catalogEntryDisplayState(entry);
       const title = entry.kind === "saved"
         ? entry.item.name
         : entryCard.renderer === "categorical-bar"
@@ -2360,7 +2440,7 @@ if (root) {
           `Monitor ${title}, ${model.bars.length} accelerator prices`,
         );
         paintGpuPriceBarChart(cardNodes.artifact, model, {
-          colors: cardPalette(cardState),
+          colors: cardPalette(displayState),
           compact: true,
           title,
           primaryId: cardState.gpu,
@@ -2394,8 +2474,8 @@ if (root) {
         scale: cardState.scale,
         range: cardState.range,
         title,
-        palette: cardPalette(cardState),
-        theme: cardState.theme,
+        palette: cardPalette(displayState),
+        theme: displayState.theme,
       });
     }
 

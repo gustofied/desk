@@ -52,6 +52,9 @@ adds the controls for changing its data.
   saved or replaced with a new composition.
 - GPU data uses hourly prices. Adding Token Index compares movement from a
   common starting point.
+- Catalog thumbnails match the current Desk colors by default. Use **Command G**
+  to show each card's saved colors instead. Opening or sharing a card always
+  keeps that card's own palette and light or dark theme.
 - Use **Command G** and choose **Copy card link** to share the active card.
 - Shared links use social artwork that matches the selected layers, range,
   palette, and light or dark theme.
