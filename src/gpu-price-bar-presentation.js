@@ -129,11 +129,12 @@ export function gpuPriceBarMarkup(
   const plotLeft = 40;
   const plotRight = 1160;
   const columnWidth = (plotRight - plotLeft) / bars.length;
-  const stemWidth = compact ? 12 : 8;
-  const endpointRadius = compact ? 12 : 8;
+  const stemWidth = compact ? 6 : 3.5;
+  const endpointRadius = compact ? 6 : 4;
+  const endpointStroke = compact ? 3 : 2;
   const dateLabel = formatObservedDate(model.asOf);
   const labelSize = compact ? 30 : 20;
-  const priceSize = compact ? 60 : 48;
+  const priceSize = compact ? 96 : 72;
 
   const rowMarkup = bars
     .map((bar, index) => {
@@ -156,9 +157,10 @@ export function gpuPriceBarMarkup(
             stroke="${palette.line}" stroke-width="${stemWidth}" stroke-linecap="round"
             style="transform-box:fill-box;transform-origin:center bottom"/>
           <circle class="gpu-price-bar__endpoint" data-price-bar-marker="" cx="${x}" cy="${valueY}"
-            r="${endpointRadius}" fill="${palette.line}"
+            r="${endpointRadius}" fill="${palette.paper}" stroke="${palette.line}"
+            stroke-width="${endpointStroke}"
             style="transform-box:fill-box;transform-origin:center"/>
-          <text x="${x}" y="${priceY}" fill="${palette.text}" font-family="Geist, sans-serif"
+          <text x="${x}" y="${priceY}" fill="${palette.line}" font-family="Geist, sans-serif"
             font-size="${priceSize}" font-weight="500" text-anchor="middle" letter-spacing="-2"
             style="font-variant-numeric:tabular-nums">${escapeXml(formatUsd(bar.value))}</text>
           <text x="${x}" y="${labelY}" fill="${palette.muted}" font-family="Geist Mono, monospace"
@@ -174,7 +176,7 @@ export function gpuPriceBarMarkup(
     <desc>${escapeXml(ariaLabel)}</desc>
     <rect width="${SVG_WIDTH}" height="${canvasHeight}" fill="${palette.paper}"/>
     <line x1="${plotLeft}" x2="${plotRight}" y1="${baseline}" y2="${baseline}"
-      stroke="${palette.rule}" stroke-width="2"/>
+      stroke="${palette.rule}" stroke-width="1"/>
     ${rowMarkup}`;
 
   return {
