@@ -2317,7 +2317,7 @@ if (root) {
       "aria-label",
       `Accelerator prices. ${model.bars
         .map((bar) => `${bar.label} ${formatUsd(bar.value)}`)
-        .join(", ")}`,
+        .join(", ")}. Observed ${formatUtcDateTime(observed)}`,
     );
   }
 
@@ -2437,7 +2437,9 @@ if (root) {
         });
         cardNodes.button.setAttribute(
           "aria-label",
-          `Monitor ${title}, ${model.bars.length} accelerator prices`,
+          `Monitor ${title}, ${model.bars.length} accelerator prices from ` +
+            `${formatUsd(model.bars.at(-1).value)} to ` +
+            `${formatUsd(model.bars[0].value)} per GPU hour`,
         );
         paintGpuPriceBarChart(cardNodes.artifact, model, {
           colors: cardPalette(displayState),
@@ -2510,6 +2512,11 @@ if (root) {
     return {
       paper: mixHex(accent, dark ? "#171717" : "#ffffff", dark ? 0.03 : 0.05),
       line: mixHex(accent, dark ? "#ffffff" : "#102635", dark ? 0.88 : 0.52),
+      text: mixHex(
+        accent,
+        dark ? "#ffffff" : "#102635",
+        dark ? 0.72 : 0.28,
+      ),
       secondary: mixHex(accent, dark ? "#ffffff" : "#102635", 0.28),
       area: mixHex(accent, dark ? "#ffffff" : "#102635", 0.28),
     };

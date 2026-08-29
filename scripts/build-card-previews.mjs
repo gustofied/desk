@@ -810,6 +810,7 @@ function themeColors(accent, theme) {
       theme,
       paper: mixHex(accent, "#171717", 0.03),
       line,
+      text: mixHex(accent, "#ffffff", 0.72),
       secondary: mixHex(accent, "#ffffff", 0.28),
     };
   }
@@ -819,6 +820,7 @@ function themeColors(accent, theme) {
     theme,
     paper: mixHex(accent, "#ffffff", 0.05),
     line,
+    text: mixHex(accent, "#102635", 0.28),
     secondary: mixHex(accent, "#102635", 0.28),
   };
 }
