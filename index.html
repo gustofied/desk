@@ -2,7 +2,7 @@
 <html lang="en" data-display-toolbar="collapsed">
   <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <meta name="application-name" content="Desk">
     <meta name="apple-mobile-web-app-title" content="Desk">
     <meta name="description" content="Desk turns accelerator market data into clean, interactive cards.">
@@ -13,17 +13,17 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Desk">
     <meta property="og:url" content="https://desk.adamsioud.com/">
-    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=9">
-    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=9">
+    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=10">
+    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=10">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="A Desk comparison card showing H100, H200, and Token Index.">
+    <meta property="og:image:alt" content="A Desk comparison card showing H100, H200, and the Token Price Index.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Desk">
     <meta name="twitter:description" content="Read, compare, and share accelerator prices in clean market cards.">
-    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=9">
-    <meta name="twitter:image:alt" content="A Desk comparison card showing H100, H200, and Token Index.">
+    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=10">
+    <meta name="twitter:image:alt" content="A Desk comparison card showing H100, H200, and the Token Price Index.">
     <title>Desk</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/favicon.svg">
@@ -77,10 +77,10 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=63">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=41">
-    <link rel="stylesheet" href="./styles/command-palette.css?v=4">
-    <link rel="stylesheet" href="./styles/demo.css?v=13">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=65">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=43">
+    <link rel="stylesheet" href="./styles/command-palette.css?v=5">
+    <link rel="stylesheet" href="./styles/demo.css?v=15">
   </head>
   <body>
     <div class="desk-top-controls">
@@ -167,6 +167,12 @@
               <h2 class="desk-workspace-heading" id="desk-workspace-title">Monitor H200 7D</h2>
               <div class="gpu-index-detail__body" role="region" aria-label="Compute prices">
                 <div class="gpu-benchmark">
+
+                  <header class="gpu-benchmark__mobile-summary" aria-hidden="true">
+                    <span data-mobile-summary-label>H200</span>
+                    <strong data-mobile-summary-value>pending</strong>
+                    <span data-mobile-summary-range>7D</span>
+                  </header>
 
                   <div class="gpu-benchmark__composer" data-card-composer>
                     <button
@@ -267,7 +273,7 @@
 
         <section class="desk-card-gallery" id="desk-card-gallery" data-card-layout-panel="all" aria-labelledby="desk-catalog-title" hidden inert>
           <h2 class="desk-workspace-heading" id="desk-catalog-title" tabindex="-1">Catalog</h2>
-          <p class="desk-card-gallery__status" id="desk-catalog-reorder-help">Drag a card to move it. With a keyboard, hold Alt and press an arrow key.</p>
+          <p class="desk-card-gallery__status" id="desk-catalog-reorder-help">Touch and hold a card to move it. With a keyboard, hold Alt and press an arrow key.</p>
           <div class="desk-card-gallery__grid" data-card-gallery-grid></div>
           <p class="desk-card-gallery__status" aria-live="polite" data-card-gallery-status></p>
         </section>
@@ -295,7 +301,8 @@
         <span><kbd>⌘G</kbd> <span class="desk-shortcuts__label">Search</span></span>
       </span>
     </aside>
-    <dialog class="desk-command-menu" aria-labelledby="desk-command-title" data-command-palette>
+    <button class="desk-mobile-search" type="button" aria-label="Search Desk" aria-haspopup="dialog" aria-controls="desk-command-menu" data-command-open>Search</button>
+    <dialog class="desk-command-menu" id="desk-command-menu" aria-labelledby="desk-command-title" data-command-palette>
       <section class="desk-command-menu__surface">
         <h2 class="desk-command-menu__title" id="desk-command-title">Search Desk</h2>
         <header class="desk-command-menu__search">
@@ -357,6 +364,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=92"></script>
+    <script type="module" src="./desk.js?v=93"></script>
   </body>
 </html>

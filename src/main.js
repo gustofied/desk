@@ -64,6 +64,7 @@ if (root) {
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
+  const mobileViewport = window.matchMedia("(max-width: 640px)");
   const families = cardDefinition.layers
     .filter((layer) => layer.unit === "usd-hour")
     .map((layer) => layer.id);
@@ -158,7 +159,6 @@ if (root) {
     resizeTimer: null,
     transitionPending: false,
     controlsReadyAt: 0,
-    galleryAlignedId: null,
     catalogDirty: true,
     catalogOrder: loadCatalogOrder(),
     catalogColorMode: loadCatalogColorMode(),
@@ -170,6 +170,7 @@ if (root) {
     craftDirty: false,
     craftBaseline: null,
     craftDraft: initialCraftDraft,
+    catalogScrollY: null,
   };
   const nodes = {
     layoutPanels: new Map(
@@ -190,6 +191,9 @@ if (root) {
     modeButtons: Array.from(document.querySelectorAll("[data-desk-mode]")),
     galleryToggle: document.querySelector("[data-index-gallery-toggle]"),
     workspaceTitle: root.querySelector("#desk-workspace-title"),
+    mobileSummaryLabel: root.querySelector("[data-mobile-summary-label]"),
+    mobileSummaryValue: root.querySelector("[data-mobile-summary-value]"),
+    mobileSummaryRange: root.querySelector("[data-mobile-summary-range]"),
     detailPanel: root.querySelector("#gpu-index-detail"),
     focusPanel: root.querySelector("#desk-card-focus"),
     workspaceStatus: root.querySelector("[data-workspace-status]"),
@@ -235,6 +239,7 @@ if (root) {
     themeButtons: Array.from(document.querySelectorAll("[data-theme-value]")),
     paletteButtons: Array.from(document.querySelectorAll("[data-palette-value]")),
     commandPalette: document.querySelector("[data-command-palette]"),
+    commandOpen: document.querySelector("[data-command-open]"),
     saveDialog: document.querySelector("[data-save-dialog]"),
     saveForm: document.querySelector("[data-save-form]"),
     saveTitle: document.querySelector("[data-save-title]"),
@@ -249,7 +254,7 @@ if (root) {
     reducedMotion,
   });
   const catalogCards = new Map();
-  const catalogReflowAnimations = new WeakMap();
+  const catalogReflowAnimations = new Map();
   let catalogPointerDrag = null;
   let suppressedCatalogClickKey = null;
   let unregisterSavedCatalogCommands = () => {};
@@ -306,6 +311,7 @@ if (root) {
         else switchWorkspaceMode(mode, false);
       });
     }
+    nodes.commandOpen?.addEventListener("click", () => commandPalette.open());
     nodes.galleryToggle?.addEventListener("click", (event) => {
       showPanel("share", true, "all", event.detail === 0, "catalog");
     });
@@ -675,7 +681,7 @@ if (root) {
     mutateComposition(next, {
       message:
         scale === "price" && hadToken && !next.layers.includes("TOKEN")
-          ? "Price view selected, Token Index removed"
+          ? "Price view selected, Token Price Index removed"
           : `${scale === "index" ? "Index" : "Price"} view selected`,
     });
   }
@@ -1323,7 +1329,7 @@ if (root) {
       (event) => {
         if (
           catalogPointerDrag?.surface === button &&
-          catalogPointerDrag.armed
+          catalogPointerDrag.dragging
         ) {
           event.preventDefault();
         }
@@ -1344,7 +1350,10 @@ if (root) {
     ) {
       return;
     }
+    finishCatalogReflowAnimations();
     const surface = event.currentTarget;
+    const items = catalogDomItems();
+    const itemRect = cardNodes.item.getBoundingClientRect();
     const drag = {
       ...cardNodes,
       surface,
@@ -1353,15 +1362,25 @@ if (root) {
       startY: event.clientY,
       currentX: event.clientX,
       currentY: event.clientY,
-      offsetX: 0,
-      offsetY: 0,
+      itemWidth: itemRect.width,
+      itemHeight: itemRect.height,
+      grabOffsetX: event.clientX - itemRect.left,
+      grabOffsetY: event.clientY - itemRect.top,
+      startGridScrollLeft: nodes.galleryGrid.scrollLeft,
+      startGridScrollTop: nodes.galleryGrid.scrollTop,
+      startWindowScrollX: window.scrollX,
+      startWindowScrollY: window.scrollY,
       frame: 0,
       holdTimer: 0,
       held: false,
       movedBeforeHold: false,
       armed: event.pointerType !== "touch",
       dragging: false,
-      originalKeys: catalogDomKeys(),
+      items,
+      slots: measureCatalogSlots(items),
+      originIndex: items.indexOf(cardNodes.item),
+      targetIndex: items.indexOf(cardNodes.item),
+      dropTarget: null,
     };
     drag.move = (nextEvent) => updateCatalogPointerReorder(nextEvent, drag);
     drag.end = (nextEvent) => {
@@ -1377,9 +1396,9 @@ if (root) {
       }
     };
     catalogPointerDrag = drag;
-    surface.addEventListener("pointermove", drag.move);
-    surface.addEventListener("pointerup", drag.end);
-    surface.addEventListener("pointercancel", drag.cancel);
+    window.addEventListener("pointermove", drag.move, { passive: false });
+    window.addEventListener("pointerup", drag.end, { capture: true });
+    window.addEventListener("pointercancel", drag.cancel, { capture: true });
     surface.addEventListener("lostpointercapture", drag.cancel);
     if (drag.armed) {
       captureCatalogPointer(drag);
@@ -1436,18 +1455,35 @@ if (root) {
       document.documentElement.dataset.catalogReordering = "true";
     }
     event.preventDefault();
-    if (drag.frame) return;
+    scheduleCatalogDragFrame(drag);
+  }
+
+  function scheduleCatalogDragFrame(drag) {
+    if (drag.frame || catalogPointerDrag !== drag) return;
     drag.frame = window.requestAnimationFrame(() => {
       drag.frame = 0;
-      applyCatalogDragPosition(drag);
-      autoScrollCatalogDrag(drag);
-      reorderCatalogItemAtPointer(drag);
+      renderCatalogPointerDrag(drag, true);
     });
   }
 
+  function renderCatalogPointerDrag(drag, allowAutoScroll) {
+    if (!drag.dragging) return;
+    applyCatalogDragPosition(drag);
+    const scrolled = allowAutoScroll && autoScrollCatalogDrag(drag);
+    if (scrolled) applyCatalogDragPosition(drag);
+    updateCatalogDropTarget(drag);
+    if (scrolled) scheduleCatalogDragFrame(drag);
+  }
+
   function applyCatalogDragPosition(drag) {
-    const x = drag.currentX - drag.startX + drag.offsetX;
-    const y = drag.currentY - drag.startY + drag.offsetY;
+    const x =
+      drag.currentX - drag.startX +
+      nodes.galleryGrid.scrollLeft - drag.startGridScrollLeft +
+      window.scrollX - drag.startWindowScrollX;
+    const y =
+      drag.currentY - drag.startY +
+      nodes.galleryGrid.scrollTop - drag.startGridScrollTop +
+      window.scrollY - drag.startWindowScrollY;
     drag.item.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     drag.item.style.willChange = "transform";
   }
@@ -1455,49 +1491,63 @@ if (root) {
   function autoScrollCatalogDrag(drag) {
     const grid = nodes.galleryGrid;
     const gridRect = grid.getBoundingClientRect();
+    const beforeGridLeft = grid.scrollLeft;
+    const beforeGridTop = grid.scrollTop;
+    const beforeWindowX = window.scrollX;
+    const beforeWindowY = window.scrollY;
     if (grid.scrollWidth > grid.clientWidth) {
       if (drag.currentX < gridRect.left + 40) grid.scrollLeft -= 12;
       else if (drag.currentX > gridRect.right - 40) grid.scrollLeft += 12;
     }
     if (drag.currentY < 40) window.scrollBy(0, -12);
     else if (drag.currentY > window.innerHeight - 40) window.scrollBy(0, 12);
-  }
-
-  function reorderCatalogItemAtPointer(drag) {
-    const items = catalogDomItems();
-    const candidates = items.filter((item) => item !== drag.item);
-    if (!candidates.length) return;
-    let target = null;
-    let targetRect = null;
-    let nearestDistance = Infinity;
-    for (const candidate of candidates) {
-      const rect = candidate.getBoundingClientRect();
-      const x = rect.left + rect.width / 2;
-      const y = rect.top + rect.height / 2;
-      const distance = Math.hypot(drag.currentX - x, drag.currentY - y);
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        target = candidate;
-        targetRect = rect;
-      }
-    }
-    if (!target || !targetRect) return;
-    const sameRow =
-      Math.abs(drag.currentY - (targetRect.top + targetRect.height / 2)) <=
-      targetRect.height * 0.45;
-    const before = sameRow
-      ? drag.currentX < targetRect.left + targetRect.width / 2
-      : drag.currentY < targetRect.top + targetRect.height / 2;
-    const remaining = items.filter((item) => item !== drag.item);
-    const targetIndex = remaining.indexOf(target);
-    moveCatalogItemToIndex(
-      drag.item,
-      targetIndex + (before ? 0 : 1),
-      drag,
+    return (
+      grid.scrollLeft !== beforeGridLeft ||
+      grid.scrollTop !== beforeGridTop ||
+      window.scrollX !== beforeWindowX ||
+      window.scrollY !== beforeWindowY
     );
   }
 
-  function moveCatalogItemToIndex(item, requestedIndex, activeDrag = null) {
+  function updateCatalogDropTarget(drag) {
+    if (!drag.slots.length) return;
+    const gridRect = nodes.galleryGrid.getBoundingClientRect();
+    const centerX =
+      drag.currentX - drag.grabOffsetX + drag.itemWidth / 2 -
+      gridRect.left + nodes.galleryGrid.scrollLeft;
+    const centerY =
+      drag.currentY - drag.grabOffsetY + drag.itemHeight / 2 -
+      gridRect.top + nodes.galleryGrid.scrollTop;
+    const distances = drag.slots.map((slot) =>
+      Math.hypot(centerX - slot.centerX, centerY - slot.centerY),
+    );
+    let nearestIndex = 0;
+    for (let index = 1; index < distances.length; index += 1) {
+      if (distances[index] < distances[nearestIndex]) nearestIndex = index;
+    }
+    const currentDistance = distances[drag.targetIndex];
+    const nearestDistance = distances[nearestIndex];
+    if (
+      nearestIndex !== drag.targetIndex &&
+      nearestDistance + 14 >= currentDistance
+    ) {
+      return;
+    }
+    if (nearestIndex === drag.targetIndex) return;
+    drag.targetIndex = nearestIndex;
+    setCatalogDropTarget(drag);
+  }
+
+  function setCatalogDropTarget(drag) {
+    drag.dropTarget?.removeAttribute("data-drop-target");
+    drag.dropTarget =
+      drag.targetIndex === drag.originIndex
+        ? null
+        : drag.items[drag.targetIndex] || null;
+    drag.dropTarget?.setAttribute("data-drop-target", "true");
+  }
+
+  function moveCatalogItemToIndex(item, requestedIndex) {
     const items = catalogDomItems();
     const currentIndex = items.indexOf(item);
     if (currentIndex < 0) return false;
@@ -1510,35 +1560,36 @@ if (root) {
     }
 
     const beforeRects = measureCatalogItems(items);
-    const draggedRect = activeDrag ? item.getBoundingClientRect() : null;
-    nodes.galleryGrid.insertBefore(item, remaining[nextIndex] || null);
-    if (activeDrag && draggedRect) {
-      const nextRect = item.getBoundingClientRect();
-      activeDrag.offsetX += draggedRect.left - nextRect.left;
-      activeDrag.offsetY += draggedRect.top - nextRect.top;
-      applyCatalogDragPosition(activeDrag);
-    }
-    animateCatalogReflow(beforeRects, activeDrag ? item : null);
+    moveCatalogItemInDom(item, nextIndex);
+    animateCatalogReflow(beforeRects);
     syncCatalogCardPositions();
+    return true;
+  }
+
+  function moveCatalogItemInDom(item, requestedIndex) {
+    const items = catalogDomItems();
+    const currentIndex = items.indexOf(item);
+    if (currentIndex < 0) return false;
+    const remaining = items.filter((candidate) => candidate !== item);
+    const nextIndex = Math.max(0, Math.min(remaining.length, requestedIndex));
+    if (nextIndex === currentIndex) return false;
+    nodes.galleryGrid.insertBefore(item, remaining[nextIndex] || null);
     return true;
   }
 
   function finishCatalogPointerReorder(commit) {
     const drag = catalogPointerDrag;
     if (!drag) return;
-    catalogPointerDrag = null;
     if (drag.frame) {
       window.cancelAnimationFrame(drag.frame);
       drag.frame = 0;
-      if (drag.dragging) {
-        applyCatalogDragPosition(drag);
-        reorderCatalogItemAtPointer(drag);
-      }
     }
+    if (drag.dragging) renderCatalogPointerDrag(drag, false);
+    catalogPointerDrag = null;
     if (drag.holdTimer) window.clearTimeout(drag.holdTimer);
-    drag.surface.removeEventListener("pointermove", drag.move);
-    drag.surface.removeEventListener("pointerup", drag.end);
-    drag.surface.removeEventListener("pointercancel", drag.cancel);
+    window.removeEventListener("pointermove", drag.move);
+    window.removeEventListener("pointerup", drag.end, { capture: true });
+    window.removeEventListener("pointercancel", drag.cancel, { capture: true });
     drag.surface.removeEventListener("lostpointercapture", drag.cancel);
     if (drag.surface.hasPointerCapture?.(drag.pointerId)) {
       drag.surface.releasePointerCapture(drag.pointerId);
@@ -1551,14 +1602,16 @@ if (root) {
       return;
     }
 
-    if (!commit) restoreCatalogDomOrder(drag.originalKeys, drag.item, drag);
+    const beforeRects = measureCatalogItems();
+    drag.dropTarget?.removeAttribute("data-drop-target");
     drag.item.removeAttribute("data-dragging");
     nodes.galleryGrid.removeAttribute("data-reordering");
     document.documentElement.removeAttribute("data-catalog-reordering");
-    settleCatalogDragItem(drag.item);
+    drag.item.style.removeProperty("transform");
+    drag.item.style.removeProperty("will-change");
 
     if (commit) {
-      const changed = !sameCatalogOrder(drag.originalKeys, catalogDomKeys());
+      const changed = moveCatalogItemInDom(drag.item, drag.targetIndex);
       if (changed) {
         persistCatalogDomOrder();
         announceCatalogPosition(drag.entry, drag.item, "moved");
@@ -1566,6 +1619,7 @@ if (root) {
     } else {
       announceWorkspace("Catalog move cancelled");
     }
+    animateCatalogReflow(beforeRects);
     suppressCatalogPointerClick(drag.entry.key);
     syncCatalogCardPositions();
   }
@@ -1577,30 +1631,6 @@ if (root) {
         suppressedCatalogClickKey = null;
       }
     }, 0);
-  }
-
-  function settleCatalogDragItem(item) {
-    const transform = item.style.transform;
-    const cleanUp = () => {
-      item.style.removeProperty("transform");
-      item.style.removeProperty("will-change");
-    };
-    if (reducedMotion || !transform) {
-      cleanUp();
-      return;
-    }
-    const animation = item.animate(
-      [
-        { transform, opacity: 0.86 },
-        { transform: "translate3d(0, 0, 0)", opacity: 1 },
-      ],
-      {
-        duration: 400,
-        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
-      },
-    );
-    animation.addEventListener("finish", cleanUp, { once: true });
-    animation.addEventListener("cancel", cleanUp, { once: true });
   }
 
   function handleCatalogReorderKeydown(event, cardNodes) {
@@ -1672,32 +1702,32 @@ if (root) {
     for (const [key, card] of orderedCards) catalogCards.set(key, card);
   }
 
-  function restoreCatalogDomOrder(keys, movedItem, activeDrag = null) {
-    const itemsByKey = new Map(
-      catalogDomItems().map((item) => [item.dataset.catalogId, item]),
-    );
-    const ordered = keys.map((key) => itemsByKey.get(key)).filter(Boolean);
-    const beforeRects = measureCatalogItems(catalogDomItems());
-    const draggedRect = activeDrag ? movedItem.getBoundingClientRect() : null;
-    nodes.galleryGrid.append(...ordered);
-    if (activeDrag && draggedRect) {
-      const nextRect = movedItem.getBoundingClientRect();
-      activeDrag.offsetX += draggedRect.left - nextRect.left;
-      activeDrag.offsetY += draggedRect.top - nextRect.top;
-      applyCatalogDragPosition(activeDrag);
-    }
-    animateCatalogReflow(beforeRects, movedItem);
-    syncCatalogCardMapOrder();
+  function measureCatalogSlots(items = catalogDomItems()) {
+    return items.map((item) => ({
+      centerX: item.offsetLeft + item.offsetWidth / 2,
+      centerY: item.offsetTop + item.offsetHeight / 2,
+    }));
   }
 
   function measureCatalogItems(items = catalogDomItems()) {
     return new Map(items.map((item) => [item, item.getBoundingClientRect()]));
   }
 
-  function animateCatalogReflow(beforeRects, movedItem) {
+  function finishCatalogReflowAnimations() {
+    for (const animation of catalogReflowAnimations.values()) {
+      try {
+        animation.finish();
+      } catch {
+        animation.cancel();
+      }
+    }
+    catalogReflowAnimations.clear();
+  }
+
+  function animateCatalogReflow(beforeRects) {
     if (reducedMotion) return;
     for (const item of catalogDomItems()) {
-      if (item === movedItem || !beforeRects.has(item)) continue;
+      if (!beforeRects.has(item)) continue;
       catalogReflowAnimations.get(item)?.cancel();
       const before = beforeRects.get(item);
       const after = item.getBoundingClientRect();
@@ -1710,11 +1740,18 @@ if (root) {
           { transform: "translate3d(0, 0, 0)" },
         ],
         {
-          duration: 400,
+          duration: 280,
           easing: "cubic-bezier(0.32, 0.72, 0, 1)",
         },
       );
       catalogReflowAnimations.set(item, animation);
+      const cleanUp = () => {
+        if (catalogReflowAnimations.get(item) === animation) {
+          catalogReflowAnimations.delete(item);
+        }
+      };
+      animation.addEventListener("finish", cleanUp, { once: true });
+      animation.addEventListener("cancel", cleanUp, { once: true });
     }
   }
 
@@ -1903,6 +1940,7 @@ if (root) {
       }
       setShareReady(true);
       updateFamilyQuoteNodes();
+      syncMobileSummary();
       render(true);
       if (state.mode === "craft" && state.craftEmpty) {
         setCompareOpen(true);
@@ -1997,6 +2035,22 @@ if (root) {
             tabs.length;
     tabs[nextIndex].focus({ preventScroll: true });
     tabs[nextIndex].click();
+    window.requestAnimationFrame(() => revealCardRailTab(tabs[nextIndex]));
+  }
+
+  function revealCardRailTab(button) {
+    if (!mobileViewport.matches || !button) return;
+    const scroller = button.closest(".desk-card-tabs");
+    if (!scroller) return;
+    const tabStart = button.offsetLeft;
+    const tabEnd = tabStart + button.offsetWidth;
+    const visibleStart = scroller.scrollLeft;
+    const visibleEnd = visibleStart + scroller.clientWidth;
+    if (tabStart < visibleStart) {
+      scroller.scrollTo({ left: tabStart, behavior: "auto" });
+    } else if (tabEnd > visibleEnd) {
+      scroller.scrollTo({ left: tabEnd - scroller.clientWidth, behavior: "auto" });
+    }
   }
 
   function selectCardTab(family, event) {
@@ -2230,6 +2284,16 @@ if (root) {
       button.tabIndex = selected ? 0 : -1;
     });
     if (nodes.galleryToggle) nodes.galleryToggle.tabIndex = 0;
+    const activeRailButton = isBarCard
+      ? activePresetButton
+      : activeFamilyButton;
+    if (
+      state.layout === "focus" &&
+      state.panel === "share" &&
+      activeRailButton
+    ) {
+      window.requestAnimationFrame(() => revealCardRailTab(activeRailButton));
+    }
     if (nodes.focusPanel) {
       const labelledBy = isBarCard
         ? activePresetButton?.id
@@ -2266,9 +2330,30 @@ if (root) {
         ? "Craft new composition"
         : `${titleMode} ${workspaceLabel()}${isBarCard ? "" : ` ${ranges[state.range].label}`}${state.craftDirty ? " edited" : ""}`;
     }
+    syncMobileSummary();
     updateFamilyQuoteNodes();
     syncModeActions(false);
     syncComposerControls();
+  }
+
+  function syncMobileSummary() {
+    const summarySeries = !isBarCard && !state.craftEmpty
+      ? createLayerSeries(state.selected, { scale: state.scale })
+      : null;
+    const summaryLatest = summarySeries?.rows.at(-1);
+    if (nodes.mobileSummaryLabel) {
+      const summaryLayer = getLayerDefinition(cardDefinition, state.selected);
+      nodes.mobileSummaryLabel.textContent =
+        summaryLayer?.shortLabel || summaryLayer?.label || state.selected;
+    }
+    if (nodes.mobileSummaryValue) {
+      nodes.mobileSummaryValue.textContent = summaryLatest
+        ? formatCardHeadline(summaryLatest.plotValue, state.scale)
+        : "";
+    }
+    if (nodes.mobileSummaryRange) {
+      nodes.mobileSummaryRange.textContent = ranges[state.range].label;
+    }
   }
 
   function syncComposerControls() {
@@ -2437,6 +2522,13 @@ if (root) {
       return;
     }
     if (mode === state.mode) {
+      if (
+        mode === "catalog" &&
+        state.layout !== "all" &&
+        mobileViewport.matches
+      ) {
+        await showPanel("share", true, "all", false, mode);
+      }
       if (focusNavigation) {
         nodes.modeButtons
           .find((button) => button.dataset.deskMode === mode)
@@ -2449,9 +2541,11 @@ if (root) {
       await showPanel(
         "share",
         true,
-        state.activeCatalogId || state.craftDirty || state.craftDraft
+        mobileViewport.matches
           ? "all"
-          : "focus",
+          : (state.activeCatalogId || state.craftDirty || state.craftDraft)
+            ? "all"
+            : "focus",
         false,
         mode,
       );
@@ -2498,6 +2592,13 @@ if (root) {
         viewFocusTarget(nextName, targetLayout)?.focus({ preventScroll: true });
       }
       return;
+    }
+    if (
+      mobileViewport.matches &&
+      state.layout === "all" &&
+      targetLayout !== "all"
+    ) {
+      state.catalogScrollY = window.scrollY;
     }
     if (targetMode !== "craft" && state.compareOpen) {
       setCompareOpen(false);
@@ -2561,6 +2662,15 @@ if (root) {
 
     announceWorkspaceView();
     if (updateUrl) updateLocation();
+    if (
+      mobileViewport.matches &&
+      targetLayout === "all" &&
+      Number.isFinite(state.catalogScrollY)
+    ) {
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: state.catalogScrollY, behavior: "auto" });
+      });
+    }
   }
 
   function viewFocusTarget(panel, layout) {
@@ -2962,20 +3072,6 @@ if (root) {
       nodes.galleryStatus.textContent =
         `${savedCount} saved ${entries.length - savedCount} market cards`;
     }
-    if (
-      state.layout === "all" &&
-      state.galleryAlignedId !== activeCatalogKey() &&
-      window.matchMedia("(max-width: 640px)").matches
-    ) {
-      state.galleryAlignedId = activeCatalogKey();
-      window.requestAnimationFrame(() => {
-        catalogCards.get(activeCatalogKey())?.button.scrollIntoView({
-          behavior: "auto",
-          block: "nearest",
-          inline: "center",
-        });
-      });
-    }
     state.catalogDirty = false;
   }
 
@@ -3114,9 +3210,9 @@ if (root) {
       ? {
           family:
             primaryTitle.length > 24
-              ? 24
+              ? 36
               : primaryTitle.length > 16 || series.length > 1
-                ? 30
+                ? 36
                 : 52,
           range: 36,
           price: 104,
@@ -3169,7 +3265,7 @@ if (root) {
       : {
           x: 0,
           y: 158,
-          width: hasComparisons ? 1040 : 1200,
+          width: 1200,
           height: 491,
         };
     let start = d3.min(allRows, (row) => row.date);
@@ -3255,8 +3351,8 @@ if (root) {
         .attr("stroke-linejoin", "round")
         .attr("stroke-width", strokeWidth);
     });
-    if (hasComparisons) {
-      appendShareEndpointLabels(svg, series, palette, chart, y, isPrimary);
+    if (hasComparisons && !compact) {
+      appendShareEndpointLabels(svg, series, palette, chart, x, y, isPrimary);
     }
   }
 
@@ -3270,7 +3366,7 @@ if (root) {
     const height = Math.max(180, Math.round(nodes.chart.clientHeight));
     const margin = {
       top: 8,
-      right: series.length > 1 ? 64 : 0,
+      right: 0,
       bottom: 8,
       left: 0,
     };
@@ -3420,13 +3516,14 @@ if (root) {
           .filter((candidate) => !candidate.primary)
           .map((candidate) => ({
             candidate,
+            endpointX: x(candidate.rows.at(-1).date),
             lineY: y(candidate.rows.at(-1).plotValue),
           })),
         8,
         innerHeight - 8,
         16,
       );
-      labelPositions.forEach(({ candidate, lineY, labelY }) => {
+      labelPositions.forEach(({ candidate, endpointX, lineY, labelY }) => {
         const stateClass = "is-layer";
         plot
           .append("path")
@@ -3437,8 +3534,7 @@ if (root) {
           .attr("aria-hidden", "true")
           .attr(
             "d",
-            `M${innerWidth - 4},${lineY}H${innerWidth + 2}` +
-              `V${labelY}H${innerWidth + 6}`,
+            `M${endpointX},${lineY}H${innerWidth - 8}V${labelY}`,
           )
           .attr(
             "stroke",
@@ -3448,14 +3544,15 @@ if (root) {
           .append("text")
           .attr("class", `gpu-benchmark__line-label ${stateClass}`)
           .attr("aria-hidden", "true")
-          .attr("x", innerWidth + 8)
+          .attr("x", innerWidth - 12)
           .attr("y", labelY)
           .attr("dominant-baseline", "middle")
+          .attr("text-anchor", "end")
           .attr(
             "fill",
             currentSecondaryLineColor(),
           )
-          .text(candidate.layer.id);
+          .text(candidate.layer.shortLabel || candidate.layer.label);
       });
     }
 
@@ -3814,6 +3911,7 @@ if (root) {
     series,
     palette,
     chart,
+    x,
     y,
     isPrimary,
   ) {
@@ -3822,6 +3920,7 @@ if (root) {
         .filter((candidate) => !isPrimary(candidate))
         .map((candidate) => ({
           candidate,
+          endpointX: x(candidate.rows.at(-1).date),
           lineY: y(candidate.rows.at(-1).plotValue),
         })),
       chart.y + 12,
@@ -3829,15 +3928,14 @@ if (root) {
       26,
     );
     const chartRight = chart.x + chart.width;
-    for (const { candidate, lineY, labelY } of labelPositions) {
+    for (const { candidate, endpointX, lineY, labelY } of labelPositions) {
       const color = palette.secondary;
       const opacity = comparisonStrokeOpacity(currentTheme());
       svg
         .append("path")
         .attr(
           "d",
-          `M${chartRight - 4},${lineY}H${chartRight + 4}` +
-            `V${labelY}H${chartRight + 12}`,
+          `M${endpointX},${lineY}H${chartRight - 8}V${labelY}`,
         )
         .attr("fill", "none")
         .attr("stroke", color)
@@ -3849,16 +3947,21 @@ if (root) {
         )
         .attr("aria-hidden", "true");
       appendShareText(svg, {
-        x: chartRight + 20,
+        x: chartRight - 12,
         y: labelY + 6,
         text: candidate.layer.shortLabel || candidate.layer.label,
         fill: color,
         size: 18,
         weight: 500,
         family: "Geist Mono, monospace",
+        anchor: "end",
         spacing: 0.3,
       })
         .attr("fill-opacity", opacity)
+        .attr("paint-order", "stroke fill")
+        .attr("stroke", palette.paper)
+        .attr("stroke-width", 8)
+        .attr("stroke-linejoin", "round")
         .attr("aria-hidden", "true");
     }
   }

@@ -205,6 +205,18 @@ function validateSnapshotSet(snapshots, label, { maxAgeHours }) {
   if (manifestTimes.size !== 1) {
     throw new Error(`${label} do not share one observation time`);
   }
+  const showcaseModes = new Set(metadata.map((item) => item.showcase));
+  if (showcaseModes.size !== 1) {
+    throw new Error(`${label} mix showcase and production records`);
+  }
+  if (metadata[0].showcase) {
+    const starts = new Set(metadata.map((item) => item.firstObservationMs));
+    const ends = new Set(metadata.map((item) => item.latestObservationMs));
+    const counts = new Set(metadata.map((item) => item.observationCount));
+    if (starts.size !== 1 || ends.size !== 1 || counts.size !== 1) {
+      throw new Error(`${label} showcase histories are not aligned`);
+    }
+  }
 
   const observedMs = metadata[0].manifestObservedMs;
   const futureSkewMs = observedMs - Date.now();
@@ -231,7 +243,10 @@ function validateSnapshotSet(snapshots, label, { maxAgeHours }) {
 function validateSnapshot(payload, expected, label) {
   const context = `${label}/${expected.file}`;
   requireObject(payload, context);
-  requireEqual(payload.contract, "compute_bazaar_card", `${context}.contract`);
+  const showcase = payload.contract === "desk_showcase_card";
+  if (!showcase) {
+    requireEqual(payload.contract, "compute_bazaar_card", `${context}.contract`);
+  }
   requireEqual(payload.card_type, "gpu_benchmark", `${context}.card_type`);
   requireEqual(
     payload.card_id,
@@ -247,11 +262,14 @@ function validateSnapshot(payload, expected, label) {
   const manifest = requireObject(payload.manifest, `${context}.manifest`);
   requireEqual(
     manifest.contract,
-    "compute_bazaar_gold_market",
+    showcase ? "desk_showcase_market" : "compute_bazaar_gold_market",
     `${context}.manifest.contract`,
   );
   const runId = requireString(manifest.run_id, `${context}.manifest.run_id`);
-  if (!/^gold-market-\d{8}T\d{6}-[0-9a-f]{8}$/.test(runId)) {
+  const runIdPattern = showcase
+    ? /^desk-showcase-\d{8}T\d{6}-[0-9a-f]{8}$/
+    : /^gold-market-\d{8}T\d{6}-[0-9a-f]{8}$/;
+  if (!runIdPattern.test(runId)) {
     throw new Error(`${context}.manifest.run_id is malformed`);
   }
   const manifestObservedAt = requireString(
@@ -288,6 +306,13 @@ function validateSnapshot(payload, expected, label) {
     );
     if (observedAt <= previousTimestamp) {
       throw new Error(`${context}.series timestamps must be strictly increasing`);
+    }
+    if (
+      showcase &&
+      previousTimestamp !== -Infinity &&
+      observedAt - previousTimestamp !== 60 * 60 * 1000
+    ) {
+      throw new Error(`${context}.series must use an hourly showcase cadence`);
     }
     if (index === 0) firstTimestamp = observedAt;
     previousTimestamp = observedAt;
@@ -334,9 +359,18 @@ function validateSnapshot(payload, expected, label) {
   if (Math.abs(manifestObservedMs - previousTimestamp) > 10 * 60 * 1000) {
     throw new Error(`${context}.series does not match its manifest time`);
   }
+  if (
+    showcase &&
+    Math.abs(current.benchmark_usd_gpu_hr - payload.series.at(-1).value) > 1e-9
+  ) {
+    throw new Error(`${context}.data.current does not match its final observation`);
+  }
 
   return {
+    showcase,
+    firstObservationMs: firstTimestamp,
     latestObservationMs: previousTimestamp,
+    observationCount: payload.series.length,
     manifestObservedAt,
     manifestObservedMs,
     runId,

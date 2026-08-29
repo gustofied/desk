@@ -8,7 +8,7 @@ layers, view, range, palette, and theme.
 
 Website: <https://desk.adamsioud.com>
 
-![A layered Desk card in Sage Green dark mode](assets/showcase/desk-layered-card.jpg)
+![A Desk comparison card in Sage Green dark mode](assets/social/gpu-index/desk-comparison.png)
 
 ## What is here
 
@@ -16,7 +16,7 @@ Website: <https://desk.adamsioud.com>
 - A focused price-history card and a current-price bar card
 - Price view for series with the same unit
 - Index view for comparing different kinds of data from a common starting point
-- Token Index for mixed comparisons
+- Token Price Index for mixed comparisons
 - Four color palettes with light and dark themes
 - Clean card and gallery views
 - Exact links for editable card compositions
@@ -50,7 +50,7 @@ adds the controls for changing its data.
   Saved items keep their data layers, range, palette, and light or dark theme.
   An unfinished draft remains available in the current browser tab until it is
   saved or replaced with a new composition.
-- GPU data uses hourly prices. Adding Token Index compares movement from a
+- GPU data uses hourly prices. Adding the Token Price Index compares movement from a
   common starting point.
 - Catalog thumbnails match the current Desk colors by default. Use **Command G**
   to show each card's saved colors instead. Opening or sharing a card always
@@ -74,6 +74,7 @@ into one generic component.
 ## Data build
 
 The source records live under `api/dashboard-snapshots/`. Running
+`npm run generate:data` rebuilds the deterministic showcase market and
 `npm run build:data` writes one compact browser file to
 `data/gpu-price-index.json`. The page loads that file once and lets the browser
 and CDN cache it normally.
@@ -89,13 +90,11 @@ that feed requires a bearer token. Set
 `DESK_MAX_SNAPSHOT_AGE_HOURS` once the live feed has an enforceable freshness
 SLA.
 
-The hourly `Refresh Desk market data` workflow rebuilds runtime data, social
-previews, and the Pages artifact only when the validated source snapshots
+The manual `Refresh Desk market data` workflow can replace the accelerator
+source set with a validated Compute Bazaar run. It rebuilds runtime data,
+social previews, and the Pages artifact only when those source snapshots
 change. It commits only the source and tracked generated paths, then deploys
-the same assembled artifact. The default source currently serves the
-2026-08-21 export; continuously updated cards require the Compute Bazaar
-producer to publish its hourly
-`gpu-benchmark/{h100,h200,b200,b300}.json` set at the configured base URL.
+the same assembled artifact.
 
 `npm run build` always rebuilds the compact data, exact share previews, local
 fonts, and browser bundle. `npm run build:site` assembles the clean GitHub Pages
@@ -114,6 +113,7 @@ artifact in `_site`.
 - `src/saved-catalog.js` stores named Craft compositions for the local Catalog.
 - `src/command-palette.js` provides the searchable resource index.
 - `scripts/build-runtime-data.mjs` creates the compact data file.
+- `scripts/generate-showcase-market.mjs` creates the showcase histories.
 - `scripts/build-card-previews.mjs` creates social images and share routes.
 - `scripts/build-site.mjs` assembles the deployment without committing the full
   preview matrix.

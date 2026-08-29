@@ -2,11 +2,12 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const GPU_INDEX_ID = "gpu-index";
 const GPU_INDEX_SLUG = "gpu-price-index";
 const GPU_INDEX_DATA_FILE = "data/gpu-price-index.json";
+const GPU_INDEX_DATA_EPOCH = "showcase-v1";
 const GPU_PRICE_SNAPSHOT_ID = "gpu-price-snapshot";
 const GPU_PRICE_SNAPSHOT_SLUG = "gpu-price-snapshot";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
-export const PUBLISHED_CARD_VERSION = "v9";
+export const PUBLISHED_CARD_VERSION = "v10";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),
@@ -73,8 +74,10 @@ export const GPU_LAYERS = Object.freeze([
   }),
   Object.freeze({
     id: "TOKEN",
-    label: "Token Index",
+    label: "Token Price Index",
+    shortLabel: "TPI",
     unit: "index",
+    sourceFile: "api/dashboard-snapshots/token-price-index.json",
     views: Object.freeze(["index"]),
     strokeOpacity: 0.72,
     strokeDasharray: "1 4",
@@ -92,10 +95,10 @@ export const CARD_REGISTRY = Object.freeze([
     hash: "gpu-benchmark-card",
     renderer: "line",
     title: "Compute Prices",
-    description: "Hourly accelerator prices and Token Index.",
+    description: "Accelerator rental prices and token expenditure.",
     sourceDir: "api/dashboard-snapshots/gpu-benchmark",
     dataFile: GPU_INDEX_DATA_FILE,
-    dataUrl: `./${GPU_INDEX_DATA_FILE}`,
+    dataUrl: `./${GPU_INDEX_DATA_FILE}?dataset=${GPU_INDEX_DATA_EPOCH}`,
     sharePath: `/cards/${GPU_INDEX_SLUG}`,
     previewImageDir: `assets/social/${GPU_INDEX_ID}`,
     previewPageDir: `cards/${GPU_INDEX_SLUG}`,
@@ -124,7 +127,7 @@ export const CARD_REGISTRY = Object.freeze([
     sourceCardId: GPU_INDEX_ID,
     sourceDir: "api/dashboard-snapshots/gpu-benchmark",
     dataFile: GPU_INDEX_DATA_FILE,
-    dataUrl: `./${GPU_INDEX_DATA_FILE}`,
+    dataUrl: `./${GPU_INDEX_DATA_FILE}?dataset=${GPU_INDEX_DATA_EPOCH}`,
     sharePath: `/cards/${GPU_PRICE_SNAPSHOT_SLUG}`,
     previewImageDir: `assets/social/${GPU_PRICE_SNAPSHOT_ID}`,
     previewPageDir: `cards/${GPU_PRICE_SNAPSHOT_SLUG}`,

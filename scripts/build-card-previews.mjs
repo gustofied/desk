@@ -415,12 +415,12 @@ function renderPublishedCardImage(model) {
   const chart = {
     x: 0,
     y: 158,
-    width: hasComparisons ? 1040 : 1200,
+    width: 1200,
     height: 446,
     areaBottom: 630,
   };
   const allRows = model.series.flatMap((candidate) => candidate.rows);
-  const { line, area, baselineY, y } = layeredChartPaths(
+  const { line, area, baselineY, x, y } = layeredChartPaths(
     allRows,
     model.primary.rows,
     chart,
@@ -449,7 +449,7 @@ function renderPublishedCardImage(model) {
       ? `<line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${model.colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>`
       : "";
   const endpointLabels = hasComparisons
-    ? endpointLabelMarkup(model.series, model.colors, chart, y)
+    ? endpointLabelMarkup(model.series, model.colors, chart, x, y)
     : "";
 
   return `
@@ -656,8 +656,8 @@ function renderDefaultComparisonImage() {
   const primary = series.find((item) => item.layerId === "H200");
   const latest = primary?.rows.at(-1);
   const allRows = series.flatMap((item) => item.rows);
-  const chart = { x: 0, y: 158, width: 1040, height: 446 };
-  const { line, area, baselineY, y } = layeredChartPaths(
+  const chart = { x: 0, y: 158, width: 1200, height: 446 };
+  const { line, area, baselineY, x, y } = layeredChartPaths(
     allRows,
     primary?.rows || [],
     chart,
@@ -674,7 +674,7 @@ function renderDefaultComparisonImage() {
       return `<path d="${line(rows)}" fill="none" stroke="${primaryLayer ? colors.line : colors.secondary}" stroke-opacity="${primaryLayer ? 1 : comparisonStrokeOpacity(colors.theme)}" stroke-width="${primaryLayer ? 3.5 : 2}" stroke-dasharray="${primaryLayer ? "" : layer.strokeDasharray || ""}" stroke-linecap="round" stroke-linejoin="round"/>`;
     })
     .join("");
-  const endpointLabels = endpointLabelMarkup(series, colors, chart, y);
+  const endpointLabels = endpointLabelMarkup(series, colors, chart, x, y);
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
@@ -689,13 +689,14 @@ function renderDefaultComparisonImage() {
     </svg>`;
 }
 
-function endpointLabelMarkup(series, colors, chart, y) {
+function endpointLabelMarkup(series, colors, chart, x, y) {
   const opacity = comparisonStrokeOpacity(colors.theme);
   const labelPositions = spreadLineLabels(
     series
       .filter((candidate) => !candidate.primary)
       .map((candidate) => ({
         candidate,
+        endpointX: x(candidate.rows.at(-1).date),
         lineY: y(candidate.rows.at(-1).plotValue),
       })),
     chart.y + 12,
@@ -704,16 +705,17 @@ function endpointLabelMarkup(series, colors, chart, y) {
   );
   const chartRight = chart.x + chart.width;
   return labelPositions
-    .map(({ candidate, lineY, labelY }) => {
+    .map(({ candidate, endpointX, lineY, labelY }) => {
       const layer = candidate.layer;
       const label = layer.shortLabel || layer.label;
       return (
-        `<path d="M${chartRight - 4},${lineY}H${chartRight + 4}` +
-        `V${labelY}H${chartRight + 12}" fill="none" ` +
+        `<path d="M${endpointX},${lineY}H${chartRight - 8}V${labelY}" fill="none" ` +
         `stroke="${colors.secondary}" stroke-opacity="${opacity}" ` +
         `stroke-width="1.5" stroke-dasharray="${layer.strokeDasharray || ""}"/>` +
-        `<text x="${chartRight + 20}" y="${labelY + 6}" ` +
+        `<text x="${chartRight - 12}" y="${labelY + 6}" text-anchor="end" ` +
         `fill="${colors.secondary}" fill-opacity="${opacity}" ` +
+        `stroke="${colors.paper}" stroke-width="8" stroke-linejoin="round" ` +
+        `style="paint-order:stroke fill" ` +
         `font-family="Geist Mono, monospace" font-size="18" font-weight="500" ` +
         `letter-spacing="0.3">${escapeXml(label)}</text>`
       );
@@ -760,6 +762,7 @@ function layeredChartPaths(allRows, primaryRows, chart, scale) {
     line,
     area,
     baselineY: scale === "index" ? y(INDEX_BASELINE) : null,
+    x,
     y,
   };
 }

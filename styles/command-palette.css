@@ -252,12 +252,12 @@
 @media (max-width: 640px) {
   .desk-command-menu {
     width: calc(100vw - 24px);
-    max-height: calc(100dvh - 64px);
+    max-height: calc(100dvh - 64px - env(safe-area-inset-bottom));
     margin-top: 64px;
   }
 
   .desk-command-menu__surface {
-    max-height: calc(100dvh - 64px);
+    max-height: calc(100dvh - 64px - env(safe-area-inset-bottom));
   }
 
   .desk-command-menu::backdrop {
@@ -276,11 +276,11 @@
     grid-template-columns: minmax(0, 1fr) auto;
   }
 
-  .desk-command-menu__footer {
-    gap: 8px;
+  .desk-command-menu__close {
+    min-height: 40px;
   }
 
-  .desk-command-menu__footer span:last-child {
+  .desk-command-menu__footer {
     display: none;
   }
 }

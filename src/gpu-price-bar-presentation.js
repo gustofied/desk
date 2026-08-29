@@ -174,7 +174,7 @@ export function gpuPriceBarMarkup(
             <text x="${x}" y="${priceY}" fill="${palette.line}" font-family="Geist, sans-serif"
               font-size="${priceSize}" font-weight="500" text-anchor="middle" letter-spacing="-2"
               style="font-variant-numeric:tabular-nums">${escapeXml(formatUsd(bar.value))}</text>
-            <text x="${x}" y="${labelY}" fill="${palette.muted}" font-family="Geist Mono, monospace"
+            <text class="gpu-price-bar__label" x="${x}" y="${labelY}" fill="${palette.muted}" font-family="Geist Mono, monospace"
               font-size="${labelSize}" font-weight="600" text-anchor="middle" letter-spacing="1">${escapeXml(bar.label)}</text>
           </g>
         </g>`;

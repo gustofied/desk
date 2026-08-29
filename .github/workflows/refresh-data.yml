@@ -1,8 +1,6 @@
 name: Refresh Desk market data
 
 on:
-  schedule:
-    - cron: "17 * * * *"
   workflow_dispatch:
 
 concurrency:
