@@ -230,7 +230,6 @@ async function generatePublishedBarPreviews() {
     const svg = renderGpuPriceBarSvg(model, {
       colors: model.colors,
       title: barCardDefinition.title,
-      primaryId: model.gpu,
     });
     const previewImage = await encodePreview(svg);
     const previewRevision = imageRevision(previewImage);

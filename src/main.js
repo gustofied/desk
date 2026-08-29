@@ -2384,7 +2384,6 @@ if (root) {
     paintGpuPriceBarChart(nodes.shareArtifactSvg, model, {
       colors: palette,
       title: state.catalogName || "Accelerator prices",
-      primaryId: state.selected,
       reducedMotion,
       interactive: false,
     });
@@ -2400,7 +2399,6 @@ if (root) {
       paintGpuPriceBarChart(nodes.svg, model, {
         colors: palette,
         title: state.catalogName || "Accelerator prices",
-        primaryId: state.selected,
         reducedMotion: reducedMotion || !drawAnimation,
         interactive: true,
       });
@@ -2445,7 +2443,6 @@ if (root) {
           colors: cardPalette(displayState),
           compact: true,
           title,
-          primaryId: cardState.gpu,
           reducedMotion: true,
           interactive: false,
         });

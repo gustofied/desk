@@ -39,7 +39,9 @@ export function paintGpuPriceBarChart(
   }
 
   if (reducedMotion) return;
-  svgNode.querySelectorAll("[data-price-bar-value]").forEach((bar, index) => {
+  svgNode.querySelectorAll("[data-price-bar-row]").forEach((row, index) => {
+    const bar = row.querySelector("[data-price-bar-value]");
+    const marker = row.querySelector("[data-price-bar-marker]");
     bar.animate(
       [
         { transform: "scaleX(0)", opacity: 0.4 },
@@ -52,6 +54,18 @@ export function paintGpuPriceBarChart(
         fill: "both",
       },
     );
+    marker.animate(
+      [
+        { transform: "scaleY(0.4)", opacity: 0 },
+        { transform: "scaleY(1)", opacity: 1 },
+      ],
+      {
+        delay: index * 40 + 150,
+        duration: 200,
+        easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+        fill: "both",
+      },
+    );
   });
 }
 
@@ -60,7 +74,6 @@ export function gpuPriceBarMarkup(
   {
     colors,
     title = "Accelerator prices",
-    primaryId = null,
     compact = false,
   } = {},
 ) {
@@ -73,14 +86,13 @@ export function gpuPriceBarMarkup(
     width: compact ? 744 : 704,
   };
   const { top, rowStep } = rowLayout(bars.length, compact);
-  const barHeight = compact ? 32 : 24;
-  const bandHeight = 32;
-  const trackHeight = 8;
+  const barHeight = 8;
+  const trackStroke = 2;
   const canvasHeight = compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
   const dateLabel = formatObservedDate(model.asOf);
   const titleSize = compact ? 36 : 30;
-  const labelSize = compact ? 30 : 24;
-  const priceSize = 36;
+  const labelSize = compact ? 30 : 20;
+  const priceSize = 48;
 
   const rowMarkup = bars
     .map((bar, index) => {
@@ -88,9 +100,8 @@ export function gpuPriceBarMarkup(
       const valueX = chart.x + scale(bar.value, maxValue, chart.width);
       const lowerX = chart.x + scale(bar.lower, maxValue, chart.width);
       const upperX = chart.x + scale(bar.upper, maxValue, chart.width);
-      const valueWidth = Math.max(2, valueX - chart.x);
       const bandWidth = Math.max(0, upperX - lowerX);
-      const selected = !primaryId || bar.id === primaryId;
+      const valueWidth = Math.max(2, valueX - chart.x);
       const rangeLabel = `${formatUsd(bar.lower)} to ${formatUsd(bar.upper)}`;
       const ariaLabel =
         `${bar.label}, ${formatUsd(bar.value)} per GPU hour, ` +
@@ -102,13 +113,22 @@ export function gpuPriceBarMarkup(
             letter-spacing="0.5" opacity="0" aria-hidden="true">${escapeXml(rangeLabel)}</text>`;
       const rangeBandMarkup = compact
         ? ""
-        : `${bandWidth > 2
-          ? `<rect x="${lowerX}" y="${y - bandHeight / 2}" width="${bandWidth}" height="${bandHeight}"
-            fill="${palette.band}"/>`
-          : ""}${bar.upper > maxValue
-          ? `<path d="M ${chart.x + chart.width + 4} ${y - 12} L ${chart.x + chart.width + 16} ${y} L ${chart.x + chart.width + 4} ${y + 12} Z"
-            fill="${palette.secondary}" opacity="0.72"/>`
-          : ""}`;
+        : `<g class="gpu-price-bar__interval" opacity="0" aria-hidden="true">
+            ${bandWidth > 2
+              ? `<line x1="${lowerX}" x2="${Math.min(upperX, chart.x + chart.width)}" y1="${y + 20}" y2="${y + 20}"
+                stroke="${palette.muted}" stroke-width="2"/>
+                <line x1="${lowerX}" x2="${lowerX}" y1="${y + 12}" y2="${y + 28}"
+                  stroke="${palette.muted}" stroke-width="2"/>
+                ${bar.upper <= maxValue
+                  ? `<line x1="${upperX}" x2="${upperX}" y1="${y + 12}" y2="${y + 28}"
+                    stroke="${palette.muted}" stroke-width="2"/>`
+                  : ""}`
+              : ""}
+            ${bar.upper > maxValue
+              ? `<path d="M ${chart.x + chart.width + 5} ${y + 14} L ${chart.x + chart.width + 11} ${y + 20} L ${chart.x + chart.width + 5} ${y + 26}"
+                fill="none" stroke="${palette.muted}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`
+              : ""}
+          </g>`;
 
       return `
         <g class="gpu-price-bar__row" data-price-bar-row="" data-layer="${escapeXml(bar.id)}"
@@ -117,15 +137,16 @@ export function gpuPriceBarMarkup(
           <text x="40" y="${y + 9}" fill="${palette.text}" font-family="Geist, sans-serif"
             font-size="${labelSize}" font-weight="600" letter-spacing="-0.5">${escapeXml(bar.label)}</text>
           ${rangeMarkup}
-          <rect x="${chart.x}" y="${y - trackHeight / 2}" width="${chart.width}" height="${trackHeight}"
-            fill="${palette.track}"/>
+          <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${y}" y2="${y}"
+            stroke="${palette.rule}" stroke-width="${trackStroke}"/>
           ${rangeBandMarkup}
           <rect data-price-bar-value="" x="${chart.x}" y="${y - barHeight / 2}" width="${valueWidth}" height="${barHeight}"
-            fill="${selected ? palette.line : palette.secondary}" style="transform-box:fill-box;transform-origin:left center"/>
-          <line x1="${valueX}" x2="${valueX}" y1="${y - 20}" y2="${y + 20}"
-            stroke="${selected ? palette.line : palette.secondary}" stroke-width="2"/>
-          <text x="1160" y="${y + 12}" fill="${palette.text}" font-family="Geist Mono, monospace"
-            font-size="${priceSize}" font-weight="600" text-anchor="end" letter-spacing="-1">${escapeXml(formatUsd(bar.value))}</text>
+            fill="${palette.line}" style="transform-box:fill-box;transform-origin:left center"/>
+          <line data-price-bar-marker="" x1="${valueX}" x2="${valueX}" y1="${y - 12}" y2="${y + 12}"
+            stroke="${palette.line}" stroke-width="2" style="transform-box:fill-box;transform-origin:center"/>
+          <text x="1160" y="${y + 15}" fill="${palette.text}" font-family="Geist, sans-serif"
+            font-size="${priceSize}" font-weight="500" text-anchor="end" letter-spacing="-2"
+            style="font-variant-numeric:tabular-nums">${escapeXml(formatUsd(bar.value))}</text>
         </g>`;
     })
     .join("");
@@ -153,16 +174,11 @@ export function gpuPriceBarMarkup(
 
 function normalizeColors(colors = {}) {
   const line = colors.line || "#315f82";
-  const secondary = colors.secondary || "#91aecb";
   return {
     paper: colors.paper || "#ffffff",
     line,
     text: colors.text || line,
-    secondary,
     muted: colors.muted || withOpacity(colors.text || line, 0.58),
-    track: colors.track || withOpacity(line, 0.06),
-    band: colors.band ||
-      (colors.area ? withOpacity(colors.area, 0.22) : withOpacity(secondary, 0.2)),
     rule: colors.rule || withOpacity(line, 0.16),
   };
 }
