@@ -1236,6 +1236,10 @@ if (root) {
           ? `${next.name} renamed`
           : `${collection.name} deleted`,
     );
+    if (mode === "create") {
+      window.requestAnimationFrame(openCatalogCardCommands);
+      return;
+    }
     nodes.catalogSwitcher?.focus({ preventScroll: true });
   }
 
