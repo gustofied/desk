@@ -136,15 +136,11 @@ function dealViewMarkup(model, { variant, instanceId }) {
         instanceId,
         true,
       );
-  const market = marketMarkup(model, compact);
+  const market = marketMarkup(model);
 
   return `
     <article class="deal-view deal-view--${variant}" aria-label="${escapeHtml(model.ariaLabel)}"
       data-deal-view="">
-      <div class="deal-view__rail" aria-hidden="true">
-        <span>Deal view</span>
-        <span>${escapeHtml(model.asset)} capacity</span>
-      </div>
       <div class="deal-view__shell">
         <svg class="deal-view__trace" viewBox="0 0 100 100" preserveAspectRatio="none"
           aria-hidden="true" focusable="false">
@@ -233,18 +229,17 @@ function stagePanelMarkup(stage, model, instanceId, onlyPanel = false) {
     </section>`;
 }
 
-function marketMarkup(model, compact) {
+function marketMarkup(model) {
   if (!model.market) return "";
   return `
     <aside class="deal-view__market" aria-label="${escapeHtml(
       `${model.asset} market context. Benchmark ${model.market.benchmarkFormatted}. ` +
-        `Deal quote ${model.market.quoteFormatted}. Basis ${model.market.basisFormatted}.`,
+        `Basis ${model.market.basisFormatted}.`,
     )}">
       <span><small>${escapeHtml(model.asset)} ref</small><b>${escapeHtml(
         model.market.benchmarkFormatted,
       )}</b></span>
-      <span><small>Quote</small><b>${escapeHtml(model.market.quoteFormatted)}</b></span>
-      <span${compact ? ' class="deal-view__market-basis"' : ""}><small>Basis</small><b>${escapeHtml(
+      <span><small>Basis</small><b>${escapeHtml(
         model.market.basisFormatted,
       )}</b></span>
     </aside>`;
@@ -267,26 +262,8 @@ const dealViewStyles = `
     width: 100%;
     min-width: 0;
   }
-  .deal-view__rail {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    min-height: 32px;
-    padding: 0 4px 8px;
-    border-bottom: 1px solid var(--deal-rule);
-    color: var(--deal-secondary);
-    font-family: "Geist Mono", ui-monospace, monospace;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  .deal-view__rail span:first-child { color: var(--deal-text); }
   .deal-view__shell {
     position: relative;
-    margin-top: 8px;
     border: 1px solid var(--deal-rule-strong);
     border-radius: 4px;
     background: var(--deal-paper);
@@ -388,7 +365,7 @@ const dealViewStyles = `
   }
   .deal-view__market {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     border-bottom: 1px solid var(--deal-rule);
   }
   .deal-view__market > span {
@@ -535,8 +512,7 @@ const dealViewStyles = `
     margin-left: auto;
     color: var(--deal-line);
   }
-  .deal-view--static .deal-view__rail { display: none; }
-  .deal-view--static .deal-view__shell { margin-top: 0; box-shadow: none; }
+  .deal-view--static .deal-view__shell { box-shadow: none; }
   .deal-view--static .deal-view__head {
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
@@ -549,7 +525,6 @@ const dealViewStyles = `
   .deal-view--static .deal-view__quote span { font-size: 20px; line-height: 20px; }
   .deal-view--static .deal-view__rfs { display: none; }
   .deal-view--static .deal-view__market > span { padding: 8px 12px; }
-  .deal-view--static .deal-view__market-basis { display: none; }
   .deal-view--static .deal-view__market {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
