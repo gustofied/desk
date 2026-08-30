@@ -14,6 +14,7 @@ const buildOptions = parseBuildOptions(process.argv.slice(2));
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const priceCard = getCardDefinition("gpu-index");
 const depthCard = getCardDefinition("gpu-market-depth");
+const dealCard = getCardDefinition("deal-view");
 const gpuLayers = GPU_LAYERS.filter((layer) => layer.unit === "usd-hour");
 const tokenLayer = GPU_LAYERS.find((layer) => layer.id === "TOKEN");
 
@@ -57,6 +58,9 @@ priceRuntime.revision = revisionFor(priceRuntime);
 const depthSourceFile = join(projectRoot, depthCard.sourceFile);
 const depthSource = await readJson(depthSourceFile);
 const depthRuntime = buildMarketDepthRuntime(depthSource, depthSourceFile);
+const dealSourceFile = join(projectRoot, dealCard.sourceFile);
+const dealSource = await readJson(dealSourceFile);
+const dealRuntime = buildDealRuntime(dealSource, dealSourceFile);
 
 // Keep the build contract tied to the browser model instead of allowing the
 // source and renderer to drift apart unnoticed.
@@ -66,7 +70,7 @@ createGpuMarketDepthModel(depthRuntime, depthCard, {
 
 const dataManifest = {
   version: 1,
-  asOf: Math.max(priceRuntime.asOf, depthRuntime.asOf),
+  asOf: Math.max(priceRuntime.asOf, depthRuntime.asOf, dealRuntime.asOf),
   cards: {
     [priceCard.id]: {
       file: priceCard.dataFile,
@@ -78,6 +82,11 @@ const dataManifest = {
       revision: depthRuntime.revision,
       asOf: depthRuntime.asOf,
     },
+    [dealCard.id]: {
+      file: dealCard.dataFile,
+      revision: dealRuntime.revision,
+      asOf: dealRuntime.asOf,
+    },
   },
 };
 dataManifest.revision = revisionFor(dataManifest);
@@ -85,19 +94,86 @@ dataManifest.revision = revisionFor(dataManifest);
 if (buildOptions.check) {
   console.log(
     `Validated ${priceCard.id} (${priceRuntime.revision}) and ` +
-      `${depthCard.id} (${depthRuntime.revision}) source contracts.`,
+      `${depthCard.id} (${depthRuntime.revision}) and ` +
+      `${dealCard.id} (${dealRuntime.revision}) source contracts.`,
   );
 } else {
   await Promise.all([
     writeJson(join(projectRoot, priceCard.dataFile), priceRuntime),
     writeJson(join(projectRoot, depthCard.dataFile), depthRuntime),
+    writeJson(join(projectRoot, dealCard.dataFile), dealRuntime),
     writeJson(join(projectRoot, "data", "manifest.json"), dataManifest),
   ]);
   console.log(
     `Built ${priceCard.dataFile} (${priceRuntime.revision}), ` +
-      `${depthCard.dataFile} (${depthRuntime.revision}), and data/manifest.json ` +
+      `${depthCard.dataFile} (${depthRuntime.revision}), ` +
+      `${dealCard.dataFile} (${dealRuntime.revision}), and data/manifest.json ` +
       `(${dataManifest.revision}).`,
   );
+}
+
+function buildDealRuntime(source, sourceFile) {
+  validateDealSource(source, sourceFile);
+  const asOf = timestampSeconds(source.as_of, `${sourceFile} as_of`);
+  timestampSeconds(source.rfs, `${sourceFile} rfs`);
+  const runtime = {
+    version: 1,
+    cardId: dealCard.id,
+    asOf,
+    id: source.id.replace(/^deal-/, ""),
+    type: source.kind === "reserved-capacity"
+      ? "Reserved capacity"
+      : source.kind,
+    label: source.label,
+    asset: source.capacity.accelerator_model,
+    quantity: source.capacity.gpu_count,
+    nodes: source.capacity.node_count,
+    rfs: source.rfs.slice(0, 7),
+    quote: {
+      value: source.terms.quote_usd_gpu_hour,
+      currency: "USD",
+      unit: "GPU-hour",
+      prepayPercent: source.terms.prepay_percent,
+    },
+    currentStage: source.current_stage,
+    parties: source.parties,
+    events: source.events,
+    nextAction: source.next_action,
+    stages: source.stages.map((stage) => ({
+      id: stage.id,
+      label: stage.label,
+      copy: stage.summary,
+      compactCopy:
+        stage.id === "diligence"
+          ? "Quote checked"
+          : stage.id === "execute"
+            ? "Finalize agreement"
+            : "Reserved capacity",
+      owner: stage.source,
+      status: stage.status,
+    })),
+  };
+  runtime.revision = revisionFor(runtime);
+  return runtime;
+}
+
+function validateDealSource(source, sourceFile) {
+  const stageIds = new Set(["spec", "diligence", "execute"]);
+  if (
+    source?.version !== 1 ||
+    source?.contract !== "desk_deal_view" ||
+    source?.id !== "deal-041" ||
+    source?.capacity?.accelerator_model !== "B200" ||
+    !Number.isFinite(Number(source?.capacity?.gpu_count)) ||
+    !Number.isFinite(Number(source?.capacity?.node_count)) ||
+    !Number.isFinite(Number(source?.terms?.quote_usd_gpu_hour)) ||
+    !Array.isArray(source?.stages) ||
+    source.stages.length !== stageIds.size ||
+    source.stages.some((stage) => !stageIds.has(stage?.id)) ||
+    !stageIds.has(source?.current_stage)
+  ) {
+    throw new Error(`Unsupported deal data in ${sourceFile}`);
+  }
 }
 
 function validateGpuSource(payload, layer, sourceFile) {

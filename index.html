@@ -37,7 +37,7 @@
         const requestedTheme = params.get("theme");
         const requestedPalette = params.get("palette");
         const requestedCard = params.get("card");
-        const requestedView = ["gpu-index", "gpu-price-snapshot", "gpu-market-depth"].includes(requestedCard)
+        const requestedView = ["gpu-index", "gpu-price-snapshot", "gpu-market-depth", "deal-view"].includes(requestedCard)
           ? params.get("view")
           : null;
         const requestedLayout = params.get("layout");
@@ -86,8 +86,9 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=72">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=73">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=49">
+    <link rel="stylesheet" href="./styles/deal-view.css?v=4">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=20">
   </head>
@@ -292,6 +293,7 @@
                     <svg data-gpu-chart-svg role="img" aria-label="GPU price history">
                       <desc data-gpu-chart-description>The line shows the selected GPU's observed price. The surrounding band shows the middle range of quotes.</desc>
                     </svg>
+                    <div class="deal-view-host deal-view-host--workspace" data-deal-workspace hidden></div>
                     <div class="gpu-benchmark__tooltip" data-gpu-tooltip hidden></div>
                     <p class="gpu-benchmark__state" data-gpu-state>Loading hourly benchmark history</p>
                   </div>
@@ -338,6 +340,7 @@
                   data-focus-card-monitor
                 >
                   <svg class="compute-share-artifact" data-share-artifact-svg viewBox="0 0 1200 675" role="img" aria-label="GPU price chart"></svg>
+                  <div class="deal-view-host deal-view-host--focus" data-deal-preview hidden></div>
                 </button>
                 <figcaption class="desk-card-preview__caption">
                   Observed <time data-share-observed>Loading market data</time>

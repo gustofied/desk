@@ -1,7 +1,15 @@
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 1;
+const STORAGE_VERSION = 2;
+const LEGACY_STORAGE_VERSION = 1;
 const ALL_CARDS_ID = "all";
-const MAX_COLLECTIONS = 12;
+const PRIVATE_CATALOG_ID = "private";
+const PRIVATE_CATALOG_KEYS = Object.freeze([
+  "preset-deal-view-deal-041",
+  "preset-gpu-index-b200",
+  "preset-gpu-price-snapshot-prices",
+  "preset-gpu-market-depth-h100-us",
+]);
+const MAX_COLLECTIONS = 13;
 const MAX_COLLECTION_NAME_LENGTH = 48;
 const MAX_COLLECTION_KEYS = 128;
 const MAX_KEY_LENGTH = 240;
@@ -225,6 +233,9 @@ function writeState(state) {
 }
 
 function normalizeState(value) {
+  if (value?.version === LEGACY_STORAGE_VERSION) {
+    return normalizeState(migrateLegacyState(value));
+  }
   if (
     !value ||
     value.version !== STORAGE_VERSION ||
@@ -331,11 +342,63 @@ function createCollectionId() {
 }
 
 function emptyState(unavailable = false) {
+  const now = new Date().toISOString();
   return {
     version: STORAGE_VERSION,
     activeId: ALL_CARDS_ID,
-    collections: [],
+    collections: unavailable
+      ? []
+      : [
+          {
+            id: PRIVATE_CATALOG_ID,
+            name: "Private",
+            keys: [...PRIVATE_CATALOG_KEYS],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
     unavailable,
+  };
+}
+
+function migrateLegacyState(value) {
+  const legacyValue = {
+    ...value,
+    version: STORAGE_VERSION,
+  };
+  const normalized = normalizeState(legacyValue);
+  const namedPrivate = normalized.collections.find(
+    (collection) => collection.name.toLocaleLowerCase() === "private",
+  );
+  const now = new Date().toISOString();
+
+  if (namedPrivate) {
+    return {
+      ...normalized,
+      collections: normalized.collections.map((collection) =>
+        collection.id === namedPrivate.id
+          ? {
+              ...collection,
+              keys: normalizeKeys([...collection.keys, ...PRIVATE_CATALOG_KEYS]),
+              updatedAt: now,
+            }
+          : collection,
+      ),
+    };
+  }
+
+  return {
+    ...normalized,
+    collections: [
+      ...normalized.collections,
+      {
+        id: PRIVATE_CATALOG_ID,
+        name: "Private",
+        keys: [...PRIVATE_CATALOG_KEYS],
+        createdAt: now,
+        updatedAt: now,
+      },
+    ],
   };
 }
 

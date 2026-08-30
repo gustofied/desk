@@ -1,0 +1,222 @@
+.deal-view-host {
+  width: 100%;
+  min-width: 0;
+}
+
+.deal-view-host[hidden] {
+  display: none;
+}
+
+.deal-view-host--catalog,
+.deal-view-host--focus,
+.deal-view-host--catalog .deal-view-mount,
+.deal-view-host--focus .deal-view-mount,
+.deal-view-host--catalog .deal-view,
+.deal-view-host--focus .deal-view {
+  height: 100%;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__shell,
+.deal-view-host--catalog .deal-view--static .deal-view__surface {
+  height: 100%;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__shell {
+  border: 0;
+  border-radius: 0;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__surface {
+  display: grid;
+  grid-template-rows: 52px 32px minmax(0, 1fr) 32px;
+  border-radius: 0;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__head {
+  min-height: 0;
+  padding: 8px 12px;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__identity > span {
+  display: block;
+  font-size: 10px;
+  line-height: 12px;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__identity strong {
+  font-size: 16px;
+  line-height: 20px;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__quote span {
+  font-size: 18px;
+  line-height: 20px;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__quote small {
+  font-size: 8px;
+  line-height: 12px;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__market {
+  display: none;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__stages > span {
+  min-height: 32px;
+  padding-inline: 4px;
+  font-size: 9px;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__panels {
+  min-height: 0;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__panel {
+  min-height: 0;
+  gap: 4px;
+  justify-content: center;
+  padding: 8px 12px;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__panel p {
+  overflow: hidden;
+  font-size: 14px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__panel footer {
+  display: none;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__meta {
+  min-height: 32px;
+  padding: 8px 12px;
+  font-size: 9px;
+  line-height: 12px;
+  background: transparent;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__meta span:nth-child(-n + 2) {
+  display: none;
+}
+
+.deal-view-host--catalog .deal-view--static .deal-view__meta span:last-child {
+  max-width: 100%;
+}
+
+.deal-view-host--focus .deal-view__rail {
+  min-height: 28px;
+  padding-bottom: 6px;
+  font-size: 10px;
+}
+
+.deal-view-host--focus .deal-view__shell {
+  margin-top: 6px;
+}
+
+.deal-view-host--focus .deal-view__head {
+  min-height: 68px;
+  padding: 12px 16px;
+}
+
+.deal-view-host--focus :is(.deal-view__tabs button, .deal-view__stages > span) {
+  min-height: 36px;
+}
+
+.deal-view-host--focus .deal-view__panels {
+  min-height: 128px;
+}
+
+.deal-view-host--focus .deal-view__panel {
+  gap: 12px;
+  padding: 16px;
+}
+
+.deal-view-host--focus .deal-view__meta {
+  min-height: 32px;
+  background: transparent;
+}
+
+.deal-view-host--workspace .deal-view__meta {
+  background: transparent;
+}
+
+/* The Deal surface supplies its own frame. Keep this reset off Catalog tiles. */
+.gpu-index[data-card-renderer="deal"] .gpu-index-detail,
+.gpu-index[data-card-renderer="deal"] .gpu-index-detail__body,
+.gpu-index[data-card-renderer="deal"] .gpu-benchmark,
+.gpu-index[data-card-renderer="deal"] .gpu-benchmark__chart,
+.gpu-index[data-card-renderer="deal"] .gpu-index-share__window,
+.gpu-index[data-card-renderer="deal"] .desk-card-focus-action.compute-share-card-frame {
+  background: transparent;
+}
+
+.compute-card-skin--market.gpu-index[data-card-renderer="deal"] .gpu-index-detail {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.compute-card-skin--market.gpu-index[data-card-renderer="deal"] .gpu-index-detail::after {
+  display: none;
+}
+
+.gpu-index[data-card-renderer="deal"] .gpu-benchmark {
+  padding: 0;
+}
+
+.gpu-index[data-card-renderer="deal"] .gpu-benchmark__composer,
+.gpu-index[data-card-renderer="deal"] .gpu-benchmark__footer,
+.gpu-index[data-card-renderer="deal"] .gpu-benchmark__mobile-summary,
+.gpu-index[data-card-renderer="deal"] [data-share-artifact-svg] {
+  display: none;
+}
+
+.gpu-index[data-card-renderer="deal"] .gpu-benchmark__chart {
+  width: 100%;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  aspect-ratio: auto;
+}
+
+.compute-card-skin--market.gpu-index[data-card-renderer="deal"] .gpu-index-share__window,
+.compute-card-skin--market.gpu-index[data-card-renderer="deal"] .desk-card-focus-action.compute-share-card-frame {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.gpu-index[data-card-renderer="deal"] .desk-card-focus-action:active {
+  transform: scale(0.995);
+}
+
+@media (max-width: 640px) {
+  .gpu-index[data-card-renderer="deal"] .gpu-benchmark__chart {
+    height: auto;
+  }
+
+  .deal-view-host--workspace .deal-view__rail {
+    display: none;
+  }
+
+  .deal-view-host--workspace .deal-view__shell {
+    margin-top: 0;
+  }
+
+  .deal-view-host--workspace .deal-view__tabs button {
+    min-height: 48px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gpu-index[data-card-renderer="deal"] .desk-card-focus-action {
+    transition: none;
+  }
+}

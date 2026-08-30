@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "contract": "desk_deal_view",
+  "id": "deal-041",
+  "kind": "reserved-capacity",
+  "as_of": "2026-08-29T16:00:00.000Z",
+  "label": "Deal 041",
+  "capacity": {
+    "accelerator_model": "B200",
+    "gpu_count": 256,
+    "node_count": 32
+  },
+  "rfs": "2026-10-01T00:00:00.000Z",
+  "terms": {
+    "region": "US East",
+    "interconnect": "InfiniBand",
+    "service": "Dedicated bare metal",
+    "term_months": 24,
+    "quote_usd_gpu_hour": 3.65,
+    "prepay_percent": 20
+  },
+  "current_stage": "diligence",
+  "parties": 4,
+  "events": 18,
+  "next_action": "Resolve SLA",
+  "stages": [
+    {
+      "id": "spec",
+      "label": "Spec",
+      "summary": "US East, InfiniBand, dedicated bare metal, 24-month reserved term.",
+      "source": "Buyer mandate",
+      "status": "RFQ open"
+    },
+    {
+      "id": "diligence",
+      "label": "Diligence",
+      "summary": "Seller quote $3.65 per GPU hour with 20% prepay. Capacity and topology checked.",
+      "source": "Technical and commercial",
+      "status": "Quote normalized"
+    },
+    {
+      "id": "execute",
+      "label": "Execute",
+      "summary": "Finalize the quote and execute the Compute Services Agreement with the provider.",
+      "source": "Buyer and provider",
+      "status": "Awaiting sign-off"
+    }
+  ]
+}

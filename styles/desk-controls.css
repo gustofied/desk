@@ -232,6 +232,7 @@
 
 .desk-view-action[data-catalog-switcher] {
   display: flex;
+  width: 96px;
   gap: 7px;
   align-items: center;
   justify-content: center;
@@ -1570,6 +1571,10 @@ button.compute-share-card-frame:focus-visible {
     padding-inline: 6px;
     font-size: 10px;
     letter-spacing: 0.06em;
+  }
+
+  .desk-view-action[data-catalog-switcher] {
+    width: 84px;
   }
 
   .desk-palette-option {

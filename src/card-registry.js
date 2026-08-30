@@ -8,6 +8,9 @@ const GPU_PRICE_SNAPSHOT_SLUG = "gpu-price-snapshot";
 const GPU_MARKET_DEPTH_ID = "gpu-market-depth";
 const GPU_MARKET_DEPTH_SLUG = "gpu-market-depth";
 const GPU_MARKET_DEPTH_DATA_FILE = "data/gpu-market-depth.json";
+const DEAL_VIEW_ID = "deal-view";
+const DEAL_VIEW_SLUG = "deal-041";
+const DEAL_VIEW_DATA_FILE = "data/deal-041.json";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
 export const PUBLISHED_CARD_VERSION = "v15";
@@ -215,6 +218,7 @@ export const CARD_REGISTRY = Object.freeze([
         id: "target",
         label: "Target",
         values: Object.freeze(["64", "128", "256"]),
+        suffix: " nodes",
         default: "128",
       }),
     ]),
@@ -224,6 +228,62 @@ export const CARD_REGISTRY = Object.freeze([
     visualizations: Object.freeze([
       Object.freeze({ id: "depth", label: "Now", unit: "nodes" }),
       Object.freeze({ id: "history", label: "History", unit: "nodes" }),
+    ]),
+  }),
+  Object.freeze({
+    id: DEAL_VIEW_ID,
+    slug: DEAL_VIEW_SLUG,
+    hash: "gpu-benchmark-card",
+    renderer: "deal",
+    stateKind: "deal",
+    publishable: false,
+    title: "Deal 041",
+    description: "Reserved B200 capacity moving from mandate to execution.",
+    sourceFile: "api/dashboard-snapshots/deal-041.json",
+    dataFile: DEAL_VIEW_DATA_FILE,
+    dataUrl: `./${DEAL_VIEW_DATA_FILE}`,
+    sharePath: `/cards/${DEAL_VIEW_SLUG}`,
+    defaults: Object.freeze({
+      layer: "B200",
+      layers: Object.freeze(["B200"]),
+      range: "7d",
+      scale: "price",
+      stage: "diligence",
+      palette: "azure",
+      theme: "light",
+    }),
+    ranges: Object.freeze(["7d"]),
+    allowComparisons: false,
+    layers: Object.freeze([
+      Object.freeze({
+        id: "B200",
+        label: "B200",
+        unit: "usd-hour",
+        views: Object.freeze(["price"]),
+      }),
+    ]),
+    stateOptions: Object.freeze([
+      Object.freeze({
+        id: "stage",
+        label: "Stage",
+        values: Object.freeze(["spec", "diligence", "execute"]),
+        valueLabels: Object.freeze({
+          spec: "Spec",
+          diligence: "Diligence",
+          execute: "Execute",
+        }),
+        default: "diligence",
+      }),
+    ]),
+    catalogPresets: Object.freeze([
+      Object.freeze({
+        id: "deal-041",
+        label: "Deal 041",
+        state: Object.freeze({ stage: "diligence" }),
+      }),
+    ]),
+    visualizations: Object.freeze([
+      Object.freeze({ id: "price", label: "Market reference", unit: "usd-hour" }),
     ]),
   }),
 ]);
@@ -243,6 +303,13 @@ export function paletteIds() {
 }
 
 export function cardStateParamIds(card = getCardDefinition()) {
+  if (card.stateKind === "deal") {
+    return [
+      ...(card.stateOptions || []).map((option) => option.id),
+      "palette",
+      "theme",
+    ];
+  }
   return [
     "gpu",
     "layers",
@@ -280,6 +347,9 @@ export function serializeLayerIds(layerIds, card = getCardDefinition()) {
 
 export function normalizeCardState(cardId, stateParams = {}) {
   const card = getCardDefinition(cardId);
+  if (card.stateKind === "deal") {
+    return normalizeDealState(card, stateParams);
+  }
   const requestedRangeId = String(stateParams.range || "").toLowerCase();
   const legacyDepthHistory =
     card.id === GPU_MARKET_DEPTH_ID &&
@@ -355,6 +425,36 @@ export function normalizeCardState(cardId, stateParams = {}) {
     range,
     palette,
     theme,
+    ...options,
+  };
+}
+
+function normalizeDealState(card, stateParams) {
+  const requestedPalette = String(stateParams.palette || "").toLowerCase();
+  const requestedTheme = String(stateParams.theme || "").toLowerCase();
+  const options = Object.fromEntries(
+    (card.stateOptions || []).map((option) => {
+      const requested = String(stateParams[option.id] || "").toLowerCase();
+      const values =
+        option.values?.map(String).map((value) => value.toLowerCase()) || [];
+      const fallback = String(
+        card.defaults[option.id] ?? option.default ?? values[0] ?? "",
+      ).toLowerCase();
+      return [option.id, values.includes(requested) ? requested : fallback];
+    }),
+  );
+
+  return {
+    gpu: card.defaults.layer,
+    layers: [...card.defaults.layers],
+    scale: card.defaults.scale,
+    range: card.defaults.range,
+    palette: paletteIds().includes(requestedPalette)
+      ? requestedPalette
+      : card.defaults.palette,
+    theme: THEMES.includes(requestedTheme)
+      ? requestedTheme
+      : card.defaults.theme,
     ...options,
   };
 }
