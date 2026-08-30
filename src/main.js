@@ -1225,14 +1225,25 @@ if (root) {
       );
       return;
     }
+    const createdCollection =
+      state.catalogCollections.collections[
+        state.catalogCollections.collections.length - 1
+      ];
     state.activeCatalogViewId =
       mode === "create"
-        ? state.catalogCollections.collections.at(-1)?.id ||
-          ALL_CARDS_CATALOG_ID
+        ? createdCollection?.id || ALL_CARDS_CATALOG_ID
         : mode === "delete"
           ? ALL_CARDS_CATALOG_ID
           : collection.id;
     saveActiveCatalogSession(state.activeCatalogViewId);
+    const catalogDialogClosed =
+      mode === "create" && nodes.catalogDialog?.open
+        ? new Promise((resolve) => {
+            nodes.catalogDialog.addEventListener("close", resolve, {
+              once: true,
+            });
+          })
+        : Promise.resolve();
     state.catalogDialogMode = null;
     nodes.catalogDialog?.close(mode);
     state.catalogDirty = true;
@@ -1252,7 +1263,8 @@ if (root) {
           : `${collection.name} deleted`,
     );
     if (mode === "create") {
-      window.requestAnimationFrame(openCatalogCardCommands);
+      await catalogDialogClosed;
+      window.setTimeout(openCatalogCardCommands, 0);
       return;
     }
     nodes.catalogSwitcher?.focus({ preventScroll: true });
