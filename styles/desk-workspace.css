@@ -166,6 +166,7 @@
 }
 
 .desk-catalog-option,
+.desk-catalog-menu__create button,
 .desk-catalog-menu footer button {
   display: flex;
   gap: 8px;
@@ -203,6 +204,7 @@
 }
 
 .desk-catalog-option:focus-visible,
+.desk-catalog-menu__create button:focus-visible,
 .desk-catalog-menu footer button:focus-visible {
   outline: 1px solid var(--desk-accent-deep);
   outline-offset: -2px;
@@ -210,17 +212,25 @@
 
 @media (hover: hover) and (pointer: fine) {
   .desk-catalog-option:hover,
+  .desk-catalog-menu__create button:hover:not(:disabled),
   .desk-catalog-menu footer button:hover:not(:disabled) {
     background: color-mix(in srgb, var(--desk-accent-pale) 36%, transparent);
   }
 }
 
-.desk-catalog-menu footer {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+.desk-catalog-menu__create {
   margin-top: 4px;
   padding-top: 4px;
   border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
+}
+
+.desk-catalog-menu__create button {
+  width: 100%;
+}
+
+.desk-catalog-menu footer {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .desk-catalog-menu footer button {
@@ -229,6 +239,7 @@
   text-align: center;
 }
 
+.desk-catalog-menu__create button:disabled,
 .desk-catalog-menu footer button:disabled {
   cursor: default;
   opacity: 0.28;
@@ -650,10 +661,11 @@
   }
 
   .desk-catalog-menu [role="listbox"] {
-    max-height: calc(min(55dvh, 26rem) - 52px);
+    max-height: calc(min(55dvh, 26rem) - 96px);
   }
 
   .desk-catalog-option,
+  .desk-catalog-menu__create button,
   .desk-catalog-menu footer button {
     min-height: 48px;
   }

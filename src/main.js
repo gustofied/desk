@@ -1010,15 +1010,30 @@ if (root) {
         : `Open ${collection.name} in Catalog`,
     );
     const catalogUnavailable = Boolean(state.catalogCollections.unavailable);
-    if (nodes.catalogCreate) nodes.catalogCreate.disabled = catalogUnavailable;
+    if (nodes.catalogCreate) {
+      nodes.catalogCreate.disabled = catalogUnavailable;
+      nodes.catalogCreate.setAttribute("aria-label", "Create a new catalog");
+    }
     if (nodes.catalogRename) {
       nodes.catalogRename.disabled = collection.system || catalogUnavailable;
+      nodes.catalogRename.setAttribute(
+        "aria-label",
+        `Rename ${collection.name}`,
+      );
     }
     if (nodes.catalogDelete) {
       nodes.catalogDelete.disabled = collection.system || catalogUnavailable;
+      nodes.catalogDelete.setAttribute(
+        "aria-label",
+        `Delete ${collection.name}`,
+      );
     }
     if (nodes.catalogCardsAction) {
       nodes.catalogCardsAction.disabled = collection.system || catalogUnavailable;
+      nodes.catalogCardsAction.setAttribute(
+        "aria-label",
+        `Edit views in ${collection.name}`,
+      );
     }
     if (nodes.catalogList) {
       const collections = [

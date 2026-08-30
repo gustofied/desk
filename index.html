@@ -87,7 +87,7 @@
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
     <link rel="stylesheet" href="./styles/desk-controls.css?v=73">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=49">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=50">
     <link rel="stylesheet" href="./styles/deal-view.css?v=6">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=20">
@@ -140,9 +140,11 @@
             aria-label="Catalogs"
             data-catalog-list
           ></div>
-          <footer>
-            <button type="button" data-catalog-cards disabled>Views</button>
-            <button type="button" data-catalog-create>New</button>
+          <div class="desk-catalog-menu__create">
+            <button type="button" data-catalog-create>New catalog</button>
+          </div>
+          <footer role="group" aria-label="Edit selected catalog">
+            <button type="button" data-catalog-cards disabled>Edit views</button>
             <button type="button" data-catalog-rename disabled>Rename</button>
             <button type="button" data-catalog-delete disabled>Delete</button>
           </footer>
@@ -502,6 +504,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=120"></script>
+    <script type="module" src="./desk.js?v=121"></script>
   </body>
 </html>
