@@ -296,6 +296,11 @@ if (root) {
     depthViewMenu: root.querySelector("[data-depth-view-menu]"),
     depthCraftViews: root.querySelector("[data-depth-craft-views]"),
     depthCraftViewButtons: [],
+    dealCraft: root.querySelector("[data-deal-craft]"),
+    dealCraftGpu: root.querySelector("[data-deal-craft-gpu]"),
+    dealCraftQuantity: root.querySelector("[data-deal-craft-quantity]"),
+    dealCraftQuote: root.querySelector("[data-deal-craft-quote]"),
+    dealCraftRfs: root.querySelector("[data-deal-craft-rfs]"),
     optionGroup: root.querySelector("[data-card-options]"),
     optionButtons: [],
     composer: root.querySelector("[data-card-composer]"),
@@ -367,6 +372,7 @@ if (root) {
     setShareReady(false);
     configureAppearanceControls();
     configureComposerControls();
+    configureDealCraftControls();
     configureSaveControls();
     configureCatalogCollectionControls();
     configureCommandPalette();
@@ -515,7 +521,7 @@ if (root) {
 
     if (isDepthCard) configureDepthCraftControls();
 
-    if (nodes.optionGroup && !isDepthCard) {
+    if (nodes.optionGroup && !isDepthCard && !isDealCard) {
       const optionControls = (cardDefinition.stateOptions || []).map((option) => {
         const label = document.createElement("span");
         const buttons = document.createElement("div");
@@ -684,6 +690,61 @@ if (root) {
       ...currentCardState(),
       [optionId]: value,
     });
+  }
+
+  function configureDealCraftControls() {
+    if (!isDealCard || !nodes.dealCraft) return;
+    const controls = [
+      ["gpu", nodes.dealCraftGpu],
+      ["quantity", nodes.dealCraftQuantity],
+      ["quote", nodes.dealCraftQuote],
+      ["rfs", nodes.dealCraftRfs],
+    ];
+    controls.forEach(([optionId, control]) => {
+      let inputTimer = null;
+      control?.addEventListener("input", () => {
+        if (control instanceof HTMLSelectElement) return;
+        window.clearTimeout(inputTimer);
+        if (!control.value || !control.checkValidity()) return;
+        inputTimer = window.setTimeout(() => {
+          commitDealCraftField(optionId, control);
+        }, 240);
+      });
+      control?.addEventListener("change", () => {
+        window.clearTimeout(inputTimer);
+        commitDealCraftField(optionId, control);
+      });
+    });
+  }
+
+  function commitDealCraftField(optionId, control) {
+    if (
+      !isDealCard ||
+      state.mode !== "craft" ||
+      state.craftEmpty ||
+      !control
+    ) {
+      return;
+    }
+    if (!control.checkValidity()) {
+      control.value = String(state.options[optionId] ?? "");
+      announceCard(`${control.getAttribute("aria-label") || optionId} is unchanged`);
+      control.focus({ preventScroll: true });
+      return;
+    }
+    const next = normalizeCardState(cardId, {
+      ...currentCardState(),
+      [optionId]: control.value,
+    });
+    if (String(next[optionId]) === String(state.options[optionId])) return;
+    mutateComposition(next, {
+      message: `${dealOptionLabel(optionId)} updated`,
+    });
+  }
+
+  function dealOptionLabel(optionId) {
+    return cardDefinition.stateOptions?.find((option) => option.id === optionId)
+      ?.label || optionId;
   }
 
   function selectDealStage(stageId) {
@@ -1351,6 +1412,10 @@ if (root) {
   function suggestedCatalogName() {
     if (isBarCard) return "Accelerator prices";
     if (isDepthCard) return `H100 depth ${state.options.target} nodes`;
+    if (isDealCard) {
+      const id = state.runtimePayload?.id || "041";
+      return `Deal ${id} ${state.options.gpu}`;
+    }
     const labels = orderedLayerLabels({
       gpu: state.selected,
       layers: Array.from(state.layers),
@@ -3678,8 +3743,8 @@ if (root) {
         nodes.mobileSummaryLabel.textContent = payload?.label || "Deal 041";
       }
       if (nodes.mobileSummaryValue) {
-        const quantity = Number(payload?.quantity || 256);
-        const model = payload?.asset || "B200";
+        const quantity = Number(state.options.quantity || payload?.quantity || 256);
+        const model = state.options.gpu || payload?.asset || "B200";
         nodes.mobileSummaryValue.textContent = `${quantity} × ${model}`;
       }
       if (nodes.mobileSummaryRange) {
@@ -3708,17 +3773,35 @@ if (root) {
     }
   }
 
+  function syncDealCraftControls(editing, empty) {
+    if (!nodes.dealCraft) return;
+    const available = isDealCard && editing && !empty;
+    nodes.dealCraft.hidden = !available;
+    nodes.dealCraft.toggleAttribute("inert", !available);
+    if (!available) return;
+    syncDealCraftControlValue(nodes.dealCraftGpu, state.options.gpu);
+    syncDealCraftControlValue(nodes.dealCraftQuantity, state.options.quantity);
+    syncDealCraftControlValue(nodes.dealCraftQuote, state.options.quote);
+    syncDealCraftControlValue(nodes.dealCraftRfs, state.options.rfs);
+  }
+
+  function syncDealCraftControlValue(control, value) {
+    if (!control || document.activeElement === control) return;
+    control.value = String(value ?? "");
+  }
+
   function syncComposerControls() {
     const editing = state.mode === "craft";
     const empty = editing && state.craftEmpty;
     if (nodes.composer) {
-      const available = editing && !isDealCard;
+      const available = editing;
       nodes.composer.hidden = !available;
       nodes.composer.toggleAttribute("inert", !available);
     }
+    syncDealCraftControls(editing, empty);
     syncDepthCraftControls(editing, empty);
-    if (nodes.compareToggle) nodes.compareToggle.hidden = isDepthCard;
-    if (nodes.comparePanel && isDepthCard) {
+    if (nodes.compareToggle) nodes.compareToggle.hidden = isDepthCard || isDealCard;
+    if (nodes.comparePanel && (isDepthCard || isDealCard)) {
       nodes.comparePanel.hidden = true;
       nodes.comparePanel.setAttribute("inert", "");
     }
@@ -4578,7 +4661,17 @@ if (root) {
     return createDealViewModel(sourcePayload, {
       stage: cardState.stage,
       marketPayload,
+      overrides: dealModelOverrides(cardState),
     });
+  }
+
+  function dealModelOverrides(cardState) {
+    return {
+      gpu: cardState.gpu,
+      quantity: cardState.quantity,
+      quote: cardState.quote,
+      rfs: cardState.rfs,
+    };
   }
 
   function renderDealWorkspace() {
@@ -4778,6 +4871,7 @@ if (root) {
         const model = createDealViewModel(payload, {
           stage: cardState.stage,
           marketPayload: state.runtimePayloads.get("gpu-index"),
+          overrides: dealModelOverrides(cardState),
         });
         cardNodes.button.setAttribute(
           "aria-label",

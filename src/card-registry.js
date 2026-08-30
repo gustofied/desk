@@ -248,6 +248,10 @@ export const CARD_REGISTRY = Object.freeze([
       layers: Object.freeze(["B200"]),
       range: "7d",
       scale: "price",
+      gpu: "B200",
+      quantity: 256,
+      quote: 3.65,
+      rfs: "2026-10",
       stage: "diligence",
       palette: "azure",
       theme: "light",
@@ -263,6 +267,37 @@ export const CARD_REGISTRY = Object.freeze([
       }),
     ]),
     stateOptions: Object.freeze([
+      Object.freeze({
+        id: "gpu",
+        label: "GPU",
+        values: Object.freeze(["H100", "H200", "B200", "B300"]),
+        default: "B200",
+      }),
+      Object.freeze({
+        id: "quantity",
+        label: "GPUs",
+        type: "integer",
+        min: 8,
+        max: 4096,
+        default: 256,
+      }),
+      Object.freeze({
+        id: "quote",
+        label: "Quote",
+        type: "decimal",
+        min: 0.1,
+        max: 100,
+        precision: 2,
+        default: 3.65,
+      }),
+      Object.freeze({
+        id: "rfs",
+        label: "RFS",
+        type: "month",
+        min: "2026-01",
+        max: "2035-12",
+        default: "2026-10",
+      }),
       Object.freeze({
         id: "stage",
         label: "Stage",
@@ -433,20 +468,16 @@ function normalizeDealState(card, stateParams) {
   const requestedPalette = String(stateParams.palette || "").toLowerCase();
   const requestedTheme = String(stateParams.theme || "").toLowerCase();
   const options = Object.fromEntries(
-    (card.stateOptions || []).map((option) => {
-      const requested = String(stateParams[option.id] || "").toLowerCase();
-      const values =
-        option.values?.map(String).map((value) => value.toLowerCase()) || [];
-      const fallback = String(
-        card.defaults[option.id] ?? option.default ?? values[0] ?? "",
-      ).toLowerCase();
-      return [option.id, values.includes(requested) ? requested : fallback];
-    }),
+    (card.stateOptions || []).map((option) => [
+      option.id,
+      normalizeDealOption(option, stateParams[option.id], card.defaults[option.id]),
+    ]),
   );
+  const gpu = String(options.gpu || card.defaults.gpu || card.defaults.layer).toUpperCase();
 
   return {
-    gpu: card.defaults.layer,
-    layers: [...card.defaults.layers],
+    gpu,
+    layers: [gpu],
     scale: card.defaults.scale,
     range: card.defaults.range,
     palette: paletteIds().includes(requestedPalette)
@@ -457,6 +488,49 @@ function normalizeDealState(card, stateParams) {
       : card.defaults.theme,
     ...options,
   };
+}
+
+function normalizeDealOption(option, requestedValue, defaultValue) {
+  const fallback = defaultValue ?? option.default ?? option.values?.[0] ?? "";
+
+  if (option.type === "integer") {
+    return normalizeBoundedNumber(requestedValue, fallback, option, true);
+  }
+  if (option.type === "decimal") {
+    return normalizeBoundedNumber(requestedValue, fallback, option, false);
+  }
+  if (option.type === "month") {
+    const requested = String(requestedValue || "").trim();
+    const validMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(requested);
+    const withinMinimum = !option.min || requested >= option.min;
+    const withinMaximum = !option.max || requested <= option.max;
+    return validMonth && withinMinimum && withinMaximum
+      ? requested
+      : String(fallback);
+  }
+
+  const requested = String(requestedValue || "").trim();
+  const match = option.values?.find(
+    (value) => String(value).toLowerCase() === requested.toLowerCase(),
+  );
+  return match ?? fallback;
+}
+
+function normalizeBoundedNumber(value, fallback, option, integer) {
+  const hasValue =
+    value !== null &&
+    value !== undefined &&
+    String(value).trim() !== "";
+  const requested = hasValue ? Number(value) : Number.NaN;
+  const fallbackNumber = Number(fallback);
+  const finite = Number.isFinite(requested) ? requested : fallbackNumber;
+  const bounded = Math.min(
+    Number(option.max ?? Number.POSITIVE_INFINITY),
+    Math.max(Number(option.min ?? Number.NEGATIVE_INFINITY), finite),
+  );
+  if (integer) return Math.round(bounded);
+  const precision = Math.max(0, Math.min(6, Number(option.precision ?? 2)));
+  return Number(bounded.toFixed(precision));
 }
 
 export function publishedCardSharePath(cardId, stateParams) {

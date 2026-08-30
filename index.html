@@ -88,7 +88,7 @@
     <link rel="stylesheet" href="./styles/compute-card.css">
     <link rel="stylesheet" href="./styles/desk-controls.css?v=73">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=49">
-    <link rel="stylesheet" href="./styles/deal-view.css?v=4">
+    <link rel="stylesheet" href="./styles/deal-view.css?v=5">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=20">
   </head>
@@ -203,6 +203,29 @@
                   </header>
 
                   <div class="gpu-benchmark__composer" data-card-composer>
+                    <fieldset class="deal-craft" aria-label="Deal terms" data-deal-craft hidden inert>
+                      <label class="deal-craft__field">
+                        <span>GPU</span>
+                        <select aria-label="GPU model" data-deal-craft-gpu>
+                          <option value="H100">H100</option>
+                          <option value="H200">H200</option>
+                          <option value="B200">B200</option>
+                          <option value="B300">B300</option>
+                        </select>
+                      </label>
+                      <label class="deal-craft__field">
+                        <span>GPUs</span>
+                        <input type="number" min="8" max="4096" step="1" inputmode="numeric" aria-label="GPU quantity" data-deal-craft-quantity>
+                      </label>
+                      <label class="deal-craft__field">
+                        <span>Quote</span>
+                        <span class="deal-craft__value"><i aria-hidden="true">$</i><input type="number" min="0.1" max="100" step="0.01" inputmode="decimal" aria-label="Quote per GPU hour in US dollars" data-deal-craft-quote><i aria-hidden="true">/ HR</i></span>
+                      </label>
+                      <label class="deal-craft__field">
+                        <span>RFS</span>
+                        <input type="month" min="2026-01" max="2035-12" aria-label="Ready for service month" data-deal-craft-rfs>
+                      </label>
+                    </fieldset>
                     <button
                       class="gpu-benchmark__compare-toggle"
                       type="button"

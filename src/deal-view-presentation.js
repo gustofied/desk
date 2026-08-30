@@ -56,6 +56,12 @@ export function mountDealView(
     if (!model.stages.some((stage) => stage.id === stageId)) return;
     activeStage = stageId;
     mount.dataset.stage = stageId;
+    mount
+      .querySelector("[data-deal-view]")
+      ?.setAttribute(
+        "aria-label",
+        model.ariaLabels?.[stageId] || model.ariaLabel,
+      );
     tabs.forEach((tab) => {
       const selected = tab.dataset.dealViewTab === stageId;
       tab.setAttribute("aria-selected", String(selected));

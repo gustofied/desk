@@ -54,25 +54,33 @@ export const DEAL_041_PAYLOAD = Object.freeze({
  */
 export function createDealViewModel(
   dealPayload,
-  { stage, marketPayload = null } = {},
+  { stage, marketPayload = null, overrides = {} } = {},
 ) {
   assertDealPayload(dealPayload);
 
   const id = cleanText(dealPayload.id ?? dealPayload.dealId, "Deal id");
   const asset = cleanText(
-    dealPayload.asset ?? dealPayload.gpu ?? dealPayload.product,
+    overrides.gpu ?? dealPayload.asset ?? dealPayload.gpu ?? dealPayload.product,
     "Deal asset",
   ).toUpperCase();
   const quantity = positiveInteger(
-    dealPayload.quantity ?? dealPayload.gpuCount,
+    overrides.quantity ?? dealPayload.quantity ?? dealPayload.gpuCount,
     "Deal quantity",
   );
   const nodes = positiveInteger(
-    dealPayload.nodes ?? dealPayload.nodeCount,
+    overrides.quantity === undefined
+      ? dealPayload.nodes ?? dealPayload.nodeCount
+      : Math.ceil(quantity / 8),
     "Deal nodes",
   );
-  const quote = normalizeQuote(dealPayload.quote);
-  const stages = normalizeStages(dealPayload.stages);
+  const quote = normalizeQuote({
+    ...dealPayload.quote,
+    value: overrides.quote ?? dealPayload.quote?.value ?? dealPayload.quote?.amount,
+  });
+  const stages = applyDealTermsToStages(
+    normalizeStages(dealPayload.stages),
+    quote,
+  );
   const requestedStage = String(
     stage ?? dealPayload.currentStage ?? dealPayload.stage ?? DEFAULT_STAGE,
   ).toLowerCase();
@@ -83,6 +91,22 @@ export function createDealViewModel(
     marketPayload ?? dealPayload.marketPayload ?? dealPayload.market,
     asset,
     quote.value,
+  );
+  const ariaLabels = Object.freeze(
+    Object.fromEntries(
+      stages.map((stageModel) => [
+        stageModel.id,
+        createAriaLabel({
+          id,
+          type: dealPayload.type ?? "Capacity",
+          quantity,
+          asset,
+          quote,
+          activeStage: stageModel.id,
+          market,
+        }),
+      ]),
+    ),
   );
 
   return Object.freeze({
@@ -95,7 +119,7 @@ export function createDealViewModel(
     nodes,
     title: `${quantity} × ${asset}`,
     subtitle: `${nodes} ${nodes === 1 ? "node" : "nodes"}`,
-    rfs: formatRfs(dealPayload.rfs),
+    rfs: formatRfs(overrides.rfs ?? dealPayload.rfs),
     quote,
     activeStage,
     stages,
@@ -106,16 +130,25 @@ export function createDealViewModel(
     events: nonNegativeInteger(dealPayload.events, "Deal events"),
     nextAction: cleanText(dealPayload.nextAction, "Next action"),
     market,
-    ariaLabel: createAriaLabel({
-      id,
-      type: dealPayload.type ?? "Capacity",
-      quantity,
-      asset,
-      quote,
-      activeStage,
-      market,
-    }),
+    ariaLabel: ariaLabels[activeStage],
+    ariaLabels,
   });
+}
+
+function applyDealTermsToStages(stages, quote) {
+  return Object.freeze(
+    stages.map((stage) =>
+      stage.id === "diligence"
+        ? Object.freeze({
+            ...stage,
+            copy:
+              `Seller quote ${quote.formatted} per GPU hour with ` +
+              `${formatCompactNumber(quote.prepayPercent)}% prepay. ` +
+              "Capacity and topology checked.",
+          })
+        : stage,
+    ),
+  );
 }
 
 function assertDealPayload(payload) {
@@ -292,6 +325,12 @@ function createAriaLabel({ id, type, quantity, asset, quote, activeStage, market
     `Deal ${id}, ${type}, ${quantity} ${asset}, quote ${quote.formatted} ` +
     `per GPU hour, ${titleCase(activeStage)} stage.${context}`
   );
+}
+
+function formatCompactNumber(value) {
+  return Number(value).toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+  });
 }
 
 function normalizeTimestamp(value) {
