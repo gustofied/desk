@@ -4105,11 +4105,7 @@ if (root) {
       return;
     }
     if (mode === state.mode) {
-      if (
-        mode === "catalog" &&
-        state.layout !== "all" &&
-        mobileViewport.matches
-      ) {
+      if (mode === "catalog" && state.layout !== "all") {
         await showPanel("share", true, "all", false, mode);
       }
       if (focusNavigation) {
