@@ -387,6 +387,10 @@ function migrateLegacyState(value) {
     };
   }
 
+  if (normalized.collections.length >= MAX_COLLECTIONS) {
+    return normalized;
+  }
+
   return {
     ...normalized,
     collections: [

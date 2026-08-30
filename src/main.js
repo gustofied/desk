@@ -100,8 +100,16 @@ if (root) {
   const palettes = paletteIds();
   const ranges = RANGES;
   const requestedCard = params.get("card");
+  const requestedViewParam = params.get("view");
   const requestedView =
-    requestedCard === cardId ? params.get("view") : null;
+    requestedCard === cardId ? requestedViewParam : null;
+  const supportedViewParams = [
+    "card",
+    "gallery",
+    "monitor",
+    "full",
+    "craft",
+  ];
   const requestedLayout = params.get("layout");
   const mobileCardView =
     mobileViewport.matches && requestedView === "card";
@@ -154,7 +162,13 @@ if (root) {
       : null;
   const initialCraftDraft =
     initialMode === "craft" ? null : loadCraftDraft(savedCatalog);
-  const initialViewNeedsRepair = mobileCardView;
+  const initialViewNeedsRepair =
+    mobileCardView ||
+    (params.has("card") && requestedCard !== cardId) ||
+    (params.has("view") &&
+      (requestedCard !== cardId ||
+        !supportedViewParams.includes(requestedViewParam))) ||
+    requestedView === "full";
   const initialNormalizedState = {
     ...requestedState,
     gpu: selected,
@@ -2038,7 +2052,14 @@ if (root) {
         title: item.name,
         subtitle: describeCatalogState(item.state, entryCard),
         hint: "Saved",
-        keywords: ["saved", "catalog", item.name, ...item.state.layers],
+        keywords: [
+          "saved",
+          "catalog",
+          item.name,
+          ...(Array.isArray(item.state.layers)
+            ? item.state.layers
+            : [item.state.gpu].filter(Boolean)),
+        ],
         disabled: () => !state.shareReady,
         active: () =>
           cardId === entryCard.id &&
@@ -3381,7 +3402,7 @@ if (root) {
       state.mode === "catalog" &&
       state.layout === "focus"
     ) {
-      showPanel("detail", true, "focus", false, "monitor");
+      showPanel("share", true, "all", false, "catalog");
     }
   }
 

@@ -124,7 +124,6 @@ export const renderDealView = mountDealView;
 
 function dealViewMarkup(model, { variant, instanceId }) {
   const interactive = variant === "full";
-  const compact = variant === "static";
   const tabs = interactive
     ? interactiveTabsMarkup(model, instanceId)
     : passiveStagesMarkup(model);
@@ -184,7 +183,6 @@ function interactiveTabsMarkup(model, instanceId) {
           return `<button id="${instanceId}-tab-${stage.id}" type="button" role="tab"
             aria-selected="${selected}" aria-controls="${instanceId}-panel-${stage.id}"
             tabindex="${selected ? "0" : "-1"}" data-deal-view-tab="${stage.id}">
-            <span data-deal-view-stage-mark="${stage.id}" data-active="${selected}"></span>
             ${escapeHtml(stage.label)}
           </button>`;
         })
@@ -449,8 +447,6 @@ const dealViewStyles = `
     opacity: 1;
     transform: scaleX(1);
   }
-  [data-deal-view-stage-mark] > span,
-  .deal-view__tabs [data-deal-view-stage-mark] { display: none; }
   .deal-view__panels {
     display: grid;
     min-height: 144px;
@@ -560,7 +556,6 @@ const dealViewStyles = `
     .deal-view__quote span { font-size: 20px; line-height: 20px; }
     .deal-view__rfs { display: none; }
     .deal-view__market > span { padding: 8px 12px; }
-    .deal-view__market small { display: none; }
     .deal-view__tabs button, .deal-view__stages > span {
       min-height: 36px;
       padding: 0 8px;
