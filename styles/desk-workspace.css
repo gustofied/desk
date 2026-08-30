@@ -281,6 +281,29 @@
   box-shadow: none;
 }
 
+.desk-card-focus-action {
+  display: block;
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  appearance: none;
+}
+
+.desk-card-focus-action:focus-visible {
+  outline: 2px solid var(--desk-accent-deep);
+  outline-offset: -2px;
+}
+
+.desk-card-focus-action:active {
+  transform: scale(0.995);
+}
+
+:root[data-desk-view="craft"] .gpu-index[data-card-renderer="cumulative-depth"] .gpu-benchmark__footer {
+  display: none;
+}
+
 ::view-transition-group(desk-active-card),
 ::view-transition-group(desk-card-rail) {
   animation-duration: 280ms;
@@ -362,7 +385,54 @@
   stroke-width: 2px;
 }
 
+.gpu-market-depth__bucket {
+  cursor: default;
+  outline: none;
+}
+
+.gpu-benchmark__chart[data-depth-interactive] {
+  outline: none;
+}
+
+.gpu-benchmark__chart[data-depth-interactive]:focus-visible {
+  outline: 2px solid var(--desk-accent-deep);
+  outline-offset: 2px;
+}
+
+.gpu-market-depth__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip: rect(0 0 0 0);
+  border: 0;
+}
+
+.gpu-market-depth__bucket :is(
+  [data-depth-bucket-highlight],
+  [data-depth-bucket-band],
+  [data-depth-bucket-edge],
+  [data-depth-bucket-readout]
+) {
+  transition:
+    opacity 240ms var(--desk-ease-out),
+    stroke-width 240ms var(--desk-ease-out),
+    stroke-opacity 240ms var(--desk-ease-out);
+}
+
+.gpu-index[data-card-renderer="cumulative-depth"] .gpu-benchmark__compare-panel {
+  position: relative;
+  top: auto;
+}
+
 @media (hover: hover) and (pointer: fine) {
+  .desk-card-focus-action:hover {
+    background: color-mix(in srgb, var(--desk-accent) 4%, transparent);
+  }
+
   .desk-gallery-card.compute-share-card-frame {
     cursor: grab;
   }
@@ -503,6 +573,15 @@
   }
 
   .gpu-price-bar__halo {
+    transition: none;
+  }
+
+  .gpu-market-depth__bucket :is(
+    [data-depth-bucket-highlight],
+    [data-depth-bucket-band],
+    [data-depth-bucket-edge],
+    [data-depth-bucket-readout]
+  ) {
     transition: none;
   }
 

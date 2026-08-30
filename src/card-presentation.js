@@ -1,17 +1,9 @@
 import {
+  cardStateParamIds,
   getCardDefinition,
   parseLayerIds,
   serializeLayerIds,
 } from "./card-registry.js";
-
-export const CARD_STATE_PARAMS = Object.freeze([
-  "gpu",
-  "layers",
-  "scale",
-  "range",
-  "palette",
-  "theme",
-]);
 
 export function cardUrl(cardId, view, stateParams = {}) {
   const card = getCardDefinition(cardId);
@@ -20,7 +12,7 @@ export function cardUrl(cardId, view, stateParams = {}) {
   url.searchParams.set("card", card.id);
   url.searchParams.set("view", view);
 
-  for (const name of CARD_STATE_PARAMS) {
+  for (const name of cardStateParamIds(card)) {
     const value = normalizedStateValue(name, stateParams[name], card);
     if (value !== "") url.searchParams.set(name, value);
   }
@@ -47,7 +39,7 @@ export function normalizeLegacyCardPresentation() {
   if (params.get("card") !== card.id) return;
 
   const state = Object.fromEntries(
-    CARD_STATE_PARAMS.map((name) => [name, params.get(name)]),
+    cardStateParamIds(card).map((name) => [name, params.get(name)]),
   );
   window.history.replaceState({}, "", cardUrl(card.id, "monitor", state));
 }

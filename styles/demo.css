@@ -81,6 +81,10 @@ body {
   aspect-ratio: 1200 / 630;
 }
 
+.desk-stage .gpu-index[data-card-renderer="cumulative-depth"] .gpu-benchmark__chart {
+  aspect-ratio: 1200 / 630;
+}
+
 @media (max-width: 640px) {
   body {
     align-items: start;
@@ -133,6 +137,14 @@ body {
     height: min(244px, calc((100vw - 24px) * 2 / 3));
     margin-inline: 0;
     aspect-ratio: auto;
+  }
+
+  .desk-stage .gpu-index[data-card-renderer="cumulative-depth"] .gpu-benchmark__chart {
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    margin-inline: 0;
+    aspect-ratio: 1200 / 630;
   }
 }
 

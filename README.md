@@ -14,6 +14,7 @@ Website: <https://desk.adamsioud.com>
 
 - Hourly H100, H200, B200, and B300 prices
 - A focused price-history card and a current-price bar card
+- H100 market depth with a current executable curve and daily depth history
 - Price view for series with the same unit
 - Index view for comparing different kinds of data from a common starting point
 - Token Price Index for mixed comparisons
@@ -40,24 +41,29 @@ adds the controls for changing its data.
 
 - Use the tight **Catalog**, **Monitor**, and **Craft** switcher at the top.
 - GPU tabs switch cards inside Catalog. **All** opens the gallery.
-- Monitor keeps one composition fixed for reading, hovering, zooming, and changing range.
+- Monitor keeps one composition fixed for reading, hovering, zooming, and changing view.
 - Opening Craft from Catalog starts a new composition. If unfinished work is
   waiting, Craft resumes it. Opening Craft from Monitor edits the composition
   already on screen.
 - Craft keeps the chart central while its Data drawer selects the main series,
   comparisons, and Price or Index view.
-- **Save** names the current composition and adds it to this browser's Catalog.
+- **Save** names a new composition and adds it to this browser's Catalog.
+  Craft stays open. Later changes use **Update**, while an unchanged card reads
+  **Saved**.
   Saved items keep their data layers, range, palette, and light or dark theme.
   An unfinished draft remains available in the current browser tab until it is
   saved or replaced with a new composition.
 - GPU data uses hourly prices. Adding the Token Price Index compares movement from a
   common starting point.
+- Market depth uses **Now** for the current cumulative capacity curve and
+  **History** for capacity by price through time. Both use the selected node
+  target to show the executable clearing price against the benchmark.
 - Catalog thumbnails match the current Desk colors by default. Use **Command G**
   to show each card's saved colors instead. Opening or sharing a card always
   keeps that card's own palette and light or dark theme.
 - Use **Command G** and choose **Copy card link** to share the active card.
 - Shared links use social artwork that matches the selected layers, range,
-  palette, and light or dark theme.
+  target, palette, and light or dark theme.
 - Press **Command G** to find cards, layers, ranges, settings, and to show the display controls when needed.
 
 ## Card registry
@@ -71,13 +77,17 @@ New card types should register their metadata there and keep their renderer
 explicit. The registry describes a card; it does not try to turn every chart
 into one generic component.
 
+Saved cards use a versioned `CardDocument`. That keeps the renderer and every
+registered state field together, including market-depth targets, while the
+Catalog can safely migrate older local saves.
+
 ## Data build
 
 The source records live under `api/dashboard-snapshots/`. Running
 `npm run generate:data` rebuilds the deterministic showcase market and
-`npm run build:data` writes one compact browser file to
-`data/gpu-price-index.json`. The page loads that file once and lets the browser
-and CDN cache it normally.
+`npm run build:data` writes compact browser files for price history and market
+depth, plus `data/manifest.json` with their revisions. The page loads these
+files once and lets the browser and CDN cache them normally.
 
 `npm run check:data` validates the four checked-in source snapshots as one
 coherent Compute Bazaar run. `npm run refresh:data` first downloads and
@@ -90,11 +100,14 @@ that feed requires a bearer token. Set
 `DESK_MAX_SNAPSHOT_AGE_HOURS` once the live feed has an enforceable freshness
 SLA.
 
-The manual `Refresh Desk market data` workflow can replace the accelerator
-source set with a validated Compute Bazaar run. It rebuilds runtime data,
-social previews, and the Pages artifact only when those source snapshots
-change. It commits only the source and tracked generated paths, then deploys
-the same assembled artifact.
+The `Refresh Desk market data` workflow checks for a validated Compute Bazaar
+run every hour. It rebuilds runtime data and social previews only when the
+source changes, commits only the approved generated paths, then explicitly
+starts the Pages deployment for that exact commit.
+
+The market-depth scenario follows the availability ladder described in
+[Feeling the Compute](https://www.adamsioud.com/exemplars/compute/feeling_the_compute.html):
+capacity accumulates as the acceptable hourly price rises.
 
 `npm run build` always rebuilds the compact data, exact share previews, local
 fonts, and browser bundle. `npm run build:site` assembles the clean GitHub Pages
@@ -107,6 +120,11 @@ artifact in `_site`.
 - `src/gpu-price-bar-model.js` creates the current-price ranking.
 - `src/gpu-price-bar-presentation.js` renders the bar card in the page and
   share images.
+- `src/gpu-market-depth-model.js` turns depth snapshots into availability
+  shelves, benchmark capacity, clearing prices, and history.
+- `src/gpu-market-depth-presentation.js` renders the current curve and depth
+  history in Catalog, Monitor, Craft, and shared images.
+- `src/card-document.js` defines the saved-card contract.
 - `src/card-registry.js` defines cards, layers, views, ranges, and palettes.
 - `src/card-presentation.js` creates and normalizes exact card links.
 - `src/craft-composition.js` normalizes Craft changes to main data, layers, and view.
@@ -114,6 +132,7 @@ artifact in `_site`.
 - `src/command-palette.js` provides the searchable resource index.
 - `scripts/build-runtime-data.mjs` creates the compact data file.
 - `scripts/generate-showcase-market.mjs` creates the showcase histories.
+- `scripts/generate-market-depth.mjs` creates the H100 depth scenario.
 - `scripts/build-card-previews.mjs` creates social images and share routes.
 - `scripts/build-site.mjs` assembles the deployment without committing the full
   preview matrix.

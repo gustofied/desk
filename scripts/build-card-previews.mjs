@@ -32,6 +32,8 @@ import {
 } from "../src/chart-domain.js";
 import { createGpuPriceBarModel } from "../src/gpu-price-bar-model.js";
 import { renderGpuPriceBarSvg } from "../src/gpu-price-bar-presentation.js";
+import { createGpuMarketDepthModel } from "../src/gpu-market-depth-model.js";
+import { renderGpuMarketDepthSvg } from "../src/gpu-market-depth-presentation.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 await mkdir(join(root, ".cache", "fontconfig"), { recursive: true });
@@ -39,6 +41,7 @@ process.env.FONTCONFIG_FILE = join(root, "scripts", "fontconfig.xml");
 const { default: sharp } = await import("sharp");
 const cardDefinition = getCardDefinition("gpu-index");
 const barCardDefinition = getCardDefinition("gpu-price-snapshot");
+const depthCardDefinition = getCardDefinition("gpu-market-depth");
 const gpuLayers = cardDefinition.layers.filter(
   (layer) => layer.unit === "usd-hour",
 );
@@ -49,10 +52,26 @@ const imageRoot = join(root, cardDefinition.previewImageDir);
 const pageRoot = join(root, cardDefinition.previewPageDir);
 const barImageRoot = join(root, barCardDefinition.previewImageDir);
 const barPageRoot = join(root, barCardDefinition.previewPageDir);
-const generatedRoots = [imageRoot, pageRoot, barImageRoot, barPageRoot];
+const depthImageRoot = join(root, depthCardDefinition.previewImageDir);
+const depthPageRoot = join(root, depthCardDefinition.previewPageDir);
+const generatedRoots = [
+  imageRoot,
+  pageRoot,
+  barImageRoot,
+  barPageRoot,
+  depthImageRoot,
+  depthPageRoot,
+];
 const manifestPath = join(root, ".cache", "generated-card-files.json");
 const runtimeData = JSON.parse(
   await readFile(join(root, cardDefinition.dataFile), "utf8"),
+);
+const depthRuntimeData = JSON.parse(
+  await readFile(join(root, depthCardDefinition.dataFile), "utf8"),
+);
+const depthTargets = Object.freeze(["64", "128", "256"]);
+const depthViews = Object.freeze(
+  depthCardDefinition.visualizations.map((visualization) => visualization.id),
 );
 const generatedFiles = [];
 const workerCount = Math.max(
@@ -85,6 +104,7 @@ await installWebFonts();
 await generateLegacyPreviews();
 const publishedLineCount = await generatePublishedPreviews();
 const publishedBarCount = await generatePublishedBarPreviews();
+const publishedDepthCount = await generatePublishedDepthPreviews();
 await generateDefaultPreview();
 
 generatedFiles.sort();
@@ -93,13 +113,25 @@ await Promise.all(generatedRoots.map(pruneEmptyDirectories));
 await mkdir(dirname(manifestPath), { recursive: true });
 await writeFile(
   manifestPath,
-  `${JSON.stringify({ revision: runtimeData.revision, files: generatedFiles }, null, 2)}\n`,
+  `${JSON.stringify(
+    {
+      revision: runtimeData.revision,
+      revisions: {
+        prices: runtimeData.revision,
+        marketDepth: depthRuntimeData.revision,
+      },
+      files: generatedFiles,
+    },
+    null,
+    2,
+  )}\n`,
   "utf8",
 );
 
 console.log(
-  `Built ${publishedLineCount + publishedBarCount} exact card previews ` +
-    `(${publishedLineCount} line, ${publishedBarCount} bar) with ` +
+  `Built ${publishedLineCount + publishedBarCount + publishedDepthCount} exact card previews ` +
+    `(${publishedLineCount} line, ${publishedBarCount} bar, ` +
+    `${publishedDepthCount} depth) with ` +
     `${workerCount} workers.`,
 );
 
@@ -121,7 +153,8 @@ async function installWebFonts() {
 
 async function generateLegacyPreviews() {
   for (const card of cards) {
-    for (const [rangeId, range] of Object.entries(RANGES)) {
+    for (const rangeId of cardDefinition.ranges) {
+      const range = RANGES[rangeId];
       const rows = rowsForRange(card.rows, rangeId);
       const latest = card.rows.at(-1);
       if (!rows.length || !latest) continue;
@@ -255,6 +288,68 @@ async function generatePublishedBarPreviews() {
   return states.length;
 }
 
+async function generatePublishedDepthPreviews() {
+  const states = publishedDepthStates();
+  await runWithConcurrency(states, workerCount, async (state) => {
+    const model = depthPreviewModel(state);
+    const pageHref = publishedCardSharePath(depthCardDefinition.id, state);
+    const imageHref = publishedCardPreviewPath(
+      depthCardDefinition.id,
+      state,
+      depthRuntimeData.revision,
+    );
+    const pagePath = join(root, pageHref, "index.html");
+    const imagePath = join(root, imageHref);
+    const previewImage = await encodePreview(
+      renderGpuMarketDepthSvg(model, {
+        colors: model.colors,
+        title: depthCardDefinition.title,
+        compact: false,
+        artifact: true,
+        view: model.scale === "history" ? "history" : "now",
+      }),
+    );
+    const previewRevision = imageRevision(previewImage);
+
+    await mkdir(dirname(imagePath), { recursive: true });
+    await mkdir(dirname(pagePath), { recursive: true });
+    const legacyPagePaths = model.scale === "history"
+      ? ["1d", "7d"].map((range) =>
+          join(root, legacyPublishedDepthSharePath(model, range), "index.html"),
+        )
+      : [];
+    await Promise.all([
+      writeFile(imagePath, previewImage),
+      writeFile(
+        pagePath,
+        renderPublishedDepthSharePage(
+          model,
+          pageHref,
+          imageHref,
+          previewRevision,
+        ),
+        "utf8",
+      ),
+      ...legacyPagePaths.map(async (legacyPagePath) => {
+        await mkdir(dirname(legacyPagePath), { recursive: true });
+        await writeFile(
+          legacyPagePath,
+          renderPublishedDepthSharePage(
+            model,
+            pageHref,
+            imageHref,
+            previewRevision,
+          ),
+          "utf8",
+        );
+      }),
+    ]);
+    track(imagePath, pagePath, ...legacyPagePaths);
+  });
+
+  return states.length;
+}
+
 async function generateDefaultPreview() {
   const deskPreviewPath = join(imageRoot, "desk-comparison.png");
   await mkdir(dirname(deskPreviewPath), { recursive: true });
@@ -283,7 +378,7 @@ function publishedStates() {
             .filter((_, index) => mask & (1 << index))
             .map((layer) => layer.id),
         ];
-        for (const range of Object.keys(RANGES)) {
+        for (const range of cardDefinition.ranges) {
           for (const palette of Object.keys(palettes)) {
             for (const theme of THEMES) {
               const state = normalizeCardState(cardDefinition.id, {
@@ -349,6 +444,38 @@ function publishedBarStates() {
   return Array.from(statesByPath.values());
 }
 
+function publishedDepthStates() {
+  const statesByPath = new Map();
+
+  for (const scale of depthViews) {
+    for (const target of depthTargets) {
+      for (const palette of Object.keys(palettes)) {
+        for (const theme of THEMES) {
+          const state = normalizeCardState(depthCardDefinition.id, {
+            gpu: depthCardDefinition.defaults.layer,
+            layers: depthCardDefinition.defaults.layers,
+            scale,
+            range: depthCardDefinition.defaults.range,
+            target,
+            palette,
+            theme,
+          });
+          const pageHref = publishedCardSharePath(
+            depthCardDefinition.id,
+            state,
+          );
+          if (statesByPath.has(pageHref)) {
+            throw new Error(`Duplicate published depth card route: ${pageHref}`);
+          }
+          statesByPath.set(pageHref, state);
+        }
+      }
+    }
+  }
+
+  return Array.from(statesByPath.values());
+}
+
 function previewModel(state) {
   const normalized = normalizeCardState(cardDefinition.id, state);
   const series = normalized.layers.map((layerId) => {
@@ -407,6 +534,26 @@ function barPreviewModel(state) {
       palettes[normalized.palette],
       normalized.theme,
     ),
+  };
+}
+
+function depthPreviewModel(state) {
+  const normalized = normalizeCardState(depthCardDefinition.id, state);
+  const colors = themeColors(
+    palettes[normalized.palette],
+    normalized.theme,
+  );
+  const model = createGpuMarketDepthModel(
+    depthRuntimeData,
+    depthCardDefinition,
+    {
+      targetNodes: Number(normalized.target),
+    },
+  );
+  return {
+    ...model,
+    ...normalized,
+    colors,
   };
 }
 
@@ -612,6 +759,126 @@ function renderPublishedBarSharePage(
 `;
 }
 
+function renderPublishedDepthSharePage(
+  model,
+  pageHref,
+  imageHref,
+  previewRevision,
+) {
+  const pageUrl =
+    `${SITE_ORIGIN}${pageHref}?v=` +
+    `${PUBLISHED_CARD_VERSION}-${depthRuntimeData.revision}`;
+  const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
+  const region = model.instrument.regionLabel || model.instrument.region;
+  const target = `${model.targetNodes} nodes`;
+  const contract =
+    `${region} ${model.instrument.nodeGpuCount}-GPU ` +
+    `${model.instrument.interconnect}`;
+  const benchmark =
+    model.current.benchmarkPrice ?? model.current.referencePrice;
+  const capacityAtBenchmark =
+    model.current.capacityAtBenchmark ?? model.current.capacityAtReference;
+  const basis = model.current.clearingPrice === null
+    ? ""
+    : formatSignedUsd(model.current.clearingPrice - benchmark);
+  const clearing = model.current.clearingPrice === null
+    ? `${target} exceed the visible capacity above ` +
+      `${formatUsd(model.priceDomain[1])} per GPU hour.`
+    : `${target} clearing price ${formatUsd(model.current.clearingPrice)} ` +
+      `per GPU hour with ${basis} basis.`;
+  const historyStart = model.history?.at(0)?.timestamp;
+  const historyEnd = model.history?.at(-1)?.timestamp;
+  const historySpan = historyStart && historyEnd
+    ? `${formatSnapshotDate(historyStart)} to ${formatSnapshotDate(historyEnd)}`
+    : "the available observation window";
+  const isHistory = model.scale === "history";
+  const title = isHistory
+    ? `${model.instrument.gpuLabel} depth history: ${target}`
+    : `${model.instrument.gpuLabel} depth: ${target}`;
+  const description = isHistory
+    ? `${contract}. ${model.history?.length || 0} daily observations from ${historySpan}. ` +
+      `Latest clearing price for ${target}: ${
+        model.current.clearingPrice === null
+          ? `more than ${formatUsd(model.priceDomain[1])}`
+          : formatUsd(model.current.clearingPrice)
+      } per GPU hour${basis ? ` with ${basis} basis` : ""}.`
+    : `${contract}. ${formatUsd(benchmark)} benchmark with ` +
+      `${capacityAtBenchmark} nodes available. ${clearing}`;
+  const imageAlt = isHistory
+    ? `${model.instrument.gpuLabel} market depth history from ${historySpan} for a target of ${target}.`
+    : `${model.instrument.gpuLabel} market depth profile showing a ` +
+      `${formatUsd(benchmark)} benchmark. ${clearing}`;
+  const destinationParams = new URLSearchParams({
+    card: depthCardDefinition.id,
+    view: "card",
+    gpu: model.gpu,
+    layers: model.layers.join(","),
+    scale: model.scale,
+    range: model.range,
+    target: model.target,
+    palette: model.palette,
+    theme: model.theme,
+  });
+  const destination =
+    `/?${destinationParams.toString()}#${depthCardDefinition.hash}`;
+  const destinationHref = escapeHtml(destination);
+  const redirectScript = JSON.stringify(destination).replaceAll("<", "\\u003c");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="${escapeHtml(description)}">
+    <meta name="theme-color" content="${model.colors.paper}">
+    <link rel="canonical" href="${pageUrl}">
+    <meta property="og:title" content="${escapeHtml(title)}">
+    <meta property="og:description" content="${escapeHtml(description)}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Desk">
+    <meta property="og:url" content="${pageUrl}">
+    <meta property="og:image" content="${imageUrl}">
+    <meta property="og:image:secure_url" content="${imageUrl}">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="${escapeHtml(imageAlt)}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${escapeHtml(title)}">
+    <meta name="twitter:description" content="${escapeHtml(description)}">
+    <meta name="twitter:image" content="${imageUrl}">
+    <meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">
+    <title>${escapeHtml(title)} | Desk</title>
+    <script>
+      const target = new URL(${redirectScript}, window.location.origin);
+      window.location.replace(target);
+    </script>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: ${model.colors.paper}; color: ${model.colors.line}; font: 500 16px/24px Geist, system-ui, sans-serif; }
+      a { color: inherit; text-underline-offset: 0.2em; }
+    </style>
+  </head>
+  <body>
+    <a href="${destinationHref}">Open card</a>
+  </body>
+</html>
+`;
+}
+
+function legacyPublishedDepthSharePath(state, range) {
+  const gpu = encodeURIComponent(String(state.gpu).toLowerCase());
+  const layers = state.layers
+    .map((layer) => encodeURIComponent(String(layer).toLowerCase()))
+    .join("~");
+  const palette = encodeURIComponent(String(state.palette).toLowerCase());
+  const theme = encodeURIComponent(String(state.theme).toLowerCase());
+  const target = encodeURIComponent(String(state.target).toLowerCase());
+  return (
+    `${depthCardDefinition.sharePath}/published/${gpu}/depth/${layers}/` +
+    `${range}/${palette}/${theme}/target-${target}/`
+  );
+}
+
 function renderLegacyCardImage(family, range, rows, latest, accent, theme) {
   const colors = themeColors(accent, theme);
   const chart = {
@@ -814,6 +1081,7 @@ function themeColors(accent, theme) {
       line,
       text: mixHex(accent, "#ffffff", 0.72),
       secondary: mixHex(accent, "#ffffff", 0.28),
+      area: mixHex(accent, "#ffffff", 0.28),
     };
   }
   const line = mixHex(accent, "#102635", 0.52);
@@ -824,6 +1092,7 @@ function themeColors(accent, theme) {
     line,
     text: mixHex(accent, "#102635", 0.28),
     secondary: mixHex(accent, "#102635", 0.28),
+    area: mixHex(accent, "#102635", 0.28),
   };
 }
 
@@ -907,6 +1176,12 @@ function formatUsd(value) {
   return `$${value.toFixed(2)}`;
 }
 
+function formatSignedUsd(value) {
+  const amount = Number(value);
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  return `${sign}$${Math.abs(amount).toFixed(2)}`;
+}
+
 function formatIndexChange(value) {
   const change = Number(value) - 100;
   if (!Number.isFinite(change)) return "pending";
@@ -986,6 +1261,7 @@ async function retireOldGeneratedFiles(nextFiles) {
   const allowedRoots = generatedRoots.map((directory) => resolve(directory));
   for (const file of previousFiles) {
     if (next.has(file)) continue;
+    if (isRetainedDepthPreview(file)) continue;
     const target = resolve(root, file);
     if (!allowedRoots.some((allowedRoot) => target.startsWith(`${allowedRoot}/`))) {
       throw new Error(`Refusing to remove generated file outside card roots: ${file}`);
@@ -996,6 +1272,13 @@ async function retireOldGeneratedFiles(nextFiles) {
       if (error?.code !== "ENOENT") throw error;
     }
   }
+}
+
+function isRetainedDepthPreview(file) {
+  // Existing depth shares can still reference their versioned preview image.
+  return String(file).startsWith(
+    `${depthCardDefinition.previewImageDir}/published/v14/`,
+  );
 }
 
 async function pruneEmptyDirectories(rootDirectory) {

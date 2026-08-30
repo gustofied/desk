@@ -37,7 +37,7 @@
         const requestedTheme = params.get("theme");
         const requestedPalette = params.get("palette");
         const requestedCard = params.get("card");
-        const requestedView = ["gpu-index", "gpu-price-snapshot"].includes(requestedCard)
+        const requestedView = ["gpu-index", "gpu-price-snapshot", "gpu-market-depth"].includes(requestedCard)
           ? params.get("view")
           : null;
         const requestedLayout = params.get("layout");
@@ -86,10 +86,10 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=66">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=44">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=71">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=47">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
-    <link rel="stylesheet" href="./styles/demo.css?v=17">
+    <link rel="stylesheet" href="./styles/demo.css?v=20">
   </head>
   <body>
     <div class="desk-top-controls">
@@ -157,6 +157,9 @@
             <button id="gpu-card-tab-prices" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-card-preset="gpu-price-snapshot">
               <span>Prices</span>
             </button>
+            <button id="gpu-card-tab-depth" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-card-preset="gpu-market-depth">
+              <span>Depth</span>
+            </button>
           </div>
           <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog cards" data-index-gallery-toggle>All</button>
         </header>
@@ -194,6 +197,39 @@
                       <span data-card-data-label>Data</span>
                       <strong data-card-compare-count hidden></strong>
                     </button>
+                    <div class="gpu-benchmark__depth-craft" data-depth-craft hidden>
+                      <p class="gpu-benchmark__depth-contract" data-depth-contract>
+                        <span data-depth-contract-gpu>H100</span>
+                        <span data-depth-contract-region>US</span>
+                        <span data-depth-contract-node>8 GPU</span>
+                        <span data-depth-contract-network>IB</span>
+                        <span data-depth-contract-term>30D</span>
+                      </p>
+                      <div class="gpu-benchmark__depth-choice" data-depth-target-choice>
+                        <button
+                          type="button"
+                          aria-haspopup="true"
+                          aria-expanded="false"
+                          aria-controls="gpu-depth-target-menu"
+                          data-depth-target-trigger
+                        ><span data-depth-target-label>128 nodes</span></button>
+                        <div class="gpu-benchmark__depth-menu" id="gpu-depth-target-menu" data-depth-target-menu hidden inert>
+                          <div role="radiogroup" aria-label="Target capacity" data-depth-target-options></div>
+                        </div>
+                      </div>
+                      <div class="gpu-benchmark__depth-choice" data-depth-view-choice>
+                        <button
+                          type="button"
+                          aria-haspopup="true"
+                          aria-expanded="false"
+                          aria-controls="gpu-depth-view-menu"
+                          data-depth-view-trigger
+                        ><span data-depth-view-label>Now</span></button>
+                        <div class="gpu-benchmark__depth-menu" id="gpu-depth-view-menu" data-depth-view-menu hidden inert>
+                          <div role="group" aria-label="Market depth view" data-depth-craft-views></div>
+                        </div>
+                      </div>
+                    </div>
                     <button
                       class="gpu-benchmark__save"
                       type="button"
@@ -208,7 +244,7 @@
                       hidden
                       inert
                     >
-                      <div class="gpu-benchmark__data-row">
+                      <div class="gpu-benchmark__data-row" data-card-primary-row>
                         <span class="gpu-benchmark__compare-label" data-card-primary-label>Main</span>
                         <div
                           class="gpu-benchmark__primary"
@@ -219,16 +255,17 @@
                         ></div>
                         <div class="gpu-benchmark__scale-control" data-card-scale-control>
                           <span class="gpu-benchmark__compare-label">View</span>
-                          <div class="gpu-benchmark__scales" role="group" aria-label="Chart view">
+                          <div class="gpu-benchmark__scales" role="group" aria-label="Chart view" data-card-scales>
                             <button type="button" aria-pressed="true" data-card-scale="price">Price</button>
                             <button type="button" aria-pressed="false" data-card-scale="index">Index</button>
                           </div>
                         </div>
                       </div>
-                      <div class="gpu-benchmark__data-row">
+                      <div class="gpu-benchmark__data-row" data-card-layer-row>
                         <span class="gpu-benchmark__compare-label" data-card-layer-label>Compare</span>
                         <div class="gpu-benchmark__layers" role="group" aria-label="Comparison data" data-card-layers></div>
                       </div>
+                      <div class="gpu-benchmark__data-row" data-card-options hidden></div>
                     </div>
                     <p class="gpu-benchmark__announce" aria-live="polite" data-card-announce></p>
                   </div>
@@ -246,11 +283,22 @@
 
                   <div class="gpu-benchmark__footer">
                     <time data-gpu-range-start>pending</time>
-                    <div class="gpu-benchmark__ranges" role="group" aria-label="History range">
+                    <div class="gpu-benchmark__ranges" role="group" aria-label="History range" data-gpu-range-group>
+                      <button type="button" aria-pressed="false" data-gpu-range="now" hidden>OFF</button>
                       <button type="button" aria-pressed="false" data-gpu-range="1d">1D</button>
                       <button type="button" aria-pressed="true" data-gpu-range="7d">7D</button>
                       <button type="button" aria-pressed="false" data-gpu-range="all">ALL</button>
                       <button class="gpu-benchmark__zoom-reset" type="button" data-gpu-zoom-reset hidden>RESET</button>
+                    </div>
+                    <div
+                      class="gpu-benchmark__depth-view"
+                      role="group"
+                      aria-label="Market depth view"
+                      data-depth-view
+                      hidden
+                    >
+                      <button type="button" aria-pressed="true" data-depth-scale="depth">Now</button>
+                      <button type="button" aria-pressed="false" data-depth-scale="history">History</button>
                     </div>
                     <time data-gpu-range-end>pending</time>
                   </div>
@@ -268,9 +316,14 @@
           >
             <figure class="desk-card-preview">
               <div class="gpu-index-share__window">
-                <div class="compute-share-card-frame">
+                <button
+                  class="compute-share-card-frame desk-card-focus-action"
+                  type="button"
+                  aria-label="Open card in Monitor"
+                  data-focus-card-monitor
+                >
                   <svg class="compute-share-artifact" data-share-artifact-svg viewBox="0 0 1200 675" role="img" aria-label="GPU price card"></svg>
-                </div>
+                </button>
                 <figcaption class="desk-card-preview__caption">
                   Observed <time data-share-observed>Loading market data</time>
                 </figcaption>
@@ -351,10 +404,10 @@
     >
       <form class="desk-save-dialog__form" data-save-form novalidate>
         <header>
-          <h2 id="desk-save-title" data-save-title>Save to Catalog</h2>
-          <p id="desk-save-description">Name this view.</p>
+          <h2 id="desk-save-title" data-save-title>Save card</h2>
+          <p id="desk-save-description">Available in this browser.</p>
         </header>
-        <label for="desk-save-name">Name</label>
+        <label for="desk-save-name">Card name</label>
         <input
           id="desk-save-name"
           name="name"
@@ -373,6 +426,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=96"></script>
+    <script type="module" src="./desk.js?v=114"></script>
   </body>
 </html>

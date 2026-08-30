@@ -5,9 +5,12 @@ const GPU_INDEX_DATA_FILE = "data/gpu-price-index.json";
 const GPU_INDEX_DATA_EPOCH = "showcase-v1";
 const GPU_PRICE_SNAPSHOT_ID = "gpu-price-snapshot";
 const GPU_PRICE_SNAPSHOT_SLUG = "gpu-price-snapshot";
+const GPU_MARKET_DEPTH_ID = "gpu-market-depth";
+const GPU_MARKET_DEPTH_SLUG = "gpu-market-depth";
+const GPU_MARKET_DEPTH_DATA_FILE = "data/gpu-market-depth.json";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
-export const PUBLISHED_CARD_VERSION = "v10";
+export const PUBLISHED_CARD_VERSION = "v15";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),
@@ -19,6 +22,12 @@ export const PALETTES = Object.freeze([
 export const THEMES = Object.freeze(["light", "dark"]);
 
 export const RANGES = Object.freeze({
+  now: Object.freeze({
+    id: "now",
+    milliseconds: 0,
+    label: "CURRENT",
+    longLabel: "current profile",
+  }),
   "1d": Object.freeze({
     id: "1d",
     milliseconds: DAY_MS,
@@ -88,6 +97,17 @@ export const GPU_PRICE_LAYERS = Object.freeze(
   GPU_LAYERS.filter((layer) => layer.unit === "usd-hour"),
 );
 
+export const GPU_MARKET_DEPTH_LAYERS = Object.freeze([
+  Object.freeze({
+    id: "H100",
+    label: "H100 depth",
+    shortLabel: "H100 depth",
+    unit: "nodes",
+    primary: true,
+    views: Object.freeze(["depth", "history"]),
+  }),
+]);
+
 export const CARD_REGISTRY = Object.freeze([
   Object.freeze({
     id: GPU_INDEX_ID,
@@ -111,7 +131,22 @@ export const CARD_REGISTRY = Object.freeze([
       theme: "light",
     }),
     ranges: Object.freeze(["1d", "7d", "all"]),
+    allowComparisons: true,
     layers: GPU_LAYERS,
+    catalogPresets: Object.freeze(
+      GPU_PRICE_LAYERS.map((layer) =>
+        Object.freeze({
+          id: layer.id.toLowerCase(),
+          label: layer.label,
+          state: Object.freeze({
+            gpu: layer.id,
+            layers: Object.freeze([layer.id]),
+            scale: "price",
+            range: "7d",
+          }),
+        }),
+      ),
+    ),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Price", unit: "usd-hour" }),
       Object.freeze({ id: "index", label: "Index", unit: "index" }),
@@ -141,9 +176,54 @@ export const CARD_REGISTRY = Object.freeze([
       order: "price-desc",
     }),
     ranges: Object.freeze(["1d"]),
+    allowComparisons: true,
     layers: GPU_PRICE_LAYERS,
+    catalogPresets: Object.freeze([
+      Object.freeze({ id: "prices", label: "Accelerator prices" }),
+    ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Price", unit: "usd-hour" }),
+    ]),
+  }),
+  Object.freeze({
+    id: GPU_MARKET_DEPTH_ID,
+    slug: GPU_MARKET_DEPTH_SLUG,
+    hash: "gpu-benchmark-card",
+    renderer: "cumulative-depth",
+    title: "H100 depth",
+    description: "Qualifying H100 capacity available across hourly prices.",
+    sourceFile: "api/dashboard-snapshots/gpu-market-depth.json",
+    dataFile: GPU_MARKET_DEPTH_DATA_FILE,
+    dataUrl: `./${GPU_MARKET_DEPTH_DATA_FILE}`,
+    sharePath: `/cards/${GPU_MARKET_DEPTH_SLUG}`,
+    previewImageDir: `assets/social/${GPU_MARKET_DEPTH_ID}`,
+    previewPageDir: `cards/${GPU_MARKET_DEPTH_SLUG}`,
+    defaults: Object.freeze({
+      layer: "H100",
+      layers: Object.freeze(["H100"]),
+      range: "now",
+      scale: "depth",
+      target: "128",
+      palette: "azure",
+      theme: "light",
+    }),
+    ranges: Object.freeze(["now"]),
+    allowComparisons: false,
+    layers: GPU_MARKET_DEPTH_LAYERS,
+    stateOptions: Object.freeze([
+      Object.freeze({
+        id: "target",
+        label: "Target",
+        values: Object.freeze(["64", "128", "256"]),
+        default: "128",
+      }),
+    ]),
+    catalogPresets: Object.freeze([
+      Object.freeze({ id: "h100-us", label: "H100 depth" }),
+    ]),
+    visualizations: Object.freeze([
+      Object.freeze({ id: "depth", label: "Now", unit: "nodes" }),
+      Object.freeze({ id: "history", label: "History", unit: "nodes" }),
     ]),
   }),
 ]);
@@ -160,6 +240,18 @@ export function getLayerDefinition(card, layerId) {
 
 export function paletteIds() {
   return PALETTES.map((palette) => palette.id);
+}
+
+export function cardStateParamIds(card = getCardDefinition()) {
+  return [
+    "gpu",
+    "layers",
+    "scale",
+    "range",
+    "palette",
+    "theme",
+    ...(card.stateOptions || []).map((option) => option.id),
+  ];
 }
 
 export function parseLayerIds(
@@ -188,7 +280,11 @@ export function serializeLayerIds(layerIds, card = getCardDefinition()) {
 
 export function normalizeCardState(cardId, stateParams = {}) {
   const card = getCardDefinition(cardId);
-  const primaryLayers = card.layers.filter((layer) => layer.unit === "usd-hour");
+  const requestedRangeId = String(stateParams.range || "").toLowerCase();
+  const legacyDepthHistory =
+    card.id === GPU_MARKET_DEPTH_ID &&
+    (requestedRangeId === "1d" || requestedRangeId === "7d");
+  const primaryLayers = card.layers.filter((layer) => layer.primary !== false);
   const requestedGpu = String(stateParams.gpu || "").toUpperCase();
   const gpu = primaryLayers.some((layer) => layer.id === requestedGpu)
     ? requestedGpu
@@ -201,10 +297,13 @@ export function normalizeCardState(cardId, stateParams = {}) {
     card,
     fallbackLayers,
   );
+  const requestedScaleId = legacyDepthHistory
+    ? "history"
+    : String(stateParams.scale || "").toLowerCase();
   const requestedScale = card.visualizations.some(
-    (visualization) => visualization.id === stateParams.scale,
+    (visualization) => visualization.id === requestedScaleId,
   )
-    ? stateParams.scale
+    ? requestedScaleId
     : card.defaults.scale;
   const requiresIndex = requestedLayers.some(
     (layerId) => getLayerDefinition(card, layerId)?.unit === "index",
@@ -216,10 +315,11 @@ export function normalizeCardState(cardId, stateParams = {}) {
     ),
   );
   compatibleLayers.add(gpu);
-  const layers = card.layers
+  const normalizedLayers = card.layers
     .map((layer) => layer.id)
     .filter((layerId) => compatibleLayers.has(layerId));
-  const requestedRange = String(stateParams.range || "").toLowerCase();
+  const layers = card.allowComparisons === false ? [gpu] : normalizedLayers;
+  const requestedRange = legacyDepthHistory ? "now" : requestedRangeId;
   const allowedRanges = card.ranges || Object.keys(RANGES);
   const range = allowedRanges.includes(requestedRange)
     ? requestedRange
@@ -233,6 +333,21 @@ export function normalizeCardState(cardId, stateParams = {}) {
     ? requestedTheme
     : card.defaults.theme;
 
+  const options = Object.fromEntries(
+    (card.stateOptions || []).map((option) => {
+      const requested = String(stateParams[option.id] || "").toLowerCase();
+      const fallback = String(
+        card.defaults[option.id] ?? option.default ?? option.values?.[0] ?? "",
+      ).toLowerCase();
+      return [
+        option.id,
+        option.values?.map(String).map((value) => value.toLowerCase()).includes(requested)
+          ? requested
+          : fallback,
+      ];
+    }),
+  );
+
   return {
     gpu,
     layers,
@@ -240,6 +355,7 @@ export function normalizeCardState(cardId, stateParams = {}) {
     range,
     palette,
     theme,
+    ...options,
   };
 }
 
@@ -247,13 +363,15 @@ export function publishedCardSharePath(cardId, stateParams) {
   const card = getCardDefinition(cardId);
   const state = normalizeCardState(card.id, stateParams);
   const layers = state.layers.map(pathSegment).join("~");
+  const optionPath = publishedOptionPath(card, state);
 
-  return (
+  const base = (
     `${card.sharePath}/published/` +
     `${pathSegment(state.gpu)}/${pathSegment(state.scale)}/${layers}/` +
     `${pathSegment(state.range)}/${pathSegment(state.palette)}/` +
     `${pathSegment(state.theme)}/`
   );
+  return optionPath ? `${base}${optionPath}/` : base;
 }
 
 export function publishedCardPreviewPath(cardId, stateParams, revision) {
@@ -261,13 +379,21 @@ export function publishedCardPreviewPath(cardId, stateParams, revision) {
   const state = normalizeCardState(card.id, stateParams);
   const dataRevision = publishedRevisionSegment(revision);
   const layers = state.layers.map(pathSegment).join("~");
+  const optionPath = publishedOptionPath(card, state);
+  const optionSuffix = optionPath ? `--${optionPath}` : "";
 
   return (
     `/${card.previewImageDir}/published/${PUBLISHED_CARD_VERSION}/${dataRevision}/` +
     `${pathSegment(state.gpu)}/${pathSegment(state.scale)}/${layers}/` +
     `${pathSegment(state.range)}/` +
-    `${pathSegment(state.palette)}-${pathSegment(state.theme)}.png`
+    `${pathSegment(state.palette)}-${pathSegment(state.theme)}${optionSuffix}.png`
   );
+}
+
+function publishedOptionPath(card, state) {
+  return (card.stateOptions || [])
+    .map((option) => `${pathSegment(option.id)}-${pathSegment(state[option.id])}`)
+    .join("~");
 }
 
 function layerStateValue(value) {

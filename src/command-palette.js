@@ -7,6 +7,7 @@ const defaultGroups = [
   "Highlight",
   "View",
   "Range",
+  "Compare",
   "Appearance",
 ];
 const maxRenderedCommands = 64;
