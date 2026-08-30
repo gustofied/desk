@@ -1,11 +1,13 @@
 const defaultGroups = [
   "Workspace",
   "Catalog",
+  "Catalogs",
+  "Catalog views",
   "Actions",
   "Layers",
   "Main data",
   "Highlight",
-  "View",
+  "Chart",
   "Range",
   "Compare",
   "Appearance",
@@ -96,9 +98,9 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     root.open ? close() : open();
   }
 
-  function open({ query = "" } = {}) {
+  function open({ query = "", returnFocus = null } = {}) {
     root.removeAttribute("data-closing");
-    previousFocus = document.activeElement;
+    previousFocus = returnFocus || document.activeElement;
     if (!root.open) root.showModal();
     if (input) input.value = query;
     commandSnapshot = createCommandSnapshot(registry);
@@ -168,7 +170,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     if (!visibleCommands.length) {
       const empty = document.createElement("p");
       empty.className = "desk-command-menu__empty";
-      empty.textContent = "No cards or commands found";
+      empty.textContent = "No views or commands found";
       fragment.append(empty);
       results.replaceChildren(fragment);
       input.removeAttribute("aria-activedescendant");
@@ -305,11 +307,15 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   function runCommand(index) {
     const command = visibleCommands[index];
     if (!command || command.disabled) return;
-    close({ restoreFocus: false });
+    if (!command.keepOpen) close({ restoreFocus: false });
     try {
-      Promise.resolve(command.run()).catch((error) => {
-        console.error(`Desk command failed: ${command.id}`, error);
-      });
+      Promise.resolve(command.run())
+        .then(() => {
+          if (command.keepOpen && root.open) input?.focus({ preventScroll: true });
+        })
+        .catch((error) => {
+          console.error(`Desk command failed: ${command.id}`, error);
+        });
     } catch (error) {
       console.error(`Desk command failed: ${command.id}`, error);
     }

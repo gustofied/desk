@@ -39,7 +39,7 @@ jobs:
           DESK_SNAPSHOT_TOKEN: ${{ secrets.DESK_SNAPSHOT_TOKEN }}
         run: npm run refresh:data
 
-      - name: Validate every card source
+      - name: Validate every view source
         run: npm run check:data
 
       - name: Detect source-data changes

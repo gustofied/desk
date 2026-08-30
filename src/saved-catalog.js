@@ -16,6 +16,7 @@ const STORAGE_VERSION = 2;
 const LEGACY_STORAGE_VERSION = 1;
 const MAX_ITEMS_PER_CARD = 48;
 export const MAX_CATALOG_NAME_LENGTH = MAX_CARD_DOCUMENT_NAME_LENGTH;
+export const SAVED_CATALOG_STORAGE_KEY = STORAGE_KEY;
 
 const cardIds = new Set(CARD_REGISTRY.map((card) => card.id));
 
@@ -33,7 +34,7 @@ export function saveCatalogItem({
   itemId = null,
 }) {
   if (!cardIds.has(cardId)) {
-    throw new TypeError("Unknown card type");
+    throw new TypeError("Unknown view type");
   }
 
   const cleanName = normalizeCatalogName(name);
@@ -77,7 +78,7 @@ export function saveCatalogItem({
 
 export function deleteCatalogItem({ cardId, itemId } = {}) {
   if (!cardIds.has(cardId)) {
-    throw new TypeError("Unknown card type");
+    throw new TypeError("Unknown view type");
   }
   const id = String(itemId || "");
   if (!/^[a-zA-Z0-9_-]{1,96}$/.test(id)) {

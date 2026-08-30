@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <meta name="application-name" content="Desk">
     <meta name="apple-mobile-web-app-title" content="Desk">
-    <meta name="description" content="Desk turns accelerator market data into clean, interactive cards.">
+    <meta name="description" content="Desk turns accelerator market data into clean, interactive views.">
     <meta name="theme-color" content="#ffffff">
     <link rel="canonical" href="https://desk.adamsioud.com/">
     <meta property="og:title" content="Desk">
-    <meta property="og:description" content="Read, compare, and share accelerator prices in clean market cards.">
+    <meta property="og:description" content="Read, compare, and share accelerator prices in clean market views.">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Desk">
     <meta property="og:url" content="https://desk.adamsioud.com/">
@@ -18,12 +18,12 @@
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="A Desk comparison card showing H100, H200, and the Token Price Index.">
+    <meta property="og:image:alt" content="A Desk comparison chart showing H100, H200, and the Token Price Index.">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Desk">
-    <meta name="twitter:description" content="Read, compare, and share accelerator prices in clean market cards.">
+    <meta name="twitter:description" content="Read, compare, and share accelerator prices in clean market views.">
     <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=10">
-    <meta name="twitter:image:alt" content="A Desk comparison card showing H100, H200, and the Token Price Index.">
+    <meta name="twitter:image:alt" content="A Desk comparison chart showing H100, H200, and the Token Price Index.">
     <title>Desk</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="./assets/favicon.svg">
@@ -86,8 +86,8 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=71">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=47">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=72">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=49">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=20">
   </head>
@@ -109,15 +109,16 @@
           <i aria-hidden="true"></i>
         </button>
       </nav>
-      <nav class="desk-view-actions" aria-label="Desk sections">
-        <div>
+      <nav class="desk-view-actions" aria-label="Desk sections" data-catalog-bar>
+        <div class="desk-view-actions__group">
           <button
             class="desk-view-action"
             type="button"
             aria-current="page"
             aria-controls="desk-card-focus"
             data-desk-mode="catalog"
-          >Catalog</button>
+            data-catalog-switcher
+          ><span data-catalog-switcher-name>Catalog</span></button>
           <button
             class="desk-view-action"
             type="button"
@@ -131,6 +132,20 @@
             data-desk-mode="craft"
           >Craft</button>
         </div>
+        <div class="desk-catalog-menu" data-catalog-menu hidden inert>
+          <div
+            id="desk-catalog-listbox"
+            role="listbox"
+            aria-label="Catalogs"
+            data-catalog-list
+          ></div>
+          <footer>
+            <button type="button" data-catalog-cards disabled>Views</button>
+            <button type="button" data-catalog-create>New</button>
+            <button type="button" data-catalog-rename disabled>Rename</button>
+            <button type="button" data-catalog-delete disabled>Delete</button>
+          </footer>
+        </div>
       </nav>
     </div>
     <main class="desk-stage">
@@ -141,7 +156,7 @@
         data-card-id="gpu-index"
       >
         <header class="desk-card-rail">
-          <div class="desk-card-tabs" role="tablist" aria-label="Market cards">
+          <div class="desk-card-tabs" role="tablist" aria-label="Market views">
             <button id="gpu-card-tab-h100" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-gpu-family="H100">
               <span>H100</span><strong data-gpu-family-value="H100">pending</strong>
             </button>
@@ -161,7 +176,7 @@
               <span>Depth</span>
             </button>
           </div>
-          <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog cards" data-index-gallery-toggle>All</button>
+          <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog views" data-index-gallery-toggle>All</button>
         </header>
         <div
           class="desk-card-focus"
@@ -254,8 +269,8 @@
                           data-card-primary-layers
                         ></div>
                         <div class="gpu-benchmark__scale-control" data-card-scale-control>
-                          <span class="gpu-benchmark__compare-label">View</span>
-                          <div class="gpu-benchmark__scales" role="group" aria-label="Chart view" data-card-scales>
+                          <span class="gpu-benchmark__compare-label">Chart</span>
+                          <div class="gpu-benchmark__scales" role="group" aria-label="Chart mode" data-card-scales>
                             <button type="button" aria-pressed="true" data-card-scale="price">Price</button>
                             <button type="button" aria-pressed="false" data-card-scale="index">Index</button>
                           </div>
@@ -311,7 +326,7 @@
             class="gpu-index-share"
             id="gpu-index-publish"
             data-index-panel="share"
-            aria-label="Card preview"
+            aria-label="Chart preview"
             hidden
           >
             <figure class="desk-card-preview">
@@ -319,10 +334,10 @@
                 <button
                   class="compute-share-card-frame desk-card-focus-action"
                   type="button"
-                  aria-label="Open card in Monitor"
+                  aria-label="Open view in Monitor"
                   data-focus-card-monitor
                 >
-                  <svg class="compute-share-artifact" data-share-artifact-svg viewBox="0 0 1200 675" role="img" aria-label="GPU price card"></svg>
+                  <svg class="compute-share-artifact" data-share-artifact-svg viewBox="0 0 1200 675" role="img" aria-label="GPU price chart"></svg>
                 </button>
                 <figcaption class="desk-card-preview__caption">
                   Observed <time data-share-observed>Loading market data</time>
@@ -335,8 +350,12 @@
 
         <section class="desk-card-gallery" id="desk-card-gallery" data-card-layout-panel="all" aria-labelledby="desk-catalog-title" hidden inert>
           <h2 class="desk-workspace-heading" id="desk-catalog-title" tabindex="-1">Catalog</h2>
-          <p class="desk-card-gallery__status" id="desk-catalog-reorder-help">Touch and hold a card to move it. With a keyboard, hold Alt and press an arrow key.</p>
+          <p class="desk-card-gallery__status" id="desk-catalog-reorder-help">Touch and hold a view to move it. With a keyboard, hold Alt and press an arrow key.</p>
           <div class="desk-card-gallery__grid" data-card-gallery-grid></div>
+          <div class="desk-catalog-empty" data-catalog-empty hidden>
+            <p>No views here</p>
+            <button type="button" data-catalog-add-cards>Add views</button>
+          </div>
           <p class="desk-card-gallery__status" aria-live="polite" data-card-gallery-status></p>
         </section>
         <p class="desk-workspace-status" role="status" aria-live="polite" aria-atomic="true" data-workspace-status></p>
@@ -368,7 +387,7 @@
       <section class="desk-command-menu__surface">
         <h2 class="desk-command-menu__title" id="desk-command-title">Search Desk</h2>
         <header class="desk-command-menu__search">
-          <label class="desk-command-menu__title" for="desk-command-input">Search cards and commands</label>
+          <label class="desk-command-menu__title" for="desk-command-input">Search views and commands</label>
           <input
             id="desk-command-input"
             type="search"
@@ -379,7 +398,7 @@
             autocomplete="off"
             autocapitalize="none"
             spellcheck="false"
-            placeholder="Search cards and commands"
+            placeholder="Search views and commands"
             data-command-input
           >
           <kbd class="desk-command-menu__shortcut" aria-hidden="true">⌘G</kbd>
@@ -404,10 +423,10 @@
     >
       <form class="desk-save-dialog__form" data-save-form novalidate>
         <header>
-          <h2 id="desk-save-title" data-save-title>Save card</h2>
+          <h2 id="desk-save-title" data-save-title>Save view</h2>
           <p id="desk-save-description">Available in this browser.</p>
         </header>
-        <label for="desk-save-name">Card name</label>
+        <label for="desk-save-name">View name</label>
         <input
           id="desk-save-name"
           name="name"
@@ -426,6 +445,37 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=114"></script>
+    <dialog
+      class="desk-save-dialog"
+      id="desk-catalog-dialog"
+      aria-labelledby="desk-catalog-dialog-title"
+      aria-describedby="desk-catalog-dialog-description"
+      data-catalog-dialog
+    >
+      <form class="desk-save-dialog__form" data-catalog-form novalidate>
+        <header>
+          <h2 id="desk-catalog-dialog-title" data-catalog-dialog-title>New catalog</h2>
+          <p id="desk-catalog-dialog-description" data-catalog-dialog-description>Choose the views after creating it.</p>
+        </header>
+        <label for="desk-catalog-name" data-catalog-name-label>Catalog name</label>
+        <input
+          id="desk-catalog-name"
+          name="name"
+          type="text"
+          maxlength="48"
+          autocomplete="off"
+          aria-describedby="desk-catalog-dialog-description desk-catalog-error"
+          aria-errormessage="desk-catalog-error"
+          required
+          data-catalog-name
+        >
+        <p class="desk-save-dialog__error" id="desk-catalog-error" aria-live="polite" data-catalog-error></p>
+        <footer>
+          <button type="button" data-catalog-cancel>Cancel</button>
+          <button type="submit" data-catalog-submit>Create</button>
+        </footer>
+      </form>
+    </dialog>
+    <script type="module" src="./desk.js?v=116"></script>
   </body>
 </html>

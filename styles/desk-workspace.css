@@ -138,6 +138,138 @@
   box-shadow: none;
 }
 
+.desk-catalog-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  z-index: 2;
+  width: min(18rem, calc(100vw - 16px));
+  padding: 4px;
+  color: var(--desk-accent-deep);
+  letter-spacing: normal;
+  text-transform: none;
+  background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
+  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
+  border-radius: 4px;
+  box-shadow: 0 16px 40px color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
+  translate: -50% 0;
+}
+
+.desk-catalog-menu[hidden] {
+  display: none;
+}
+
+.desk-catalog-menu [role="listbox"] {
+  display: grid;
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.desk-catalog-option,
+.desk-catalog-menu footer button {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 8px 12px;
+  color: inherit;
+  font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-radius: 2px;
+}
+
+.desk-catalog-option small {
+  flex: none;
+  color: inherit;
+  font: inherit;
+  opacity: 0.68;
+}
+
+.desk-catalog-option > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desk-catalog-option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--desk-accent-pale) 48%, transparent);
+  box-shadow: inset 2px 0 0 var(--desk-accent-deep);
+}
+
+.desk-catalog-option:focus-visible,
+.desk-catalog-menu footer button:focus-visible {
+  outline: 1px solid var(--desk-accent-deep);
+  outline-offset: -2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desk-catalog-option:hover,
+  .desk-catalog-menu footer button:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--desk-accent-pale) 36%, transparent);
+  }
+}
+
+.desk-catalog-menu footer {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
+}
+
+.desk-catalog-menu footer button {
+  justify-content: center;
+  padding-inline: 4px;
+  text-align: center;
+}
+
+.desk-catalog-menu footer button:disabled {
+  cursor: default;
+  opacity: 0.28;
+}
+
+.desk-catalog-empty {
+  display: grid;
+  min-height: 16rem;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  color: var(--desk-accent-deep);
+}
+
+.desk-catalog-empty[hidden] {
+  display: none;
+}
+
+.desk-catalog-empty p {
+  margin: 0;
+  font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.04em;
+  opacity: 0.58;
+}
+
+.desk-catalog-empty button {
+  min-height: 32px;
+  padding: 4px 8px;
+  color: inherit;
+  font: 600 12px/16px "Geist Mono", ui-monospace, monospace;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--desk-accent-deep) 28%, transparent);
+}
+
+.desk-catalog-empty button:focus-visible {
+  outline: 1px solid var(--desk-accent-deep);
+  outline-offset: 4px;
+}
+
 .desk-card-gallery__grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -498,6 +630,13 @@
     0 24px 48px rgb(0 0 0 / 40%);
 }
 
+:root[data-theme="dark"] .desk-catalog-menu {
+  color: #f5f5f5;
+  background: #1f1f1f;
+  border-color: color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 32%);
+}
+
 @media (max-width: 1024px) and (min-width: 641px) {
   .desk-card-gallery__grid,
   .desk-card-gallery__grid[data-card-count] {
@@ -506,6 +645,19 @@
 }
 
 @media (max-width: 640px) {
+  .desk-catalog-menu {
+    top: calc(100% + 4px);
+  }
+
+  .desk-catalog-menu [role="listbox"] {
+    max-height: calc(min(55dvh, 26rem) - 52px);
+  }
+
+  .desk-catalog-option,
+  .desk-catalog-menu footer button {
+    min-height: 48px;
+  }
+
   .desk-card-rail {
     gap: 4px;
     width: 100%;

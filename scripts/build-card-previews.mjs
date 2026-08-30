@@ -129,7 +129,7 @@ await writeFile(
 );
 
 console.log(
-  `Built ${publishedLineCount + publishedBarCount + publishedDepthCount} exact card previews ` +
+  `Built ${publishedLineCount + publishedBarCount + publishedDepthCount} exact view previews ` +
     `(${publishedLineCount} line, ${publishedBarCount} bar, ` +
     `${publishedDepthCount} depth) with ` +
     `${workerCount} workers.`,
@@ -629,7 +629,7 @@ function renderPublishedSharePage(
     model.scale === "index"
       ? `${model.primaryTitle} ${model.headline} over ${rangeDescription}`
       : `${model.headline} per GPU hour over ${rangeDescription}`;
-  const imageAlt = `${cardTitle} card showing ${description}`;
+  const imageAlt = `${cardTitle} chart showing ${description}`;
   const destinationParams = new URLSearchParams({
     card: cardDefinition.id,
     view: "card",
@@ -679,7 +679,7 @@ function renderPublishedSharePage(
     </style>
   </head>
   <body>
-    <a href="${destinationHref}">Open card</a>
+    <a href="${destinationHref}">Open view</a>
   </body>
 </html>
 `;
@@ -753,7 +753,7 @@ function renderPublishedBarSharePage(
     </style>
   </head>
   <body>
-    <a href="${destinationHref}">Open card</a>
+    <a href="${destinationHref}">Open view</a>
   </body>
 </html>
 `;
@@ -859,7 +859,7 @@ function renderPublishedDepthSharePage(
     </style>
   </head>
   <body>
-    <a href="${destinationHref}">Open card</a>
+    <a href="${destinationHref}">Open view</a>
   </body>
 </html>
 `;
@@ -1124,7 +1124,7 @@ function renderLegacySharePage(
   const imageUrl = `${SITE_ORIGIN}/${cardDefinition.previewImageDir}/${slug}/${rangeId}/${palette}-${theme}.png?v=${previewRevision}`;
   const title = `${family} price`;
   const description = `${formatUsd(latest.value)} per GPU hour over ${range.longLabel}`;
-  const imageAlt = `${title} card showing ${description.toLowerCase()}.`;
+  const imageAlt = `${title} chart showing ${description.toLowerCase()}.`;
   const destination =
     `/?card=${cardDefinition.id}&view=card&gpu=${family}` +
     `&layers=${family}&scale=price&range=${rangeId}` +

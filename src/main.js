@@ -31,13 +31,30 @@ import {
   loadSavedCatalog,
   MAX_CATALOG_NAME_LENGTH,
   normalizeCatalogName,
+  SAVED_CATALOG_STORAGE_KEY,
   saveCatalogItem,
 } from "./saved-catalog.js";
 import {
+  CATALOG_ORDER_STORAGE_KEY,
   loadCatalogOrder,
   orderCatalogEntries,
   saveCatalogOrder,
 } from "./catalog-order.js";
+import {
+  ALL_CARDS_CATALOG_ID,
+  CATALOG_COLLECTIONS_STORAGE_KEY,
+  MAX_CATALOG_COLLECTION_NAME_LENGTH,
+  activeCatalogCollection,
+  addCatalogCollectionKey,
+  createCatalogCollection,
+  deleteCatalogCollection,
+  loadCatalogCollections,
+  normalizeCatalogCollectionName,
+  removeCatalogKeyFromCollections,
+  renameCatalogCollection,
+  replaceCatalogCollectionKeys,
+  toggleCatalogCollectionKey,
+} from "./catalog-collections.js";
 import { shareRangeLabel } from "./share-range-label.js";
 import {
   horizontalHitZones,
@@ -66,6 +83,7 @@ if (root) {
   const craftDraftStorageKey = `desk.craft-draft.v1.${cardId}`;
   const catalogColorStorageKey = "desk.catalog-colors.v1";
   const catalogScrollStorageKey = "desk.catalog-scroll.v1";
+  const activeCatalogSessionKey = "desk.active-catalog.v1";
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
@@ -123,6 +141,7 @@ if (root) {
     : requestedState.scale;
   const initialRange = requestedState.range;
   const savedCatalog = loadSavedCatalog(cardId);
+  const catalogCollections = loadCatalogCollections();
   const hasCompleteCatalogSnapshot = cardStateParamIds(cardDefinition).every(
     (name) => params.has(name),
   );
@@ -172,6 +191,10 @@ if (root) {
     controlsReadyAt: 0,
     catalogDirty: true,
     catalogOrder: loadCatalogOrder(),
+    catalogCollections,
+    activeCatalogViewId: loadActiveCatalogSession(catalogCollections),
+    catalogMenuOpen: false,
+    catalogDialogMode: null,
     catalogColorMode: loadCatalogColorMode(),
     zoomWindow: null,
     savedCatalog,
@@ -199,6 +222,17 @@ if (root) {
     cardRail: root.querySelector(".desk-card-rail"),
     galleryGrid: root.querySelector("[data-card-gallery-grid]"),
     galleryStatus: root.querySelector("[data-card-gallery-status]"),
+    catalogBar: document.querySelector("[data-catalog-bar]"),
+    catalogSwitcher: document.querySelector("[data-catalog-switcher]"),
+    catalogSwitcherName: document.querySelector("[data-catalog-switcher-name]"),
+    catalogMenu: document.querySelector("[data-catalog-menu]"),
+    catalogList: document.querySelector("[data-catalog-list]"),
+    catalogCardsAction: document.querySelector("[data-catalog-cards]"),
+    catalogCreate: document.querySelector("[data-catalog-create]"),
+    catalogRename: document.querySelector("[data-catalog-rename]"),
+    catalogDelete: document.querySelector("[data-catalog-delete]"),
+    catalogEmpty: root.querySelector("[data-catalog-empty]"),
+    catalogAddCards: root.querySelector("[data-catalog-add-cards]"),
     modeButtons: Array.from(document.querySelectorAll("[data-desk-mode]")),
     galleryToggle: document.querySelector("[data-index-gallery-toggle]"),
     workspaceTitle: root.querySelector("#desk-workspace-title"),
@@ -283,6 +317,17 @@ if (root) {
     saveError: document.querySelector("[data-save-error]"),
     saveCancel: document.querySelector("[data-save-cancel]"),
     saveSubmit: document.querySelector("[data-save-submit]"),
+    catalogDialog: document.querySelector("[data-catalog-dialog]"),
+    catalogForm: document.querySelector("[data-catalog-form]"),
+    catalogDialogTitle: document.querySelector("[data-catalog-dialog-title]"),
+    catalogDialogDescription: document.querySelector(
+      "[data-catalog-dialog-description]",
+    ),
+    catalogNameLabel: document.querySelector("[data-catalog-name-label]"),
+    catalogNameInput: document.querySelector("[data-catalog-name]"),
+    catalogError: document.querySelector("[data-catalog-error]"),
+    catalogCancel: document.querySelector("[data-catalog-cancel]"),
+    catalogSubmit: document.querySelector("[data-catalog-submit]"),
     themeColor: document.querySelector('meta[name="theme-color"]'),
   };
   const commandPalette = createCommandPalette({
@@ -294,6 +339,7 @@ if (root) {
   let catalogPointerDrag = null;
   let suppressedCatalogClickKey = null;
   let unregisterSavedCatalogCommands = () => {};
+  let unregisterCatalogCollectionCommands = () => {};
   initialize();
 
   function initialize() {
@@ -317,8 +363,10 @@ if (root) {
     configureAppearanceControls();
     configureComposerControls();
     configureSaveControls();
+    configureCatalogCollectionControls();
     configureCommandPalette();
     syncSavedCatalogCommands();
+    syncCatalogCollectionCommands();
     configureUtcClock();
     if (initialStateNeedsRepair || initialViewNeedsRepair) updateLocation();
     configureChoiceButtons(
@@ -350,7 +398,13 @@ if (root) {
     for (const button of nodes.modeButtons) {
       button.addEventListener("click", () => {
         const mode = button.dataset.deskMode;
-        if (mode === "craft") openCraft(false);
+        if (
+          mode === "catalog" &&
+          state.mode === "catalog" &&
+          state.layout === "all"
+        ) {
+          setCatalogMenuOpen(!state.catalogMenuOpen, { moveFocus: true });
+        } else if (mode === "craft") openCraft(false);
         else switchWorkspaceMode(mode, false);
       });
     }
@@ -646,6 +700,459 @@ if (root) {
     nodes.saveName?.addEventListener("input", clearSaveError);
   }
 
+  function configureCatalogCollectionControls() {
+    nodes.catalogSwitcher?.addEventListener("keydown", (event) => {
+      if (!["ArrowDown", "ArrowUp"].includes(event.key)) return;
+      if (state.mode !== "catalog" || state.layout !== "all") return;
+      event.preventDefault();
+      setCatalogMenuOpen(true, { moveFocus: true, edge: event.key });
+    });
+    nodes.catalogList?.addEventListener("click", (event) => {
+      const option = event.target instanceof Element
+        ? event.target.closest("[data-catalog-collection]")
+        : null;
+      if (!option || !nodes.catalogList.contains(option)) return;
+      selectCatalogCollection(option.dataset.catalogCollection, true);
+    });
+    nodes.catalogMenu?.addEventListener("keydown", handleCatalogMenuKeydown);
+    nodes.catalogCardsAction?.addEventListener("click", openCatalogCardCommands);
+    nodes.catalogCreate?.addEventListener("click", () => {
+      openCatalogCollectionDialog("create");
+    });
+    nodes.catalogRename?.addEventListener("click", () => {
+      openCatalogCollectionDialog("rename");
+    });
+    nodes.catalogDelete?.addEventListener("click", () => {
+      openCatalogCollectionDialog("delete");
+    });
+    nodes.catalogAddCards?.addEventListener("click", () => {
+      openCatalogCardCommands();
+    });
+    nodes.catalogForm?.addEventListener("submit", submitCatalogCollectionDialog);
+    nodes.catalogCancel?.addEventListener("click", closeCatalogCollectionDialog);
+    nodes.catalogDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeCatalogCollectionDialog();
+    });
+    nodes.catalogNameInput?.addEventListener(
+      "input",
+      clearCatalogCollectionError,
+    );
+    document.addEventListener("pointerdown", (event) => {
+      if (
+        state.catalogMenuOpen &&
+        nodes.catalogBar &&
+        event.target instanceof Node &&
+        !nodes.catalogBar.contains(event.target)
+      ) {
+        setCatalogMenuOpen(false);
+      }
+    });
+    nodes.catalogBar?.addEventListener("focusout", () => {
+      window.requestAnimationFrame(() => {
+        if (
+          state.catalogMenuOpen &&
+          nodes.catalogBar &&
+          !nodes.catalogBar.contains(document.activeElement)
+        ) {
+          setCatalogMenuOpen(false);
+        }
+      });
+    });
+    window.addEventListener("storage", (event) => {
+      if (event.key === CATALOG_COLLECTIONS_STORAGE_KEY) {
+        const activeId = state.activeCatalogViewId;
+        state.catalogCollections = loadCatalogCollections();
+        state.activeCatalogViewId =
+          activeId === ALL_CARDS_CATALOG_ID ||
+          state.catalogCollections.collections.some(
+            (collection) => collection.id === activeId,
+          )
+            ? activeId
+            : ALL_CARDS_CATALOG_ID;
+        saveActiveCatalogSession(state.activeCatalogViewId);
+        refreshCatalogWorkspace(
+          state.catalogCollections.unavailable
+            ? "Named Catalogs are unavailable"
+            : "Catalogs updated",
+        );
+        return;
+      }
+      if (event.key === SAVED_CATALOG_STORAGE_KEY) {
+        state.savedCatalog = loadSavedCatalog(cardId);
+        if (
+          state.activeCatalogId &&
+          !state.savedCatalog.some((item) => item.id === state.activeCatalogId)
+        ) {
+          state.activeCatalogId = null;
+          state.catalogName = "";
+        }
+        refreshCatalogWorkspace("Views updated");
+        syncSavedCatalogCommands();
+        return;
+      }
+      if (event.key === CATALOG_ORDER_STORAGE_KEY) {
+        state.catalogOrder = loadCatalogOrder();
+        refreshCatalogWorkspace();
+      }
+    });
+    syncCatalogCollectionControls();
+  }
+
+  function refreshCatalogWorkspace(message = "") {
+    state.catalogDirty = true;
+    configureWorkspaceControls();
+    syncCatalogCollectionCommands();
+    syncControls();
+    if (state.layout === "all") renderWorkspaceGallery();
+    if (message) announceWorkspace(message);
+  }
+
+  function setCatalogMenuOpen(
+    open,
+    { moveFocus = false, edge = "" } = {},
+  ) {
+    const next = Boolean(
+      open &&
+      state.mode === "catalog" &&
+      state.layout === "all" &&
+      nodes.catalogMenu &&
+      nodes.catalogSwitcher,
+    );
+    state.catalogMenuOpen = next;
+    nodes.catalogSwitcher?.setAttribute("aria-expanded", String(next));
+    if (nodes.catalogMenu) {
+      nodes.catalogMenu.hidden = !next;
+      nodes.catalogMenu.toggleAttribute("inert", !next);
+      if (next && !reducedMotion) {
+        nodes.catalogMenu.animate(
+          [
+            { opacity: 0, transform: "translateY(-4px)" },
+            { opacity: 1, transform: "translateY(0)" },
+          ],
+          {
+            duration: 200,
+            easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+          },
+        );
+      }
+    }
+    if (!next || !moveFocus) return;
+    window.requestAnimationFrame(() => {
+      const options = catalogCollectionOptions();
+      const selectedIndex = options.findIndex(
+        (option) => option.getAttribute("aria-selected") === "true",
+      );
+      const index = edge === "ArrowUp"
+        ? options.length - 1
+        : Math.max(0, selectedIndex);
+      focusCatalogCollectionOption(options[index]);
+    });
+  }
+
+  function handleCatalogMenuKeydown(event) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setCatalogMenuOpen(false);
+      nodes.catalogSwitcher?.focus({ preventScroll: true });
+      return;
+    }
+    if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) {
+      return;
+    }
+    const options = catalogCollectionOptions();
+    if (!options.length) return;
+    const current = options.indexOf(document.activeElement);
+    if (current < 0 && !nodes.catalogList?.contains(document.activeElement)) {
+      return;
+    }
+    event.preventDefault();
+    const nextIndex = event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? options.length - 1
+        : (current + (event.key === "ArrowDown" ? 1 : -1) + options.length) %
+          options.length;
+    focusCatalogCollectionOption(options[nextIndex]);
+  }
+
+  function focusCatalogCollectionOption(option) {
+    if (!option) return;
+    for (const candidate of catalogCollectionOptions()) {
+      candidate.tabIndex = candidate === option ? 0 : -1;
+    }
+    option.focus({ preventScroll: true });
+  }
+
+  function catalogCollectionOptions() {
+    return nodes.catalogList
+      ? Array.from(
+          nodes.catalogList.querySelectorAll("[data-catalog-collection]"),
+        )
+      : [];
+  }
+
+  function syncCatalogCollectionControls() {
+    const collection = currentCatalogCollection();
+    const allEntries = catalogEntriesAll();
+    const visibleEntries = entriesForCatalogCollection(allEntries, collection);
+    const availableKeys = new Set(allEntries.map((entry) => entry.key));
+    if (nodes.catalogSwitcherName) {
+      nodes.catalogSwitcherName.textContent = state.mode === "catalog"
+        ? collection.system
+          ? "All"
+          : collection.name
+        : "Catalog";
+    }
+    nodes.catalogSwitcher?.setAttribute(
+      "aria-label",
+      state.mode === "catalog" && state.layout === "all"
+        ? `Switch Catalog, ${collection.name}, ${visibleEntries.length} ${visibleEntries.length === 1 ? "view" : "views"}`
+        : `Open ${collection.name} in Catalog`,
+    );
+    const catalogUnavailable = Boolean(state.catalogCollections.unavailable);
+    if (nodes.catalogCreate) nodes.catalogCreate.disabled = catalogUnavailable;
+    if (nodes.catalogRename) {
+      nodes.catalogRename.disabled = collection.system || catalogUnavailable;
+    }
+    if (nodes.catalogDelete) {
+      nodes.catalogDelete.disabled = collection.system || catalogUnavailable;
+    }
+    if (nodes.catalogCardsAction) {
+      nodes.catalogCardsAction.disabled = collection.system || catalogUnavailable;
+    }
+    if (nodes.catalogList) {
+      const collections = [
+        { id: ALL_CARDS_CATALOG_ID, name: "All views", keys: null, system: true },
+        ...state.catalogCollections.collections,
+      ];
+      const options = collections.map((candidate) => {
+        const option = document.createElement("button");
+        const count = candidate.system
+          ? allEntries.length
+          : candidate.keys.filter((key) => availableKeys.has(key)).length;
+        option.className = "desk-catalog-option";
+        option.type = "button";
+        option.setAttribute("role", "option");
+        option.setAttribute(
+          "aria-selected",
+          String(candidate.id === collection.id),
+        );
+        option.tabIndex = candidate.id === collection.id ? 0 : -1;
+        option.setAttribute(
+          "aria-label",
+          `${candidate.name}, ${count} ${count === 1 ? "view" : "views"}`,
+        );
+        option.dataset.catalogCollection = candidate.id;
+        const label = document.createElement("span");
+        label.textContent = candidate.name;
+        label.title = candidate.name;
+        const total = document.createElement("small");
+        total.textContent = String(count);
+        option.append(label, total);
+        return option;
+      });
+      nodes.catalogList.replaceChildren(...options);
+    }
+    const empty = !visibleEntries.length;
+    if (nodes.catalogEmpty) nodes.catalogEmpty.hidden = !empty;
+    if (nodes.galleryGrid) nodes.galleryGrid.hidden = empty;
+  }
+
+  function currentCatalogCollection() {
+    const collection = activeCatalogCollection(
+      state.catalogCollections,
+      state.activeCatalogViewId,
+    );
+    if (collection.id !== state.activeCatalogViewId) {
+      state.activeCatalogViewId = collection.id;
+      saveActiveCatalogSession(collection.id);
+    }
+    return collection;
+  }
+
+  function loadActiveCatalogSession(collections) {
+    try {
+      const id = window.sessionStorage.getItem(activeCatalogSessionKey) || "";
+      return id === ALL_CARDS_CATALOG_ID ||
+          collections.collections.some((collection) => collection.id === id)
+        ? id
+        : ALL_CARDS_CATALOG_ID;
+    } catch {
+      return ALL_CARDS_CATALOG_ID;
+    }
+  }
+
+  function saveActiveCatalogSession(collectionId) {
+    try {
+      window.sessionStorage.setItem(activeCatalogSessionKey, collectionId);
+    } catch {
+      // The current tab still keeps the active Catalog in memory.
+    }
+  }
+
+  function openCatalogCardCommands() {
+    const collection = currentCatalogCollection();
+    if (collection.system) return;
+    setCatalogMenuOpen(false);
+    commandPalette.open({
+      query: `Select views ${collection.name}`,
+      returnFocus: nodes.catalogSwitcher,
+    });
+  }
+
+  function entriesForCatalogCollection(entries, collection) {
+    if (collection.system) return entries;
+    const entriesByKey = new Map(entries.map((entry) => [entry.key, entry]));
+    return collection.keys
+      .map((key) => entriesByKey.get(key))
+      .filter(Boolean);
+  }
+
+  async function selectCatalogCollection(collectionId, restoreFocus = false) {
+    const id = String(collectionId || "");
+    const exists =
+      id === ALL_CARDS_CATALOG_ID ||
+      state.catalogCollections.collections.some((collection) =>
+        collection.id === id
+      );
+    if (!exists) {
+      announceWorkspace("Could not open that Catalog");
+      return;
+    }
+    if (state.mode === "craft") preserveCraftDraft();
+    state.activeCatalogViewId = id;
+    saveActiveCatalogSession(id);
+    state.catalogDirty = true;
+    setCatalogMenuOpen(false);
+    configureWorkspaceControls();
+    syncCatalogCollectionCommands();
+    if (state.mode !== "catalog" || state.layout !== "all") {
+      await showPanel("share", true, "all", false, "catalog");
+    } else {
+      renderWorkspaceGallery();
+    }
+    const collection = currentCatalogCollection();
+    announceWorkspace(`${collection.name} opened`);
+    if (restoreFocus) {
+      nodes.catalogSwitcher?.focus({ preventScroll: true });
+    }
+  }
+
+  function openCatalogCollectionDialog(mode) {
+    if (!nodes.catalogDialog || !nodes.catalogNameInput) return;
+    const collection = currentCatalogCollection();
+    if ((mode === "rename" || mode === "delete") && collection.system) return;
+    state.catalogDialogMode = mode;
+    clearCatalogCollectionError();
+    setCatalogMenuOpen(false);
+    const deleting = mode === "delete";
+    if (nodes.catalogDialogTitle) {
+      nodes.catalogDialogTitle.textContent =
+        mode === "create"
+          ? "New catalog"
+          : mode === "rename"
+            ? "Rename catalog"
+            : `Delete ${collection.name}?`;
+    }
+    if (nodes.catalogDialogDescription) {
+      nodes.catalogDialogDescription.textContent =
+        mode === "create"
+          ? "Choose the views after creating it."
+          : mode === "rename"
+            ? "Views and order stay the same."
+            : "Views stay in All views.";
+    }
+    if (nodes.catalogNameLabel) nodes.catalogNameLabel.hidden = deleting;
+    nodes.catalogNameInput.hidden = deleting;
+    nodes.catalogNameInput.required = !deleting;
+    nodes.catalogNameInput.maxLength = MAX_CATALOG_COLLECTION_NAME_LENGTH;
+    nodes.catalogNameInput.value = mode === "rename" ? collection.name : "";
+    if (nodes.catalogSubmit) {
+      nodes.catalogSubmit.textContent =
+        mode === "create" ? "Create" : mode === "rename" ? "Rename" : "Delete";
+    }
+    nodes.catalogDialog.showModal();
+    window.requestAnimationFrame(() => {
+      const target = deleting ? nodes.catalogCancel : nodes.catalogNameInput;
+      target?.focus({ preventScroll: true });
+      if (!deleting) nodes.catalogNameInput.select();
+    });
+  }
+
+  function closeCatalogCollectionDialog() {
+    if (nodes.catalogDialog?.open) nodes.catalogDialog.close("cancel");
+    state.catalogDialogMode = null;
+    nodes.catalogSwitcher?.focus({ preventScroll: true });
+  }
+
+  async function submitCatalogCollectionDialog(event) {
+    event.preventDefault();
+    const mode = state.catalogDialogMode;
+    if (!mode) return;
+    const collection = currentCatalogCollection();
+    const name = normalizeCatalogCollectionName(nodes.catalogNameInput?.value);
+    if (mode !== "delete" && !name) {
+      showCatalogCollectionError("Enter a name");
+      return;
+    }
+    if (state.mode === "craft") preserveCraftDraft();
+    try {
+      state.catalogCollections =
+        mode === "create"
+          ? createCatalogCollection(name)
+          : mode === "rename"
+            ? renameCatalogCollection(collection.id, name)
+            : deleteCatalogCollection(collection.id);
+    } catch (error) {
+      console.error("Catalog update failed", error);
+      showCatalogCollectionError(
+        error instanceof TypeError ? error.message : "Could not update Catalog",
+      );
+      return;
+    }
+    state.activeCatalogViewId =
+      mode === "create"
+        ? state.catalogCollections.collections.at(-1)?.id ||
+          ALL_CARDS_CATALOG_ID
+        : mode === "delete"
+          ? ALL_CARDS_CATALOG_ID
+          : collection.id;
+    saveActiveCatalogSession(state.activeCatalogViewId);
+    state.catalogDialogMode = null;
+    nodes.catalogDialog?.close(mode);
+    state.catalogDirty = true;
+    configureWorkspaceControls();
+    syncCatalogCollectionCommands();
+    if (state.mode !== "catalog" || state.layout !== "all") {
+      await showPanel("share", true, "all", false, "catalog");
+    } else {
+      renderWorkspaceGallery();
+    }
+    const next = currentCatalogCollection();
+    announceWorkspace(
+      mode === "create"
+        ? `${next.name} created`
+        : mode === "rename"
+          ? `${next.name} renamed`
+          : `${collection.name} deleted`,
+    );
+    nodes.catalogSwitcher?.focus({ preventScroll: true });
+  }
+
+  function clearCatalogCollectionError() {
+    nodes.catalogNameInput?.removeAttribute("aria-invalid");
+    if (nodes.catalogError) nodes.catalogError.textContent = "";
+  }
+
+  function showCatalogCollectionError(message) {
+    nodes.catalogNameInput?.setAttribute("aria-invalid", "true");
+    if (nodes.catalogError) nodes.catalogError.textContent = message;
+    if (!nodes.catalogNameInput?.hidden) {
+      nodes.catalogNameInput?.focus({ preventScroll: true });
+    }
+  }
+
   function openSaveDialog({ rename = false } = {}) {
     if (
       state.mode !== "craft" ||
@@ -659,7 +1166,7 @@ if (root) {
     clearSaveError();
     if (state.activeCatalogId && !rename) return;
     if (nodes.saveTitle) {
-      nodes.saveTitle.textContent = rename ? "Rename card" : "Save card";
+      nodes.saveTitle.textContent = rename ? "Rename view" : "Save view";
     }
     if (nodes.saveSubmit) nodes.saveSubmit.textContent = rename ? "Rename" : "Save";
     nodes.saveName.maxLength = MAX_CATALOG_NAME_LENGTH;
@@ -691,6 +1198,7 @@ if (root) {
   async function persistCurrentComposition(name) {
     const creating = !state.activeCatalogId;
     let saved;
+    let collectionWarning = "";
     try {
       saved = saveCatalogItem({
         cardId,
@@ -699,10 +1207,22 @@ if (root) {
         itemId: state.activeCatalogId,
       });
       state.savedCatalog = loadSavedCatalog(cardId);
+      const collection = currentCatalogCollection();
+      if (creating && !collection.system) {
+        try {
+          state.catalogCollections = addCatalogCollectionKey(
+            collection.id,
+            savedCatalogKey(cardId, saved.id),
+          );
+        } catch (error) {
+          console.error("Catalog membership save failed", error);
+          collectionWarning = " View saved in All views.";
+        }
+      }
     } catch (error) {
       console.error("Catalog save failed", error);
       const message =
-        error instanceof TypeError ? error.message : "Could not save this card";
+        error instanceof TypeError ? error.message : "Could not save this view";
       if (nodes.saveDialog?.open) showSaveError(message);
       else announceCard(message);
       return;
@@ -719,6 +1239,7 @@ if (root) {
     state.catalogDirty = true;
     configureWorkspaceControls();
     syncSavedCatalogCommands();
+    syncCatalogCollectionCommands();
     syncControls();
     if (creating) {
       await showPanel("share", true, "all", false, "catalog");
@@ -729,18 +1250,61 @@ if (root) {
       updateLocation();
       nodes.saveButton?.focus({ preventScroll: true });
     }
-    announceWorkspace(`${saved.name} saved`);
+    announceWorkspace(`${saved.name} saved.${collectionWarning}`.trim());
   }
 
-  function removeCurrentCatalogItem() {
+  function removeCurrentCatalogMembership() {
     if (!state.activeCatalogId) return;
-    const name = state.catalogName || "This card";
-    if (!window.confirm(`Remove ${name} from Catalog?`)) return;
+    const collection = currentCatalogCollection();
+    if (collection.system) return;
+    const name = state.catalogName || "This view";
+    try {
+      state.catalogCollections = replaceCatalogCollectionKeys(
+        collection.id,
+        collection.keys.filter(
+          (key) => key !== savedCatalogKey(cardId, state.activeCatalogId),
+        ),
+      );
+    } catch (error) {
+      console.error("Catalog membership removal failed", error);
+      announceCard("Could not update this Catalog");
+      return;
+    }
+    refreshCatalogWorkspace();
+    announceWorkspace(`${name} removed from ${collection.name}`);
+  }
+
+  function deleteCurrentCatalogItem() {
+    if (!state.activeCatalogId) return;
+    const name = state.catalogName || "This view";
+    const key = savedCatalogKey(cardId, state.activeCatalogId);
+    const affectedCollections = state.catalogCollections.collections.filter(
+      (collection) => collection.keys.includes(key),
+    );
+    const scope = affectedCollections.length
+      ? ` and ${affectedCollections.length} named ${affectedCollections.length === 1 ? "Catalog" : "Catalogs"}`
+      : "";
+    if (!window.confirm(`Delete ${name} from All views${scope}?`)) return;
+    try {
+      state.catalogCollections = removeCatalogKeyFromCollections(key);
+    } catch (error) {
+      console.error("Catalog reference cleanup failed", error);
+      announceCard("Could not delete this view");
+      return;
+    }
     try {
       deleteCatalogItem({ cardId, itemId: state.activeCatalogId });
     } catch (error) {
-      console.error("Catalog removal failed", error);
-      announceCard("Could not remove this card");
+      console.error("Catalog deletion failed", error);
+      for (const collection of affectedCollections) {
+        try {
+          state.catalogCollections = addCatalogCollectionKey(collection.id, key);
+        } catch (restoreError) {
+          console.error("Catalog reference restore failed", restoreError);
+        }
+      }
+      state.catalogCollections = loadCatalogCollections();
+      announceCard("Could not delete this view");
       return;
     }
     state.savedCatalog = loadSavedCatalog(cardId);
@@ -750,13 +1314,14 @@ if (root) {
     state.craftDirty = false;
     configureWorkspaceControls();
     syncSavedCatalogCommands();
+    syncCatalogCollectionCommands();
     syncControls();
     if (state.layout === "all") {
       state.catalogDirty = true;
       renderWorkspaceGallery();
     }
     updateLocation();
-    announceWorkspace(`${name} removed`);
+    announceWorkspace(`${name} deleted`);
   }
 
   function suggestedCatalogName() {
@@ -1029,7 +1594,7 @@ if (root) {
         title: "Open Catalog",
         subtitle: cardDefinition.title,
         hint: "Catalog",
-        keywords: ["catalog", "cards", "gallery", "market", "accelerator", "prices", "compute", "gpu"],
+        keywords: ["catalog", "view", "views", "card", "cards", "gallery", "market", "accelerator", "prices", "compute", "gpu"],
         disabled: () => !state.shareReady,
         active: () => state.mode === "catalog",
         run: () => switchWorkspaceMode("catalog", true),
@@ -1067,10 +1632,10 @@ if (root) {
         id: "create.gpu-share-gallery",
         group: "Catalog",
         order: 0,
-        title: "Show all cards",
-        subtitle: "All cards",
+        title: "Show all views",
+        subtitle: "All views",
         hint: "All",
-        keywords: ["catalog", "cards", "all", "gallery", "export", "snapshot", "publish"],
+        keywords: ["catalog", "view", "views", "card", "cards", "all", "gallery", "export", "snapshot", "publish"],
         disabled: () => !state.shareReady,
         active: () => state.mode === "catalog" && state.layout === "all",
         run: () => showPanel("share", true, "all", true, "catalog"),
@@ -1103,10 +1668,10 @@ if (root) {
         id: "actions.copy-card-link",
         group: "Actions",
         order: 0,
-        title: "Copy card link",
-        subtitle: "/actions/copy-card-link",
+        title: "Copy view link",
+        subtitle: "/actions/copy-view-link",
         hint: "Copy",
-        keywords: ["share", "url", "clipboard"],
+        keywords: ["share", "view", "card", "url", "clipboard"],
         disabled: () => !state.shareReady || state.craftEmpty,
         run: copyCardLink,
       },
@@ -1131,12 +1696,12 @@ if (root) {
         id: "actions.save-to-catalog",
         group: "Actions",
         order: 2,
-        title: () => state.activeCatalogId ? "Update card" : "Save card",
+        title: () => state.activeCatalogId ? "Update view" : "Save view",
         subtitle: () => state.activeCatalogId
           ? state.catalogName
           : "Available in this browser",
         hint: "Save",
-        keywords: ["save", "keep", "catalog", "name", "composition"],
+        keywords: ["save", "keep", "catalog", "view", "card", "name", "composition"],
         disabled: () =>
           state.mode !== "craft" ||
           state.craftEmpty ||
@@ -1150,10 +1715,10 @@ if (root) {
         id: "actions.rename-catalog-card",
         group: "Actions",
         order: 3,
-        title: "Rename card",
+        title: "Rename view",
         subtitle: () => state.catalogName,
         hint: "Rename",
-        keywords: ["rename", "name", "catalog", "card"],
+        keywords: ["rename", "name", "catalog", "view", "card"],
         disabled: () =>
           state.mode !== "craft" ||
           state.craftEmpty ||
@@ -1162,24 +1727,36 @@ if (root) {
         run: () => openSaveDialog({ rename: true }),
       },
       {
-        id: "actions.delete-catalog-card",
+        id: "actions.remove-catalog-card",
         group: "Actions",
         order: 4,
-        title: "Remove from Catalog",
-        subtitle: () => state.catalogName,
+        title: () => `Remove from ${currentCatalogCollection().name}`,
+        subtitle: () => `${state.catalogName} stays in All views`,
         hint: "Remove",
-        keywords: ["delete", "remove", "catalog", "card"],
+        keywords: ["remove", "catalog", "view", "card", "membership"],
+        disabled: () =>
+          !state.activeCatalogId || currentCatalogCollection().system,
+        run: removeCurrentCatalogMembership,
+      },
+      {
+        id: "actions.delete-catalog-card",
+        group: "Actions",
+        order: 5,
+        title: "Delete saved view",
+        subtitle: () => state.catalogName,
+        hint: "Delete",
+        keywords: ["delete", "remove", "saved", "view", "card", "everywhere"],
         disabled: () => !state.activeCatalogId,
-        run: removeCurrentCatalogItem,
+        run: deleteCurrentCatalogItem,
       },
       ...families.map((family, index) => ({
         id: `gpu.${family.toLowerCase()}`,
         group: "Catalog",
         order: index + 1,
         title: `Open ${family} in Catalog`,
-        subtitle: `${getCardDefinition("gpu-index").sharePath}/gpu/${family.toLowerCase()}`,
+        subtitle: "GPU price history",
         hint: family,
-        keywords: ["card", "catalog", "accelerator", "family", "chip"],
+        keywords: ["view", "card", "catalog", "accelerator", "family", "chip"],
         active: () =>
           cardId === "gpu-index" &&
           state.mode === "catalog" &&
@@ -1195,7 +1772,7 @@ if (root) {
           !state.craftEmpty && state.layers.has(layer.id)
             ? `Remove ${layer.shortLabel || layer.label}`
             : `Add ${layer.shortLabel || layer.label}`,
-        subtitle: `${cardDefinition.sharePath}/layers/${layer.id.toLowerCase()}`,
+        subtitle: "Comparison series",
         hint: "Layer",
         keywords: ["compare", "overlay", "series", layer.label],
         active: () =>
@@ -1215,7 +1792,7 @@ if (root) {
         title: isBarCard
           ? `Highlight ${family}`
           : `Use ${family} as main series`,
-        subtitle: `${cardDefinition.sharePath}/main/${family.toLowerCase()}`,
+        subtitle: "Primary series",
         hint: isBarCard ? "Highlight" : "Main",
         keywords: ["primary", "main", "highlight", "series", "data", family],
         active: () =>
@@ -1227,10 +1804,10 @@ if (root) {
       })),
       ...cardDefinition.visualizations.map((visualization, index) => ({
         id: `scale.${visualization.id}`,
-        group: "View",
+        group: "Chart",
         order: index,
-        title: `Use ${visualization.label} view`,
-        subtitle: `${cardDefinition.sharePath}/view/${visualization.id}`,
+        title: `Use ${visualization.label}`,
+        subtitle: "Chart mode",
         hint: visualization.label,
         keywords: ["scale", "view", "price", "index", visualization.label],
         active: () =>
@@ -1247,7 +1824,7 @@ if (root) {
         group: "Range",
         order: index,
         title: rangeCommandTitle(range),
-        subtitle: `${cardDefinition.sharePath}/range/${range}`,
+        subtitle: "History range",
         hint: rangeControlLabel(range),
         keywords: ["date", "time", "history", "window"],
         active: () =>
@@ -1304,6 +1881,7 @@ if (root) {
         hint: "Catalog",
         keywords: [
           "catalog",
+          "views",
           "cards",
           "color",
           "colour",
@@ -1318,11 +1896,12 @@ if (root) {
         id: "appearance.catalog.card-colors",
         group: "Appearance",
         order: 7,
-        title: "Show card colors",
-        subtitle: "Use each card’s saved appearance",
+        title: "Show view colors",
+        subtitle: "Use each view’s saved appearance",
         hint: "Catalog",
         keywords: [
           "catalog",
+          "views",
           "cards",
           "color",
           "colour",
@@ -1342,7 +1921,7 @@ if (root) {
       CARD_REGISTRY.flatMap((entryCard) =>
         loadSavedCatalog(entryCard.id).map((item) => ({ entryCard, item })),
       ).map(({ entryCard, item }, index) => ({
-        id: `catalog.saved.${item.id}`,
+        id: `catalog.saved.${entryCard.id}.${item.id}`,
         group: "Catalog",
         order: 100 + index,
         title: item.name,
@@ -1365,6 +1944,131 @@ if (root) {
             true,
           ),
       })),
+    );
+  }
+
+  function syncCatalogCollectionCommands() {
+    unregisterCatalogCollectionCommands();
+    const collection = currentCatalogCollection();
+    const allEntries = catalogEntriesAll();
+    const included = new Set(collection.system ? [] : collection.keys);
+    const collections = [
+      { id: ALL_CARDS_CATALOG_ID, name: "All views", keys: null, system: true },
+      ...state.catalogCollections.collections,
+    ];
+    const commands = [
+      ...collections.map((candidate, index) => {
+        const count = candidate.system
+          ? allEntries.length
+          : candidate.keys.filter((key) =>
+              allEntries.some((entry) => entry.key === key)
+            ).length;
+        return {
+          id: `catalog.collection.open.${candidate.id}`,
+          group: "Catalogs",
+          order: index,
+          title: `Open ${candidate.name}`,
+          subtitle: `${count} ${count === 1 ? "view" : "views"}`,
+          hint: "Catalog",
+          keywords: ["catalog", "switch", "collection", candidate.name],
+          active: () => state.activeCatalogViewId === candidate.id,
+          run: () => selectCatalogCollection(candidate.id),
+        };
+      }),
+      {
+        id: "catalog.collection.new",
+        group: "Catalogs",
+        order: 50,
+        title: "New catalog",
+        subtitle: "Choose a set of views",
+        hint: "New",
+        keywords: ["catalog", "create", "new", "collection"],
+        disabled: () => Boolean(state.catalogCollections.unavailable),
+        run: () => openCatalogCollectionDialog("create"),
+      },
+      {
+        id: "catalog.collection.rename",
+        group: "Catalogs",
+        order: 51,
+        title: "Rename catalog",
+        subtitle: collection.name,
+        hint: "Rename",
+        keywords: ["catalog", "rename", collection.name],
+        disabled: () =>
+          currentCatalogCollection().system ||
+          Boolean(state.catalogCollections.unavailable),
+        run: () => openCatalogCollectionDialog("rename"),
+      },
+      {
+        id: "catalog.collection.delete",
+        group: "Catalogs",
+        order: 52,
+        title: "Delete catalog",
+        subtitle: collection.name,
+        hint: "Delete",
+        keywords: ["catalog", "delete", "remove", collection.name],
+        disabled: () =>
+          currentCatalogCollection().system ||
+          Boolean(state.catalogCollections.unavailable),
+        run: () => openCatalogCollectionDialog("delete"),
+      },
+      ...(collection.system
+        ? []
+        : allEntries.map((entry, index) => {
+            const entryIncluded = included.has(entry.key);
+            const title = catalogEntryTitle(entry);
+            return {
+              id: `catalog.collection.card.${collection.id}.${entry.key}`,
+              group: "Catalog views",
+              order: index,
+              title: `${entryIncluded ? "Remove" : "Add"} ${title}`,
+              subtitle: `${collection.name} ${entry.kind === "saved" ? "Saved view" : "Market view"}`,
+              hint: entryIncluded ? "Remove" : "Add",
+              keywords: [
+                "catalog",
+                "view",
+                "card",
+                "select",
+                entryIncluded ? "remove" : "add",
+                title,
+                collection.name,
+              ],
+              active: () =>
+                !currentCatalogCollection().system &&
+                currentCatalogCollection().keys.includes(entry.key),
+              disabled: () => Boolean(state.catalogCollections.unavailable),
+              keepOpen: true,
+              run: () => toggleCatalogEntryInActiveCollection(entry),
+            };
+          })),
+    ];
+    unregisterCatalogCollectionCommands = commandPalette.register(commands);
+  }
+
+  function toggleCatalogEntryInActiveCollection(entry) {
+    const collection = currentCatalogCollection();
+    if (collection.system) return;
+    const included = collection.keys.includes(entry.key);
+    try {
+      state.catalogCollections = toggleCatalogCollectionKey(
+        collection.id,
+        entry.key,
+      );
+    } catch (error) {
+      console.error("Catalog card update failed", error);
+      announceWorkspace(
+        error instanceof TypeError
+          ? error.message
+          : "Could not update this Catalog",
+      );
+      return;
+    }
+    state.catalogDirty = true;
+    configureWorkspaceControls();
+    syncCatalogCollectionCommands();
+    renderWorkspaceGallery();
+    announceWorkspace(
+      `${catalogEntryTitle(entry)} ${included ? "removed from" : "added to"} ${collection.name}`,
     );
   }
 
@@ -1459,7 +2163,7 @@ if (root) {
     announceWorkspace(
       mode === "match-desk"
         ? "Catalog now matches Desk colors"
-        : "Catalog now shows each card’s colors",
+        : "Catalog now shows each view’s colors",
     );
   }
 
@@ -1632,10 +2336,18 @@ if (root) {
       return item;
     });
     nodes.galleryGrid.replaceChildren(...cards);
+    syncCatalogCollectionControls();
     syncCatalogCardPositions();
   }
 
   function catalogEntries() {
+    return entriesForCatalogCollection(
+      catalogEntriesAll(),
+      currentCatalogCollection(),
+    );
+  }
+
+  function catalogEntriesAll() {
     const savedEntries = CARD_REGISTRY.flatMap((card) =>
       loadSavedCatalog(card.id).map((item) => ({
         key: savedCatalogKey(card.id, item.id),
@@ -2040,8 +2752,23 @@ if (root) {
   }
 
   function persistCatalogDomOrder() {
-    state.catalogOrder = saveCatalogOrder(catalogDomKeys());
+    const keys = catalogDomKeys();
+    const collection = currentCatalogCollection();
+    if (collection.system) {
+      state.catalogOrder = saveCatalogOrder(keys);
+    } else {
+      try {
+        state.catalogCollections = replaceCatalogCollectionKeys(
+          collection.id,
+          keys,
+        );
+      } catch (error) {
+        console.error("Catalog order save failed", error);
+        announceWorkspace("Could not save this order");
+      }
+    }
     syncCatalogCardMapOrder();
+    syncCatalogCollectionControls();
   }
 
   function syncCatalogCardMapOrder() {
@@ -2215,6 +2942,7 @@ if (root) {
   function catalogDestinationLayout() {
     return mobileViewport.matches ||
       state.layout === "all" ||
+      state.catalogCollections.collections.length > 0 ||
       state.activeCatalogId ||
       state.craftDirty ||
       state.craftDraft
@@ -2224,6 +2952,18 @@ if (root) {
 
   function syncModeActions(animateChange) {
     const label = workspaceLabel();
+    const catalogCollection = currentCatalogCollection();
+    const catalogCount = entriesForCatalogCollection(
+      catalogEntriesAll(),
+      catalogCollection,
+    ).length;
+    if (nodes.catalogSwitcherName) {
+      nodes.catalogSwitcherName.textContent = state.mode === "catalog"
+        ? catalogCollection.system
+          ? "All"
+          : catalogCollection.name
+        : "Catalog";
+    }
     for (const button of nodes.modeButtons) {
       const mode = button.dataset.deskMode;
       const active = mode === state.mode;
@@ -2232,17 +2972,28 @@ if (root) {
       button.disabled =
         !state.shareReady || (mode === "monitor" && state.craftEmpty);
       if (mode === "catalog") {
-        button.setAttribute(
-          "aria-controls",
-          catalogDestinationLayout() === "all"
-            ? "desk-card-gallery"
-            : "desk-card-focus",
-        );
+        const switchesCatalog = active && state.layout === "all";
+        if (switchesCatalog) {
+          button.setAttribute("aria-controls", "desk-catalog-listbox");
+          button.setAttribute("aria-haspopup", "listbox");
+          button.setAttribute("aria-expanded", String(state.catalogMenuOpen));
+        } else {
+          button.setAttribute(
+            "aria-controls",
+            catalogDestinationLayout() === "all"
+              ? "desk-card-gallery"
+              : "desk-card-focus",
+          );
+          button.removeAttribute("aria-haspopup");
+          button.removeAttribute("aria-expanded");
+        }
       }
       button.setAttribute(
         "aria-label",
         mode === "catalog"
-          ? `Open ${label} in Catalog`
+          ? state.mode === "catalog" && state.layout === "all"
+            ? `Switch Catalog, ${catalogCollection.name}, ${catalogCount} ${catalogCount === 1 ? "view" : "views"}`
+            : `Open ${catalogCollection.name} in Catalog`
           : mode === "monitor"
             ? `Monitor ${label}`
             : state.mode === "catalog" && state.craftDraft
@@ -2916,7 +3667,7 @@ if (root) {
       button.tabIndex = button.disabled ? -1 : 0;
       button.setAttribute(
         "aria-label",
-        `Use ${visualizationLabel(button.dataset.cardScale)} view`,
+        `Use ${visualizationLabel(button.dataset.cardScale)} chart mode`,
       );
     });
     nodes.depthCraftViewButtons.forEach((button) => {
@@ -3011,7 +3762,7 @@ if (root) {
       nodes.svg?.setAttribute(
         "aria-label",
         isDepthCard
-          ? `${cardDefinition.title}, ${visualizationLabel(state.scale)} view, ${state.options.target} node target`
+          ? `${cardDefinition.title}, ${visualizationLabel(state.scale)} chart mode, ${state.options.target} node target`
           : isBarCard
           ? `${labels} hourly price comparison`
           : state.scale === "index"
@@ -3208,6 +3959,7 @@ if (root) {
       }
       return;
     }
+    if (targetMode !== "catalog") setCatalogMenuOpen(false);
     if (
       mobileViewport.matches &&
       state.layout === "all" &&
@@ -3809,9 +4561,19 @@ if (root) {
     if (
       state.layout !== "all" ||
       !state.catalogDirty ||
-      !catalogCards.size ||
       !state.runtimePayloads.size
     ) {
+      return;
+    }
+
+    const entries = catalogEntries();
+    if (nodes.galleryStatus) {
+      nodes.galleryStatus.textContent = entries.length
+        ? `${entries.length} ${entries.length === 1 ? "view" : "views"}`
+        : "";
+    }
+    if (!catalogCards.size) {
+      state.catalogDirty = false;
       return;
     }
 
@@ -3837,7 +4599,7 @@ if (root) {
           : `above ${formatUsd(model.priceDomain[1])}`;
         cardNodes.button.setAttribute(
           "aria-label",
-          `Monitor ${title}, ${visualizationLabel(cardState.scale, entryCard)} view, ${model.targetNodes} nodes ${qualifier}`,
+          `Monitor ${title}, ${visualizationLabel(cardState.scale, entryCard)} chart mode, ${model.targetNodes} nodes ${qualifier}`,
         );
         paintGpuMarketDepthChart(cardNodes.artifact, model, {
           colors: cardPalette(displayState),
@@ -3909,12 +4671,6 @@ if (root) {
 
     syncCatalogCardPositions();
 
-    if (nodes.galleryStatus) {
-      const entries = catalogEntries();
-      const savedCount = entries.filter((entry) => entry.kind === "saved").length;
-      nodes.galleryStatus.textContent =
-        `${savedCount} saved ${entries.length - savedCount} market cards`;
-    }
     state.catalogDirty = false;
   }
 

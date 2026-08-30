@@ -2,6 +2,7 @@ const STORAGE_KEY = "desk.catalog-order.v1";
 const STORAGE_VERSION = 1;
 const MAX_CATALOG_KEYS = 256;
 const MAX_KEY_LENGTH = 240;
+export const CATALOG_ORDER_STORAGE_KEY = STORAGE_KEY;
 
 export function loadCatalogOrder() {
   try {
