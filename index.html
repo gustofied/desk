@@ -88,7 +88,7 @@
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
     <link rel="stylesheet" href="./styles/desk-controls.css?v=73">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=50">
-    <link rel="stylesheet" href="./styles/monitor-data.css?v=10">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=11">
     <link rel="stylesheet" href="./styles/deal-view.css?v=6">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=20">
@@ -383,7 +383,7 @@
                     class="desk-data-rail__action-label"
                     id="desk-data-action-label"
                     data-monitor-data-action-label
-                  >Download compute prices</p>
+                  >Sync compute prices</p>
                   <div
                     class="desk-data-rail__command"
                     role="region"
@@ -391,22 +391,16 @@
                     data-monitor-data-command-shell
                   >
                     <pre tabindex="0"><code data-monitor-data-command></code></pre>
+                    <nav class="desk-data-rail__resources" aria-label="Desk CLI resources">
+                      <a href="https://github.com/gustofied/desk#desk-cli" target="_blank" rel="noopener">Docs</a>
+                      <a href="./cli/desk" download="desk">Download CLI</a>
+                      <a href="mailto:adam.sioud@protonmail.com">Get in touch</a>
+                    </nav>
                   </div>
                 </div>
                 <footer class="desk-data-rail__footer">
-                  <div class="desk-data-rail__secondary-actions">
-                    <a
-                      href="./data/v1/compute-prices.json"
-                      target="_blank"
-                      rel="noopener"
-                      data-monitor-data-open-json
-                    >Open JSON</a>
-                    <button
-                      type="button"
-                      data-monitor-data-mode
-                    >View SQL</button>
-                  </div>
-                  <button type="button" data-monitor-data-copy>Copy cURL</button>
+                  <button type="button" data-monitor-data-mode>View SQL</button>
+                  <button type="button" data-monitor-data-copy>Copy command</button>
                 </footer>
               </div>
               <p class="desk-data-rail__sr-only" aria-live="polite" data-monitor-data-status></p>
@@ -568,6 +562,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=130"></script>
+    <script type="module" src="./desk.js?v=131"></script>
   </body>
 </html>

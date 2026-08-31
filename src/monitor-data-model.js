@@ -48,7 +48,10 @@ function createPriceHistoryModel(card, state, series) {
     rowCount,
     asOf: latestDate,
     endpoint,
-    command: downloadCommand(endpoint),
+    command: syncCommand(card.dataTable.id, {
+      series: instruments,
+      range: state.range,
+    }),
     sql: state.scale === "index"
       ? priceIndexSql(card, endpoint, queryInstruments, firstDate)
       : priceSql(card, endpoint, queryInstruments, firstDate),
@@ -67,7 +70,7 @@ function createPriceSnapshotModel(card, model) {
     rowCount: model.bars.length,
     asOf,
     endpoint,
-    command: downloadCommand(endpoint),
+    command: syncCommand(card.dataTable.id, { series: instruments }),
     sql: snapshotSql(card, endpoint, instruments),
   });
 }
@@ -90,7 +93,10 @@ function createMarketDepthDataModel(card, state, model) {
     rowCount: history ? model.history.length : model.current.buckets.length,
     asOf,
     endpoint,
-    command: downloadCommand(endpoint),
+    command: syncCommand(card.dataTable.id, {
+      view: history ? "history" : "now",
+      target: model.targetNodes,
+    }),
     sql: history
       ? depthHistorySql(card, endpoint, model.targetNodes)
       : depthNowSql(card, endpoint),
@@ -125,14 +131,19 @@ function publicDatasetUrl(card) {
   return new URL(card.dataTable.file.replace(/^\//, ""), `${SITE_ORIGIN}/`).toString();
 }
 
-function downloadCommand(url) {
-  return [
-    "curl \\",
-    "  --fail \\",
-    "  --location \\",
-    "  --remote-name \\",
-    `  ${url}`,
-  ].join("\n");
+function syncCommand(dataset, options = {}) {
+  const lines = ["desk \\", "  data sync \\", `  ${dataset}`];
+  const flags = Object.entries(options)
+    .filter(([, value]) => value !== undefined && value !== null && value !== "")
+    .map(([name, value]) => {
+      const rendered = Array.isArray(value) ? value.join(",") : value;
+      return `  --${name}=${rendered}`;
+    });
+  if (!flags.length) return lines.join("\n");
+  lines[lines.length - 1] += " \\";
+  return [...lines, ...flags.map((flag, index) => (
+    index === flags.length - 1 ? flag : `${flag} \\`
+  ))].join("\n");
 }
 
 function priceSql(card, url, instruments, firstDate) {

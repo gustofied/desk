@@ -11,7 +11,6 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     actionLabel: root.querySelector("[data-monitor-data-action-label]"),
     commandShell: root.querySelector("[data-monitor-data-command-shell]"),
     command: root.querySelector("[data-monitor-data-command]"),
-    openJson: root.querySelector("[data-monitor-data-open-json]"),
     mode: root.querySelector("[data-monitor-data-mode]"),
     copy: root.querySelector("[data-monitor-data-copy]"),
     status: root.querySelector("[data-monitor-data-status]"),
@@ -30,7 +29,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
   nodes.mode?.addEventListener("click", () => {
     mode = mode === "command" ? "sql" : "command";
     renderMode();
-    announce(mode === "sql" ? "Showing DataFusion SQL" : "Showing cURL command");
+    announce(mode === "sql" ? "Showing DataFusion SQL" : "Showing Desk CLI command");
   });
   nodes.copy?.addEventListener("click", async () => {
     const copiedMode = mode;
@@ -44,7 +43,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       copied
         ? copiedMode === "sql"
           ? "DataFusion SQL copied"
-          : "cURL command copied"
+          : "Desk command copied"
         : "Copy unavailable in this browser",
     );
     window.clearTimeout(copyFeedbackTimer);
@@ -74,13 +73,6 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     nodes.dataset.textContent = model.label;
     nodes.context.textContent = model.summary;
     nodes.toggle?.setAttribute("aria-label", toggleLabel(model));
-    if (nodes.openJson) {
-      nodes.openJson.href = model.endpoint;
-      nodes.openJson.setAttribute(
-        "aria-label",
-        `Open full ${model.label} JSON in a new tab`,
-      );
-    }
     renderPath();
     renderMode();
     syncOpenState();
@@ -117,16 +109,16 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     root.dataset.accessMode = mode;
     nodes.actionLabel.textContent = showingSql
       ? `Query ${sentenceLabel(model.label)}`
-      : `Download ${sentenceLabel(model.label)}`;
+      : `Sync ${sentenceLabel(model.label)}`;
     nodes.command.textContent = showingSql ? model.sql : model.command;
     nodes.commandShell?.setAttribute(
       "aria-label",
-      showingSql ? "DataFusion SQL query" : "cURL download command",
+      showingSql ? "DataFusion SQL query" : "Desk CLI command",
     );
-    nodes.mode.textContent = showingSql ? "View cURL" : "View SQL";
+    nodes.mode.textContent = showingSql ? "View CLI" : "View SQL";
     nodes.mode.setAttribute(
       "aria-label",
-      showingSql ? "Show cURL command" : "Show DataFusion SQL",
+      showingSql ? "Show Desk CLI command" : "Show DataFusion SQL",
     );
     syncCopyLabel();
     nodes.command?.closest("pre")?.scrollTo({ top: 0, left: 0 });
@@ -143,10 +135,10 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
 
   function syncCopyLabel() {
     if (!nodes.copy) return;
-    nodes.copy.textContent = mode === "sql" ? "Copy SQL" : "Copy cURL";
+    nodes.copy.textContent = mode === "sql" ? "Copy SQL" : "Copy command";
     nodes.copy.setAttribute(
       "aria-label",
-      mode === "sql" ? "Copy DataFusion SQL" : "Copy cURL command",
+      mode === "sql" ? "Copy DataFusion SQL" : "Copy Desk CLI command",
     );
   }
 

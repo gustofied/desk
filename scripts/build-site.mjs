@@ -14,6 +14,7 @@ const entries = [
   "styles",
   "assets",
   "cards",
+  "cli",
   "data",
 ];
 

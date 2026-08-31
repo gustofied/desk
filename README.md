@@ -72,9 +72,9 @@ existing links and browser saves continue to work.
 
 Source records live under `api/dashboard-snapshots/`.
 
-Monitor includes a compact Desk API panel with a full-dataset download command
-and a DataFusion SQL query for the selected view. The build writes flat,
-versioned JSON tables for the public views:
+Monitor includes a compact Desk API panel with a view-aware Desk CLI command
+and a DataFusion SQL query. The build writes flat, versioned JSON tables for
+the public views:
 
 - `data/v1/compute-prices.json`
 - `data/v1/accelerator-prices.json`
@@ -85,6 +85,32 @@ be read directly as external tables. Embedded DataFusion clients need an HTTPS
 object store registered by their host application.
 
 The private Deal workflow remains view-only and has no public data export.
+
+## Desk CLI
+
+Desk CLI syncs the rows behind a view into a local JSON table. It requires
+Node.js 22 or newer.
+
+```bash
+mkdir -p "$HOME/.local/bin"
+curl -fsSL https://desk.adamsioud.com/cli/desk \
+  -o "$HOME/.local/bin/desk"
+chmod +x "$HOME/.local/bin/desk"
+```
+
+Add `$HOME/.local/bin` to `PATH`, then sync a view:
+
+```bash
+desk \
+  data sync \
+  compute-prices \
+  --series=H200,TPI \
+  --range=7d
+```
+
+`desk --help` lists the price, snapshot, and market-depth datasets together
+with their available filters. Use `--stdout` to stream rows or `--output` to
+choose a file.
 
 ```bash
 npm run check:data       # validate the included market run

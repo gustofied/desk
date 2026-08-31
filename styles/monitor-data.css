@@ -153,15 +153,15 @@
 
 .desk-data-rail__command {
   min-height: 0;
-  padding: 32px;
+  overflow: hidden;
   background: color-mix(in srgb, var(--desk-accent) 4%, transparent);
   border: 1px solid var(--desk-data-rule);
   border-radius: 4px;
 }
 
 .desk-data-rail pre {
-  max-height: 160px;
-  padding: 0;
+  max-height: 224px;
+  padding: 32px;
   margin: 0;
   overflow: auto;
   color: var(--index-ink);
@@ -176,6 +176,33 @@
   tab-size: 2;
 }
 
+.desk-data-rail__resources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 16px;
+  background: color-mix(in srgb, var(--desk-accent) 3%, transparent);
+  border-top: 1px solid var(--desk-data-rule);
+}
+
+.desk-data-rail__resources a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 12px;
+  color: var(--index-ink-soft);
+  font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+  text-decoration: none;
+  white-space: nowrap;
+  border-radius: 4px;
+  transition:
+    color 200ms var(--desk-ease-out),
+    background-color 200ms var(--desk-ease-out),
+    transform 200ms var(--desk-ease-out);
+}
+
 .desk-data-rail__footer {
   display: flex;
   gap: 8px;
@@ -183,13 +210,6 @@
   min-height: 48px;
   padding: 0 16px;
   border-top: 1px solid var(--desk-data-rule);
-}
-
-.desk-data-rail__secondary-actions {
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  min-width: 0;
 }
 
 .desk-data-rail__footer :is(a, button) {
@@ -251,6 +271,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .desk-data-rail__toggle:hover,
+  .desk-data-rail__resources a:hover,
   .desk-data-rail__footer :is(a, button):hover {
     color: var(--index-ink);
     background: color-mix(in srgb, var(--desk-accent) 8%, transparent);
@@ -279,14 +300,19 @@
     padding: 16px 8px 24px;
   }
 
-  .desk-data-rail__command {
-    padding: 24px 16px;
-  }
-
   .desk-data-rail pre {
-    max-height: 144px;
+    max-height: 192px;
+    padding: 24px 16px;
     font-size: 12px;
     line-height: 16px;
+  }
+
+  .desk-data-rail__resources {
+    padding-inline: 8px;
+  }
+
+  .desk-data-rail__resources a {
+    padding-inline: 8px;
   }
 
   .desk-data-rail__footer {
@@ -314,7 +340,7 @@
 
 @media (max-height: 600px) {
   .desk-data-rail pre {
-    max-height: min(144px, 40dvh);
+    max-height: min(192px, calc(40dvh + 48px));
   }
 }
 
@@ -324,7 +350,7 @@
     border-color: var(--desk-accent-deep);
   }
 
-  .desk-data-rail :is(.desk-data-rail__body, .desk-data-rail__path, .desk-data-rail__footer) {
+  .desk-data-rail :is(.desk-data-rail__body, .desk-data-rail__path, .desk-data-rail__resources, .desk-data-rail__footer) {
     border-color: var(--index-rule-strong);
   }
 }

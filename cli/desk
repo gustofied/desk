@@ -1,0 +1,372 @@
+#!/usr/bin/env node
+"use strict";
+
+let mkdir;
+let open;
+let rename;
+let unlink;
+let dirname;
+let randomUUID;
+let resolve;
+
+const VERSION = "0.1.0";
+const DEFAULT_ORIGIN = "https://desk.adamsioud.com";
+const PRICE_SERIES = ["H100", "H200", "B200", "B300", "TOKEN"];
+const ACCELERATOR_SERIES = PRICE_SERIES.filter((series) => series !== "TOKEN");
+const DATASETS = new Set([
+  "compute-prices",
+  "accelerator-prices",
+  "h100-market-depth",
+]);
+
+process.stdout.on("error", (error) => {
+  if (error.code === "EPIPE") process.exit(0);
+  process.stderr.write(`desk: could not write output: ${error.message}\n`);
+  process.exit(1);
+});
+
+main().catch((error) => {
+  process.stderr.write(`desk: ${error.message}\n`);
+  process.exitCode = 1;
+});
+
+async function main() {
+  ({ mkdir, open, rename, unlink } = await import("node:fs/promises"));
+  ({ dirname, resolve } = await import("node:path"));
+  ({ randomUUID } = await import("node:crypto"));
+
+  const args = process.argv.slice(2);
+  if (!args.length || args.includes("--help") || args.includes("-h")) {
+    process.stdout.write(helpText());
+    return;
+  }
+  if (args.length === 1 && ["--version", "-V"].includes(args[0])) {
+    process.stdout.write(`${VERSION}\n`);
+    return;
+  }
+  if (args[0] !== "data" || args[1] !== "sync" || !args[2]) {
+    throw usageError("expected `desk data sync <dataset>`");
+  }
+
+  const dataset = args[2].toLowerCase();
+  if (!DATASETS.has(dataset)) {
+    throw usageError(`unknown dataset ${JSON.stringify(args[2])}`);
+  }
+
+  const options = parseOptions(dataset, args.slice(3));
+  const source = new URL(
+    `data/v1/${dataset}.json`,
+    `${options.origin}/`,
+  ).toString();
+  const input = await fetchDataset(source);
+  const records = transformDataset(dataset, input, options);
+
+  if (options.stdout) {
+    process.stdout.write(`${JSON.stringify(records, null, 2)}\n`);
+    return;
+  }
+
+  const output = resolve(options.output || `${dataset}.json`);
+  await writeJsonAtomically(output, records);
+  const noun = records.length === 1 ? "row" : "rows";
+  process.stdout.write(`Synced ${records.length} ${noun} to ${output}\n`);
+}
+
+function parseOptions(dataset, args) {
+  const values = {
+    origin: DEFAULT_ORIGIN,
+    output: null,
+    stdout: false,
+  };
+  const allowed = new Set(["origin", "output", "out", "stdout"]);
+  if (dataset === "compute-prices") {
+    allowed.add("series");
+    allowed.add("range");
+  } else if (dataset === "accelerator-prices") {
+    allowed.add("series");
+  } else {
+    allowed.add("view");
+    allowed.add("target");
+  }
+
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "-o") {
+      values.output = requiredValue("output", args[++index]);
+      continue;
+    }
+    if (!argument.startsWith("--")) {
+      throw usageError(`unexpected argument ${JSON.stringify(argument)}`);
+    }
+    const separator = argument.indexOf("=");
+    const name = argument.slice(2, separator < 0 ? undefined : separator);
+    if (!allowed.has(name)) {
+      throw usageError(`--${name} does not apply to ${dataset}`);
+    }
+    if (name === "stdout") {
+      if (separator >= 0) throw usageError("--stdout does not take a value");
+      values.stdout = true;
+      continue;
+    }
+    const value = separator >= 0
+      ? argument.slice(separator + 1)
+      : args[++index];
+    values[name === "out" ? "output" : name] = requiredValue(name, value);
+  }
+
+  if (values.stdout && values.output) {
+    throw usageError("use either --stdout or --output, not both");
+  }
+  values.origin = normalizeOrigin(values.origin);
+
+  if (dataset === "compute-prices") {
+    values.series = parseSeries(values.series, PRICE_SERIES);
+    values.range = String(values.range || "all").toLowerCase();
+    if (!["1d", "7d", "all"].includes(values.range)) {
+      throw usageError("--range must be 1d, 7d, or all");
+    }
+  } else if (dataset === "accelerator-prices") {
+    values.series = parseSeries(values.series, ACCELERATOR_SERIES);
+  } else {
+    values.view = String(values.view || "now").toLowerCase();
+    if (!["now", "history"].includes(values.view)) {
+      throw usageError("--view must be now or history");
+    }
+    values.target = Number(values.target || 128);
+    if (!Number.isSafeInteger(values.target) || values.target <= 0) {
+      throw usageError("--target must be a positive whole number");
+    }
+  }
+
+  return values;
+}
+
+function requiredValue(name, value) {
+  if (!value || value.startsWith("--")) {
+    throw usageError(`--${name} requires a value`);
+  }
+  return value;
+}
+
+function normalizeOrigin(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw usageError("--origin must be a valid URL");
+  }
+  if (!["http:", "https:"].includes(url.protocol)) {
+    throw usageError("--origin must use http or https");
+  }
+  if (url.username || url.password) {
+    throw usageError("--origin cannot include credentials");
+  }
+  if (url.search || url.hash) {
+    throw usageError("--origin cannot include a query or fragment");
+  }
+  return url.toString().replace(/\/$/, "");
+}
+
+function parseSeries(value, allowed) {
+  if (!value) return [...allowed];
+  const requested = [...new Set(
+    String(value)
+      .split(",")
+      .map((series) => series.trim().toUpperCase())
+      .filter(Boolean)
+      .map((series) => series === "TPI" ? "TOKEN" : series),
+  )];
+  if (!requested.length) throw usageError("--series cannot be empty");
+  const unknown = requested.filter((series) => !allowed.includes(series));
+  if (unknown.length) {
+    throw usageError(`unknown series: ${unknown.join(", ")}`);
+  }
+  return requested;
+}
+
+async function fetchDataset(source) {
+  let response;
+  try {
+    response = await fetch(source, { headers: { accept: "application/json" } });
+  } catch (error) {
+    throw new Error(`could not reach ${source}: ${error.message}`);
+  }
+  if (!response.ok) {
+    throw new Error(`${source} returned ${response.status}`);
+  }
+  let data;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(`${source} did not return valid JSON`);
+  }
+  if (!Array.isArray(data)) throw new Error(`${source} is not a row set`);
+  return data;
+}
+
+function transformDataset(dataset, rows, options) {
+  if (dataset === "compute-prices") return filterPriceHistory(rows, options);
+  if (dataset === "accelerator-prices") return filterSnapshot(rows, options);
+  return options.view === "history"
+    ? deriveDepthHistory(rows, options.target)
+    : latestDepthCurve(rows, options.target);
+}
+
+function filterPriceHistory(rows, options) {
+  const selected = new Set(options.series);
+  const validRows = rows.filter((row) => {
+    validateTimestamp(row);
+    return selected.has(String(row.instrument).toUpperCase());
+  });
+  if (!validRows.length) throw new Error("the selected series returned no rows");
+  if (options.range === "all") return validRows;
+  const latest = latestTimestamp(rows);
+  const duration = options.range === "1d" ? 86_400_000 : 604_800_000;
+  return validRows.filter((row) => timestamp(row) >= latest - duration);
+}
+
+function filterSnapshot(rows, options) {
+  const selected = new Set(options.series);
+  const filtered = rows.filter((row) => {
+    validateTimestamp(row);
+    return selected.has(String(row.instrument).toUpperCase());
+  });
+  if (!filtered.length) throw new Error("the selected series returned no rows");
+  return filtered;
+}
+
+function latestDepthCurve(rows, target) {
+  rows.forEach(validateDepthRow);
+  if (!rows.length) throw new Error("the depth dataset returned no rows");
+  const latest = latestTimestamp(rows);
+  const curve = rows
+    .filter((row) => timestamp(row) === latest)
+    .sort((left, right) => number(left.price_usd_gpu_hour) - number(right.price_usd_gpu_hour));
+  const clearingIndex = curve.findIndex((row) => number(row.cumulative_nodes) >= target);
+  return curve.map((row, index) => ({
+    ...row,
+    target_nodes: target,
+    target_reached: clearingIndex >= 0,
+    is_clearing_shelf: index === clearingIndex,
+  }));
+}
+
+function deriveDepthHistory(rows, target) {
+  rows.forEach(validateDepthRow);
+  const snapshots = new Map();
+  for (const row of rows) {
+    const key = new Date(timestamp(row)).toISOString();
+    if (!snapshots.has(key)) snapshots.set(key, []);
+    snapshots.get(key).push(row);
+  }
+  if (!snapshots.size) throw new Error("the depth dataset returned no rows");
+
+  return [...snapshots.entries()]
+    .sort(([left], [right]) => right.localeCompare(left))
+    .map(([observedAt, snapshot]) => {
+      const curve = [...snapshot].sort(
+        (left, right) => number(left.price_usd_gpu_hour) - number(right.price_usd_gpu_hour),
+      );
+      const benchmark = Math.max(...curve.map((row) => number(row.benchmark_price_usd_gpu_hour)));
+      const atReference = curve.filter((row) => number(row.price_usd_gpu_hour) <= benchmark);
+      const capacity = atReference.length
+        ? Math.max(...atReference.map((row) => number(row.cumulative_nodes)))
+        : 0;
+      const clearing = curve.find((row) => number(row.cumulative_nodes) >= target);
+      const clearingPrice = clearing ? number(clearing.price_usd_gpu_hour) : null;
+      return {
+        observed_at: observedAt,
+        instrument: curve[0]?.instrument || "H100",
+        target_nodes: target,
+        benchmark_price_usd_gpu_hour: benchmark,
+        capacity_at_reference: capacity,
+        clearing_price_usd_gpu_hour: clearingPrice,
+        basis_usd_gpu_hour: clearingPrice === null
+          ? null
+          : Number((clearingPrice - benchmark).toFixed(6)),
+        target_reached: Boolean(clearing),
+        provider_count: Math.max(...curve.map((row) => number(row.provider_count))),
+        offer_count: Math.max(...curve.map((row) => number(row.offer_count))),
+      };
+    });
+}
+
+function validateDepthRow(row) {
+  validateTimestamp(row);
+  for (const field of [
+    "benchmark_price_usd_gpu_hour",
+    "price_usd_gpu_hour",
+    "cumulative_nodes",
+    "provider_count",
+    "offer_count",
+  ]) {
+    if (typeof row[field] !== "number" || !Number.isFinite(row[field])) {
+      throw new Error(`depth row has an invalid ${field}`);
+    }
+  }
+}
+
+function validateTimestamp(row) {
+  timestamp(row);
+}
+
+function timestamp(row) {
+  const value = Date.parse(row?.observed_at);
+  if (!Number.isFinite(value)) throw new Error("dataset contains an invalid observed_at");
+  return value;
+}
+
+function latestTimestamp(rows) {
+  let latest = -Infinity;
+  for (const row of rows) latest = Math.max(latest, timestamp(row));
+  if (!Number.isFinite(latest)) throw new Error("dataset returned no dated rows");
+  return latest;
+}
+
+function number(value) {
+  return Number(value);
+}
+
+async function writeJsonAtomically(output, records) {
+  await mkdir(dirname(output), { recursive: true });
+  const temporary = `${output}.tmp-${process.pid}-${randomUUID()}`;
+  let handle = null;
+  try {
+    handle = await open(temporary, "wx", 0o666);
+    await handle.writeFile(`${JSON.stringify(records, null, 2)}\n`, "utf8");
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await rename(temporary, output);
+  } catch (error) {
+    await handle?.close().catch(() => {});
+    await unlink(temporary).catch(() => {});
+    throw error;
+  }
+}
+
+function usageError(message) {
+  return new Error(`${message}\nRun \`desk --help\` for usage.`);
+}
+
+function helpText() {
+  return `Desk CLI ${VERSION}
+
+Sync the data behind a Desk view.
+
+Usage
+  desk data sync <dataset> [options]
+
+Datasets
+  compute-prices       --series=H200,TPI --range=1d|7d|all
+  accelerator-prices   --series=H100,H200,B200,B300
+  h100-market-depth    --view=now|history --target=128
+
+Options
+  -o, --output <file>  Write to a specific file
+      --stdout         Print JSON instead of writing a file
+      --origin <url>   Read from another Desk host
+  -h, --help           Show this help
+  -V, --version        Show the version
+`;
+}
