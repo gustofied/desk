@@ -5,15 +5,15 @@
 .desk-data-rail {
   position: absolute;
   top: calc(100% + 8px);
-  right: 8px;
-  left: 8px;
+  right: 0;
+  left: 0;
   z-index: 1;
   overflow: hidden;
   color: var(--index-ink);
   font-family: "Geist Mono", ui-monospace, monospace;
-  background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
-  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
-  border-radius: 2px;
+  background: var(--market-card-pale, var(--desk-accent-pale));
+  border: 1px solid var(--market-card-rule, var(--index-rule-strong));
+  border-radius: 4px;
   box-shadow: none;
 }
 
@@ -148,7 +148,7 @@
   position: sticky;
   top: 0;
   z-index: 1;
-  background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
+  background: var(--market-card-pale, var(--desk-accent-pale));
 }
 
 .desk-data-rail th,
@@ -253,12 +253,6 @@
 }
 
 @media (max-width: 640px) {
-  .desk-data-rail {
-    top: calc(100% + 8px);
-    right: 4px;
-    left: 4px;
-  }
-
   .desk-data-rail__toggle {
     grid-template-columns: auto minmax(0, 1fr) auto auto;
     gap: 8px;
