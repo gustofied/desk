@@ -5,7 +5,7 @@
   "label": "Token Price Index",
   "short_label": "TPI",
   "unit": "USD per million tokens",
-  "cadence": "weekly",
+  "cadence": "hourly",
   "as_of": "2026-08-29T16:00:00.000Z",
   "methodology": {
     "id": "geometric_mean_blended_inference_price",

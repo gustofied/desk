@@ -88,6 +88,7 @@
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
     <link rel="stylesheet" href="./styles/desk-controls.css?v=73">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=50">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=2">
     <link rel="stylesheet" href="./styles/deal-view.css?v=6">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=20">
@@ -347,6 +348,102 @@
                 </div>
               </div>
             </article>
+
+            <section
+              class="desk-data-rail"
+              aria-label="Dataset access"
+              data-monitor-data
+              hidden
+              inert
+            >
+              <button
+                class="desk-data-rail__toggle"
+                id="desk-data-toggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="desk-data-body"
+                data-monitor-data-toggle
+              >
+                <strong data-monitor-data-label>Data</strong>
+                <span data-monitor-data-summary>H200 7D</span>
+                <small data-monitor-data-count>0 rows</small>
+                <time data-monitor-data-time hidden></time>
+              </button>
+              <div
+                class="desk-data-rail__body"
+                id="desk-data-body"
+                data-monitor-data-body
+                hidden
+                inert
+              >
+                <div class="desk-data-rail__toolbar">
+                  <div
+                    class="desk-data-rail__tabs"
+                    role="tablist"
+                    aria-label="Dataset access"
+                    data-monitor-data-tabs
+                  >
+                    <button
+                      id="desk-data-tab-rows"
+                      type="button"
+                      role="tab"
+                      aria-selected="true"
+                      aria-controls="desk-data-panel-rows"
+                      data-monitor-data-tab="rows"
+                    >Rows</button>
+                    <button
+                      id="desk-data-tab-curl"
+                      type="button"
+                      role="tab"
+                      aria-selected="false"
+                      aria-controls="desk-data-panel-command"
+                      tabindex="-1"
+                      data-monitor-data-tab="curl"
+                    >Curl</button>
+                    <button
+                      id="desk-data-tab-sql"
+                      type="button"
+                      role="tab"
+                      aria-selected="false"
+                      aria-controls="desk-data-panel-command"
+                      tabindex="-1"
+                      data-monitor-data-tab="sql"
+                    >SQL</button>
+                  </div>
+                  <button class="desk-data-rail__copy" type="button" data-monitor-data-copy>Copy</button>
+                </div>
+                <div
+                  class="desk-data-rail__panel"
+                  id="desk-data-panel-rows"
+                  role="tabpanel"
+                  aria-labelledby="desk-data-tab-rows"
+                  data-monitor-data-panel="rows"
+                >
+                  <div
+                    class="desk-data-rail__viewport"
+                    role="region"
+                    aria-label="Scrollable dataset preview"
+                    tabindex="0"
+                  >
+                    <table data-monitor-data-table>
+                      <caption class="desk-data-rail__sr-only">Selected market data rows</caption>
+                    </table>
+                  </div>
+                </div>
+                <div
+                  class="desk-data-rail__panel desk-data-rail__command-panel"
+                  id="desk-data-panel-command"
+                  role="tabpanel"
+                  data-monitor-data-panel="command"
+                  hidden
+                  inert
+                >
+                  <span class="desk-data-rail__command-kind" data-monitor-data-command-kind>Download</span>
+                  <pre><code data-monitor-data-command></code></pre>
+                </div>
+              </div>
+              <p class="desk-data-rail__sr-only" aria-live="polite" data-monitor-data-status></p>
+            </section>
           </div>
 
           <div
@@ -504,6 +601,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=122"></script>
+    <script type="module" src="./desk.js?v=123"></script>
   </body>
 </html>

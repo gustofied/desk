@@ -28,6 +28,8 @@ import { paintGpuMarketDepthChart } from "./gpu-market-depth-presentation.js";
 import { createDealViewModel } from "./deal-view-model.js";
 import { mountDealView } from "./deal-view-presentation.js";
 import { createCommandPalette } from "./command-palette.js";
+import { createMonitorDataModel } from "./monitor-data-model.js";
+import { createMonitorDataRail } from "./monitor-data-rail.js";
 import {
   deleteCatalogItem,
   loadSavedCatalog,
@@ -356,6 +358,11 @@ if (root) {
   };
   const commandPalette = createCommandPalette({
     root: nodes.commandPalette,
+    reducedMotion,
+  });
+  const monitorDataRail = createMonitorDataRail({
+    root: root.querySelector("[data-monitor-data]"),
+    copyText: copyTextToClipboard,
     reducedMotion,
   });
   const catalogCards = new Map();
@@ -3786,6 +3793,7 @@ if (root) {
     updateFamilyQuoteNodes();
     syncModeActions(false);
     syncComposerControls();
+    syncMonitorDataVisibility();
   }
 
   function syncMobileSummary() {
@@ -4660,6 +4668,35 @@ if (root) {
     syncControls();
   }
 
+  function syncMonitorDataVisibility() {
+    monitorDataRail.setVisible(
+      state.shareReady &&
+        state.mode === "monitor" &&
+        state.panel === "detail" &&
+        state.layout === "focus",
+    );
+  }
+
+  function syncMonitorDataModel(context = {}) {
+    try {
+      const model = createMonitorDataModel({
+        card: cardDefinition,
+        cardState: currentCardState(),
+        ...context,
+      });
+      monitorDataRail.setModel(model);
+      syncMonitorDataModel.lastError = "";
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (syncMonitorDataModel.lastError !== message) {
+        console.warn("Monitor data is unavailable", error);
+        syncMonitorDataModel.lastError = message;
+      }
+      monitorDataRail.setModel(null);
+    }
+    syncMonitorDataVisibility();
+  }
+
   function render(drawAnimation) {
     if (state.mode === "craft" && state.craftEmpty) {
       syncComposerControls();
@@ -4684,6 +4721,8 @@ if (root) {
       showFailure(`${state.selected} history is still being collected.`);
       return;
     }
+
+    syncMonitorDataModel({ series: rangeSeries });
 
     nodes.chartState.hidden = true;
     nodes.tooltip.hidden = true;
@@ -4754,6 +4793,7 @@ if (root) {
     }
     if (nodes.chartState) nodes.chartState.hidden = true;
     if (nodes.tooltip) nodes.tooltip.hidden = true;
+    syncMonitorDataModel({ dealModel: model });
     root.dataset.dealStage = model.activeStage;
     state.catalogDirty = true;
     if (state.layout === "all") renderWorkspaceGallery();
@@ -4816,6 +4856,7 @@ if (root) {
         ? `>${formatUsd(model.priceDomain[1])}`
         : formatUsd(model.current.clearingPrice);
     }
+    syncMonitorDataModel({ depthModel: model });
     state.catalogDirty = true;
     if (state.layout === "all") renderWorkspaceGallery();
     syncDepthShareStatus(model);
@@ -4862,6 +4903,7 @@ if (root) {
       reducedMotion,
       interactive: false,
     });
+    syncMonitorDataModel({ barModel: model });
     state.catalogDirty = true;
     if (state.layout === "all") renderWorkspaceGallery();
     syncBarShareStatus(model);
@@ -5815,6 +5857,8 @@ if (root) {
   }
 
   function showFailure(message) {
+    monitorDataRail.setModel(null);
+    monitorDataRail.setVisible(false);
     nodes.chartState.textContent = message;
     nodes.chartState.hidden = false;
     nodes.tooltip.hidden = true;

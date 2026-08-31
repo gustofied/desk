@@ -72,6 +72,17 @@ existing links and browser saves continue to work.
 
 Source records live under `api/dashboard-snapshots/`.
 
+Monitor includes a compact data rail with the selected rows, a download
+command, and a DuckDB query. The build writes flat, versioned JSON tables for
+the public views:
+
+- `data/v1/compute-prices.json`
+- `data/v1/accelerator-prices.json`
+- `data/v1/h100-market-depth.json`
+
+The Deal workflow exposes its selected row in Monitor, without a normalized
+download or SQL export.
+
 ```bash
 npm run check:data       # validate the included market run
 npm run generate:data    # rebuild showcase histories and market depth

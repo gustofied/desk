@@ -62,6 +62,9 @@ jobs:
           test -s data/gpu-price-index.json
           test -s data/gpu-market-depth.json
           test -s data/manifest.json
+          test -s data/v1/compute-prices.json
+          test -s data/v1/accelerator-prices.json
+          test -s data/v1/h100-market-depth.json
 
       - name: Commit refreshed data
         if: steps.changes.outputs.changed == 'true'
@@ -74,6 +77,7 @@ jobs:
           allowed_paths+='|assets/social/(gpu-index|gpu-price-snapshot|gpu-market-depth)/'
           allowed_paths+='|cards/(gpu-price-index|gpu-price-snapshot|gpu-market-depth)/'
           allowed_paths+='|data/(gpu-price-index|gpu-market-depth|manifest)\.json$'
+          allowed_paths+='|data/v1/(compute-prices|accelerator-prices|h100-market-depth)\.json$'
           allowed_paths+='|desk\.js$)'
           if git diff --name-only | grep -Ev "$allowed_paths"; then
             echo "Build changed an unexpected tracked path" >&2

@@ -305,7 +305,7 @@ function createTokenPriceIndex() {
     label: "Token Price Index",
     short_label: "TPI",
     unit: "USD per million tokens",
-    cadence: "weekly",
+    cadence: "hourly",
     as_of: AS_OF.toISOString(),
     methodology: {
       id: "geometric_mean_blended_inference_price",

@@ -13,6 +13,7 @@ const DAY_SECONDS = 24 * HOUR_SECONDS;
 const buildOptions = parseBuildOptions(process.argv.slice(2));
 const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const priceCard = getCardDefinition("gpu-index");
+const priceSnapshotCard = getCardDefinition("gpu-price-snapshot");
 const depthCard = getCardDefinition("gpu-market-depth");
 const dealCard = getCardDefinition("deal-view");
 const gpuLayers = GPU_LAYERS.filter((layer) => layer.unit === "usd-hour");
@@ -68,6 +69,30 @@ createGpuMarketDepthModel(depthRuntime, depthCard, {
   targetNodes: depthRuntime.targetNodes,
 });
 
+const computePriceRows = buildComputePriceRows(priceRuntime, priceCard);
+const acceleratorPriceRows = buildAcceleratorPriceRows(
+  computePriceRows,
+  gpuLayers,
+);
+const marketDepthRows = buildMarketDepthRows(depthRuntime);
+const publicDataExports = [
+  buildPublicDataExport(priceCard.dataTable, computePriceRows, {
+    asOf: priceRuntime.asOf,
+    cadence: priceRuntime.dataset.cadence,
+    kind: priceRuntime.dataset.kind,
+  }),
+  buildPublicDataExport(priceSnapshotCard.dataTable, acceleratorPriceRows, {
+    asOf: priceRuntime.asOf,
+    cadence: "snapshot",
+    kind: priceRuntime.dataset.kind,
+  }),
+  buildPublicDataExport(depthCard.dataTable, marketDepthRows, {
+    asOf: depthRuntime.asOf,
+    cadence: depthRuntime.dataset.cadence,
+    kind: depthRuntime.dataset.kind,
+  }),
+];
+
 const dataManifest = {
   version: 1,
   asOf: Math.max(priceRuntime.asOf, depthRuntime.asOf, dealRuntime.asOf),
@@ -88,6 +113,12 @@ const dataManifest = {
       asOf: dealRuntime.asOf,
     },
   },
+  exports: Object.fromEntries(
+    publicDataExports.map((dataExport) => [
+      dataExport.id,
+      dataExport.manifest,
+    ]),
+  ),
 };
 dataManifest.revision = revisionFor(dataManifest);
 
@@ -95,7 +126,8 @@ if (buildOptions.check) {
   console.log(
     `Validated ${priceCard.id} (${priceRuntime.revision}) and ` +
       `${depthCard.id} (${depthRuntime.revision}) and ` +
-      `${dealCard.id} (${dealRuntime.revision}) source contracts.`,
+      `${dealCard.id} (${dealRuntime.revision}) source contracts, plus ` +
+      `${publicDataExports.length} public data exports.`,
   );
 } else {
   await Promise.all([
@@ -103,13 +135,167 @@ if (buildOptions.check) {
     writeJson(join(projectRoot, depthCard.dataFile), depthRuntime),
     writeJson(join(projectRoot, dealCard.dataFile), dealRuntime),
     writeJson(join(projectRoot, "data", "manifest.json"), dataManifest),
+    ...publicDataExports.map((dataExport) =>
+      writeJson(join(projectRoot, dataExport.file), dataExport.records),
+    ),
   ]);
   console.log(
     `Built ${priceCard.dataFile} (${priceRuntime.revision}), ` +
       `${depthCard.dataFile} (${depthRuntime.revision}), ` +
       `${dealCard.dataFile} (${dealRuntime.revision}), and data/manifest.json ` +
-      `(${dataManifest.revision}).`,
+      `(${dataManifest.revision}), plus ${publicDataExports.length} public ` +
+      "data exports.",
   );
+}
+
+function buildComputePriceRows(runtime, card) {
+  const rows = card.layers.flatMap((layer) => {
+    const points = runtime.series[layer.id];
+    if (!Array.isArray(points) || !points.length) {
+      throw new Error(`Missing normalized observations for ${layer.id}`);
+    }
+    const unit = layer.unit === "usd-hour"
+      ? "USD per GPU-hour"
+      : "USD per million tokens";
+    return points.map((point) => ({
+      observed_at: isoTimestamp(point[0], `${layer.id} observation`),
+      instrument: layer.id,
+      value: point[1],
+      lower: point[2],
+      upper: point[3],
+      unit,
+    }));
+  });
+  assertUniqueRows(
+    rows,
+    (row) => `${row.observed_at}\u0000${row.instrument}`,
+    "compute prices",
+  );
+  return rows;
+}
+
+function buildAcceleratorPriceRows(computePriceRows, layers) {
+  const latestByInstrument = new Map();
+  for (const row of computePriceRows) {
+    if (layers.some((layer) => layer.id === row.instrument)) {
+      latestByInstrument.set(row.instrument, row);
+    }
+  }
+  const rows = layers.map((layer) => {
+    const row = latestByInstrument.get(layer.id);
+    if (!row) throw new Error(`Missing accelerator snapshot for ${layer.id}`);
+    return { ...row };
+  });
+  return rows.sort(
+    (left, right) =>
+      right.value - left.value || left.instrument.localeCompare(right.instrument),
+  );
+}
+
+function buildMarketDepthRows(runtime) {
+  const instrument = runtime.instrument;
+  const rows = runtime.snapshots.flatMap((snapshot) => {
+    let previousNodes = 0;
+    return runtime.priceLevels.map((price, index) => {
+      const cumulativeNodes = snapshot[4][index];
+      const incrementalNodes = cumulativeNodes - previousNodes;
+      previousNodes = cumulativeNodes;
+      return {
+        observed_at: isoTimestamp(snapshot[0], "market depth observation"),
+        instrument: instrument.gpu,
+        region: instrument.region,
+        node_gpu_count: instrument.nodeGpuCount,
+        interconnect: instrument.interconnect,
+        term_days: instrument.termDays,
+        benchmark_price_usd_gpu_hour: snapshot[1],
+        provider_count: snapshot[2],
+        offer_count: snapshot[3],
+        price_usd_gpu_hour: price,
+        incremental_nodes: incrementalNodes,
+        cumulative_nodes: cumulativeNodes,
+        cumulative_gpus: cumulativeNodes * instrument.nodeGpuCount,
+        price_unit: instrument.priceUnit,
+        capacity_unit: instrument.capacityUnit,
+      };
+    });
+  });
+  assertUniqueRows(
+    rows,
+    (row) => `${row.observed_at}\u0000${row.price_usd_gpu_hour}`,
+    "market depth",
+  );
+  return rows;
+}
+
+function buildPublicDataExport(table, records, { asOf, cadence, kind }) {
+  if (
+    !table?.id ||
+    !table?.file ||
+    !Array.isArray(table.modes) ||
+    !table.modes.includes("curl") ||
+    !table.modes.includes("sql")
+  ) {
+    throw new Error("A public data table needs an id, file, curl, and SQL modes");
+  }
+  validateFlatRecords(records, table.id);
+  const revision = revisionFor(records);
+  return {
+    id: table.id,
+    file: table.file,
+    records,
+    manifest: {
+      file: table.file,
+      schemaVersion: 1,
+      format: "json",
+      kind,
+      cadence,
+      rows: records.length,
+      asOf,
+      columns: Object.keys(records[0]),
+      revision,
+    },
+  };
+}
+
+function validateFlatRecords(records, label) {
+  if (!Array.isArray(records) || !records.length) {
+    throw new Error(`${label} export needs at least one row`);
+  }
+  const columns = Object.keys(records[0]);
+  for (const [index, record] of records.entries()) {
+    const keys = Object.keys(record);
+    if (
+      keys.length !== columns.length ||
+      keys.some((key, columnIndex) => key !== columns[columnIndex])
+    ) {
+      throw new Error(`${label} row ${index} does not match its columns`);
+    }
+    for (const [key, value] of Object.entries(record)) {
+      if (
+        value === undefined ||
+        (typeof value === "number" && !Number.isFinite(value)) ||
+        (typeof value === "object" && value !== null)
+      ) {
+        throw new Error(`${label} row ${index} has an invalid ${key}`);
+      }
+    }
+  }
+}
+
+function assertUniqueRows(rows, keyFor, label) {
+  const keys = new Set();
+  for (const row of rows) {
+    const key = keyFor(row);
+    if (keys.has(key)) throw new Error(`${label} export has a duplicate row`);
+    keys.add(key);
+  }
+}
+
+function isoTimestamp(value, label) {
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${label} timestamp is invalid`);
+  }
+  return new Date(value * 1000).toISOString();
 }
 
 function buildDealRuntime(source, sourceFile) {
