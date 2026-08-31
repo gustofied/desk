@@ -25,8 +25,8 @@
 
 .desk-data-rail__toggle {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto auto;
-  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 8px;
   align-items: center;
   width: 100%;
   min-height: 40px;
@@ -44,7 +44,8 @@
 }
 
 .desk-data-rail__toggle > strong {
-  font: inherit;
+  color: var(--index-ink-soft);
+  font: 600 10px/16px "Geist Mono", ui-monospace, monospace;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -59,6 +60,16 @@
   font-variant-numeric: tabular-nums;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.desk-data-rail__toggle > span {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.desk-data-rail__toggle > time {
+  display: none;
 }
 
 .desk-data-rail__toggle > small,
@@ -83,20 +94,29 @@
 }
 
 .desk-data-rail__toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
   min-height: 40px;
+  padding: 0 12px;
   border-bottom: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
 }
 
 .desk-data-rail__tabs {
   display: flex;
+  flex: 0 1 auto;
+  gap: 4px;
+  align-items: flex-end;
   min-width: 0;
 }
 
-.desk-data-rail__tabs button,
-.desk-data-rail__copy {
-  min-width: 72px;
+.desk-data-rail__tabs button {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 64px;
   min-height: 40px;
   padding: 8px 12px;
   color: var(--index-ink-soft);
@@ -109,18 +129,31 @@
   transition:
     color 200ms var(--desk-ease-out),
     background-color 200ms var(--desk-ease-out),
-    opacity 200ms var(--desk-ease-out),
+    box-shadow 200ms var(--desk-ease-out),
     transform 200ms var(--desk-ease-out);
 }
 
-.desk-data-rail__tabs button + button,
 .desk-data-rail__copy {
-  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 10%, transparent);
+  min-width: 64px;
+  min-height: 40px;
+  padding: 8px 0 8px 12px;
+  margin-left: auto;
+  color: var(--index-ink-soft);
+  font: 600 10px/16px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  transition:
+    color 200ms var(--desk-ease-out),
+    background-color 200ms var(--desk-ease-out),
+    transform 200ms var(--desk-ease-out);
 }
 
 .desk-data-rail__tabs button[aria-selected="true"] {
-  color: var(--index-ink-soft);
-  background: color-mix(in srgb, var(--desk-accent) 13%, transparent);
+  color: var(--index-ink);
+  background: transparent;
   box-shadow: inset 0 -2px 0 var(--desk-accent-deep);
 }
 
@@ -186,19 +219,13 @@
 }
 
 .desk-data-rail__command-kind {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  color: var(--index-ink-soft);
-  font: 600 9px/12px "Geist Mono", ui-monospace, monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  display: none;
 }
 
 .desk-data-rail pre {
   min-height: 224px;
   max-height: 224px;
-  padding: 16px 112px 16px 16px;
+  padding: 16px;
   margin: 0;
   overflow: auto;
   color: var(--index-ink-soft);
@@ -225,8 +252,12 @@
   outline-offset: -2px;
 }
 
-.desk-data-rail button:active {
+.desk-data-rail :is(.desk-data-rail__toggle, .desk-data-rail__copy):active {
   transform: translateY(1px);
+}
+
+.desk-data-rail__tabs button:active {
+  transform: translateY(1px) scale(0.98);
 }
 
 @keyframes desk-data-rail-enter {
@@ -242,9 +273,14 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .desk-data-rail button:hover {
+  .desk-data-rail :is(.desk-data-rail__toggle, .desk-data-rail__copy):hover {
     color: var(--index-ink-soft);
     background: color-mix(in srgb, var(--desk-accent) 10%, transparent);
+  }
+
+  .desk-data-rail__tabs button:not([aria-selected="true"]):hover {
+    color: var(--index-ink);
+    background: transparent;
   }
 
   .desk-data-rail tbody tr:hover {
@@ -265,8 +301,13 @@
 
   .desk-data-rail__tabs button {
     flex: 1 1 0;
+    width: auto;
     min-width: 0;
     padding-inline: 8px;
+  }
+
+  .desk-data-rail__tabs {
+    flex: 1 1 auto;
   }
 
   .desk-data-rail__copy {
@@ -278,14 +319,6 @@
     min-width: 560px;
   }
 
-  .desk-data-rail pre {
-    padding: 40px 16px 16px;
-  }
-
-  .desk-data-rail__command-kind {
-    top: 12px;
-    right: 12px;
-  }
 }
 
 @media (max-width: 420px) {

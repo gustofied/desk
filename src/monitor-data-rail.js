@@ -83,11 +83,15 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       return;
     }
     if (!model.modes.includes(activeTab)) activeTab = model.modes[0] || "rows";
-    nodes.label.textContent = model.label;
+    nodes.label.textContent = "Data";
     nodes.summary.textContent = model.summary;
     nodes.count.textContent = formatRowCount(model.rowCount);
-    if (model.asOf) {
-      const date = model.asOf instanceof Date ? model.asOf : new Date(model.asOf);
+    const date = model.asOf
+      ? model.asOf instanceof Date
+        ? model.asOf
+        : new Date(model.asOf)
+      : null;
+    if (date) {
       nodes.asOf.textContent = formatAsOf(date);
       nodes.asOf.dateTime = date.toISOString();
       nodes.asOf.hidden = false;
@@ -96,6 +100,14 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       nodes.asOf.removeAttribute("datetime");
       nodes.asOf.hidden = true;
     }
+    const toggleLabel = [
+      "Data",
+      model.label,
+      model.summary,
+      formatRowCount(model.rowCount),
+    ];
+    if (date) toggleLabel.push(`observed ${formatAsOf(date)}`);
+    nodes.toggle?.setAttribute("aria-label", toggleLabel.join(", "));
     renderTable();
     renderActivePanel();
     syncOpenState();
@@ -173,7 +185,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     setPanelVisibility(nodes.commandPanel, !showRows);
     if (!showRows) {
       const value = activeTab === "sql" ? model.sql : model.curl;
-      nodes.commandKind.textContent = activeTab === "sql" ? "DuckDB SQL" : "Download";
+      nodes.commandKind.textContent = activeTab === "sql" ? "SQL" : "Download";
       nodes.command.textContent = value;
       nodes.copy.setAttribute(
         "aria-label",
