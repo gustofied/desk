@@ -73,7 +73,7 @@ existing links and browser saves continue to work.
 Source records live under `api/dashboard-snapshots/`.
 
 Monitor includes a compact data rail with the selected rows, a download
-command, and a DuckDB query. The build writes flat, versioned JSON tables for
+command, and an SQL query. The build writes flat, versioned JSON tables for
 the public views:
 
 - `data/v1/compute-prices.json`

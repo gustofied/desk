@@ -92,9 +92,10 @@ function createPriceSnapshotModel(card, model) {
   if (!model?.bars?.length) return null;
   const endpoint = publicDatasetUrl(card);
   const asOf = new Date(model.asOf * 1000);
+  const acceleratorCount = model.bars.length;
   return finalizeModel(card, {
-    summary: `${model.bars.length} accelerators`,
-    rowCount: model.bars.length,
+    summary: `${acceleratorCount} ${acceleratorCount === 1 ? "accelerator" : "accelerators"}`,
+    rowCount: acceleratorCount,
     asOf,
     columns: [
       column("instrument", "GPU"),
