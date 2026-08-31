@@ -1,16 +1,13 @@
 import { SITE_ORIGIN } from "./card-registry.js";
 
-const MAX_PREVIEW_ROWS = 8;
-
 export function createMonitorDataModel({
   card,
   cardState,
   series = [],
   barModel = null,
   depthModel = null,
-  dealModel = null,
 }) {
-  if (!card?.dataAdapter || !card?.dataTable) return null;
+  if (!card?.dataAdapter || !card?.dataTable?.file) return null;
 
   if (card.dataAdapter === "series") {
     return createPriceHistoryModel(card, cardState, series);
@@ -21,38 +18,12 @@ export function createMonitorDataModel({
   if (card.dataAdapter === "depth") {
     return createMarketDepthDataModel(card, cardState, depthModel);
   }
-  if (card.dataAdapter === "deal") {
-    return createDealDataModel(card, dealModel);
-  }
   return null;
 }
 
 function createPriceHistoryModel(card, state, series) {
   const selected = series.filter((candidate) => candidate?.rows?.length);
   if (!selected.length) return null;
-  const indexed = state.scale === "index";
-  const rows = selected
-    .flatMap((candidate) =>
-      candidate.rows.map((row) => ({
-        sort: row.date.getTime(),
-        values: {
-          observed_at: formatTableTime(row.date),
-          instrument: candidate.layer.shortLabel || candidate.layer.label,
-          value: indexed
-            ? formatIndex(row.plotValue)
-            : formatUsd(row.value),
-          lower: indexed
-            ? formatIndex(row.plotLower)
-            : formatUsd(row.lower),
-          upper: indexed
-            ? formatIndex(row.plotUpper)
-            : formatUsd(row.upper),
-        },
-      })),
-    )
-    .sort((left, right) => right.sort - left.sort)
-    .slice(0, MAX_PREVIEW_ROWS)
-    .map((row) => row.values);
   const instruments = selected.map(
     (candidate) => candidate.layer.shortLabel || candidate.layer.label,
   );
@@ -68,23 +39,19 @@ function createPriceHistoryModel(card, state, series) {
     Math.max(...selected.map((candidate) => candidate.rows.at(-1).date.getTime())),
   );
   const endpoint = publicDatasetUrl(card);
+  const range = String(state.range).toUpperCase();
+  const seriesLabel = instruments.join(" + ");
 
   return finalizeModel(card, {
-    summary: `${instruments.join(" + ")} ${String(state.range).toUpperCase()}`,
+    summary: `${seriesLabel} ${range}`,
+    breadcrumbs: ["Desk", card.dataTable.label, seriesLabel, range],
     rowCount,
     asOf: latestDate,
-    columns: [
-      column("observed_at", "Time"),
-      column("instrument", "Series"),
-      column("value", indexed ? "Index" : "Price", "numeric"),
-      column("lower", "Low", "numeric"),
-      column("upper", "High", "numeric"),
-    ],
-    rows,
-    curl: downloadCommand(endpoint),
-    sql: indexed
-      ? priceIndexSql(endpoint, queryInstruments, firstDate)
-      : priceSql(endpoint, queryInstruments, firstDate),
+    endpoint,
+    command: downloadCommand(endpoint),
+    sql: state.scale === "index"
+      ? priceIndexSql(card, endpoint, queryInstruments, firstDate)
+      : priceSql(card, endpoint, queryInstruments, firstDate),
   });
 }
 
@@ -92,24 +59,16 @@ function createPriceSnapshotModel(card, model) {
   if (!model?.bars?.length) return null;
   const endpoint = publicDatasetUrl(card);
   const asOf = new Date(model.asOf * 1000);
+  const instruments = model.bars.map((bar) => bar.id);
+  const acceleratorLabel = model.bars.length === 1 ? "accelerator" : "accelerators";
   return finalizeModel(card, {
-    summary: `${model.bars.length} accelerators`,
+    summary: `${model.bars.length} ${acceleratorLabel}`,
+    breadcrumbs: ["Desk", card.dataTable.label, "Snapshot"],
     rowCount: model.bars.length,
     asOf,
-    columns: [
-      column("instrument", "GPU"),
-      column("value", "Price", "numeric"),
-      column("lower", "Low", "numeric"),
-      column("upper", "High", "numeric"),
-    ],
-    rows: model.bars.map((bar) => ({
-      instrument: bar.label,
-      value: formatUsd(bar.value),
-      lower: formatUsd(bar.lower),
-      upper: formatUsd(bar.upper),
-    })),
-    curl: downloadCommand(endpoint),
-    sql: snapshotSql(endpoint),
+    endpoint,
+    command: downloadCommand(endpoint),
+    sql: snapshotSql(card, endpoint, instruments),
   });
 }
 
@@ -117,114 +76,49 @@ function createMarketDepthDataModel(card, state, model) {
   if (!model?.current) return null;
   const endpoint = publicDatasetUrl(card);
   const history = state.scale === "history";
-  const current = model.current;
+  const mode = history ? "History" : "Now";
   const asOf = new Date(model.asOf * 1000);
 
-  if (history) {
-    return finalizeModel(card, {
-      summary: `${model.instrument.gpuLabel} ${model.targetNodes} nodes History`,
-      rowCount: model.history.length,
-      asOf,
-      columns: [
-        column("observed_at", "Date"),
-        column("benchmark", "Reference", "numeric"),
-        column("available", "At ref", "numeric"),
-        column("clearing", "Clearing", "numeric"),
-        column("providers", "Providers", "numeric"),
-        column("offers", "Offers", "numeric"),
-      ],
-      rows: model.history
-        .slice(-MAX_PREVIEW_ROWS)
-        .reverse()
-        .map((snapshot) => ({
-          observed_at: formatTableDate(new Date(snapshot.timestamp * 1000)),
-          benchmark: formatUsd(snapshot.benchmarkPrice),
-          available: formatInteger(snapshot.capacityAtBenchmark),
-          clearing: snapshot.clearingPrice === null
-            ? `>${formatUsd(model.priceDomain[1])}`
-            : formatUsd(snapshot.clearingPrice),
-          providers: formatInteger(snapshot.providerCount),
-          offers: formatInteger(snapshot.offerCount),
-        })),
-      curl: downloadCommand(endpoint),
-      sql: depthHistorySql(endpoint, model.targetNodes),
-    });
-  }
-
   return finalizeModel(card, {
-    summary: `${model.instrument.gpuLabel} ${model.targetNodes} nodes Now`,
-    rowCount: current.buckets.length,
+    summary: `${model.instrument.gpuLabel} ${model.targetNodes} nodes ${mode}`,
+    breadcrumbs: [
+      "Desk",
+      card.dataTable.label,
+      `${model.targetNodes} nodes`,
+      mode,
+    ],
+    rowCount: history ? model.history.length : model.current.buckets.length,
     asOf,
-    columns: [
-      column("price", "Price", "numeric"),
-      column("added", "Added", "numeric"),
-      column("available", "Available", "numeric"),
-    ],
-    rows: current.buckets.map((bucket) => ({
-      price: formatUsd(bucket.price),
-      added: formatInteger(bucket.incrementalNodes),
-      available: formatInteger(bucket.cumulativeNodes),
-    })),
-    curl: downloadCommand(endpoint),
-    sql: depthNowSql(endpoint),
-  });
-}
-
-function createDealDataModel(card, model) {
-  if (!model) return null;
-  return finalizeModel(card, {
-    summary: `${model.label} ${model.asset}`,
-    rowCount: 1,
-    asOf: null,
-    columns: [
-      column("asset", "GPU"),
-      column("quantity", "GPUs", "numeric"),
-      column("nodes", "Nodes", "numeric"),
-      column("quote", "Quote", "numeric"),
-      column("stage", "Stage"),
-      column("rfs", "RFS"),
-    ],
-    rows: [{
-      asset: model.asset,
-      quantity: formatInteger(model.quantity),
-      nodes: formatInteger(model.nodes),
-      quote: model.quote.formatted,
-      stage: model.stages.find((stage) => stage.id === model.activeStage)?.label ||
-        model.activeStage,
-      rfs: model.rfs,
-    }],
+    endpoint,
+    command: downloadCommand(endpoint),
+    sql: history
+      ? depthHistorySql(card, endpoint, model.targetNodes)
+      : depthNowSql(card, endpoint),
   });
 }
 
 function finalizeModel(card, values) {
-  const modes = card.dataTable.modes || ["rows"];
   const key = JSON.stringify([
     card.id,
     values.summary,
     values.rowCount,
     values.asOf instanceof Date ? values.asOf.getTime() : values.asOf,
-    values.columns,
-    values.rows,
-    values.curl,
+    values.endpoint,
+    values.command,
     values.sql,
   ]);
   return Object.freeze({
     key,
     id: card.dataTable.id,
     label: card.dataTable.label,
-    modes: Object.freeze([...modes]),
     summary: values.summary,
+    breadcrumbs: Object.freeze([...values.breadcrumbs]),
     rowCount: values.rowCount,
     asOf: values.asOf,
-    columns: Object.freeze(values.columns),
-    rows: Object.freeze(values.rows.map((row) => Object.freeze(row))),
-    curl: values.curl || "",
-    sql: values.sql || "",
+    endpoint: values.endpoint,
+    command: values.command,
+    sql: values.sql,
   });
-}
-
-function column(key, label, align = "text") {
-  return Object.freeze({ key, label, align });
 }
 
 function publicDatasetUrl(card) {
@@ -240,37 +134,38 @@ function downloadCommand(url) {
   ].join("\n");
 }
 
-function priceSql(url, instruments, firstDate) {
-  return `${sqlPrelude()}
+function priceSql(card, url, instruments, firstDate) {
+  const table = dataFusionTableName(card);
+  return `${dataFusionSource(table, url)}
 
 WITH prices AS (
-  SELECT cast(observed_at AS TIMESTAMPTZ) AS observed_at,
+  SELECT to_timestamp(observed_at) AS observed_at,
          instrument, value, lower, upper
-  FROM read_json_auto('${url}')
+  FROM ${table}
 )
 SELECT observed_at, instrument,
        value AS price_usd_gpu_hour, lower, upper
 FROM prices
 WHERE instrument IN (${sqlList(instruments)})
-  AND observed_at >= TIMESTAMPTZ '${formatSqlTimestamp(firstDate)}'
+  AND observed_at >= to_timestamp('${formatSqlTimestamp(firstDate)}')
 ORDER BY observed_at DESC, instrument;`;
 }
 
-function priceIndexSql(url, instruments, firstDate) {
-  return `${sqlPrelude()}
+function priceIndexSql(card, url, instruments, firstDate) {
+  const table = dataFusionTableName(card);
+  return `${dataFusionSource(table, url)}
 
 WITH prices AS (
-  SELECT cast(observed_at AS TIMESTAMPTZ) AS observed_at,
+  SELECT to_timestamp(observed_at) AS observed_at,
          instrument, value, lower, upper
-  FROM read_json_auto('${url}')
+  FROM ${table}
   WHERE instrument IN (${sqlList(instruments)})
-    AND cast(observed_at AS TIMESTAMPTZ) >=
-        TIMESTAMPTZ '${formatSqlTimestamp(firstDate)}'
 ), indexed AS (
   SELECT *, first_value(value) OVER (
     PARTITION BY instrument ORDER BY observed_at
   ) AS base_value
   FROM prices
+  WHERE observed_at >= to_timestamp('${formatSqlTimestamp(firstDate)}')
 )
 SELECT observed_at, instrument,
        round(100 * value / base_value, 2) AS index,
@@ -280,24 +175,28 @@ FROM indexed
 ORDER BY observed_at DESC, instrument;`;
 }
 
-function snapshotSql(url) {
-  return `${sqlPrelude()}
+function snapshotSql(card, url, instruments) {
+  const table = dataFusionTableName(card);
+  return `${dataFusionSource(table, url)}
 
 SELECT instrument,
-       value AS price_usd_gpu_hour, lower, upper, observed_at
-FROM read_json_auto('${url}')
+       value AS price_usd_gpu_hour, lower, upper,
+       to_timestamp(observed_at) AS observed_at
+FROM ${table}
+WHERE instrument IN (${sqlList(instruments)})
 ORDER BY value DESC;`;
 }
 
-function depthNowSql(url) {
-  return `${sqlPrelude()}
+function depthNowSql(card, url) {
+  const table = dataFusionTableName(card);
+  return `${dataFusionSource(table, url)}
 
 WITH depth AS (
-  SELECT cast(observed_at AS TIMESTAMPTZ) AS observed_at,
+  SELECT to_timestamp(observed_at) AS observed_at,
          price_usd_gpu_hour,
          incremental_nodes,
          cumulative_nodes
-  FROM read_json_auto('${url}')
+  FROM ${table}
 )
 SELECT price_usd_gpu_hour,
        incremental_nodes, cumulative_nodes
@@ -308,35 +207,43 @@ WHERE observed_at = (
 ORDER BY price_usd_gpu_hour;`;
 }
 
-function depthHistorySql(url, targetNodes) {
-  return `${sqlPrelude()}
+function depthHistorySql(card, url, targetNodes) {
+  const table = dataFusionTableName(card);
+  return `${dataFusionSource(table, url)}
 
 WITH depth AS (
-  SELECT cast(observed_at AS TIMESTAMPTZ) AS observed_at,
+  SELECT to_timestamp(observed_at) AS observed_at,
          benchmark_price_usd_gpu_hour,
          price_usd_gpu_hour,
          cumulative_nodes,
          provider_count,
          offer_count
-  FROM read_json_auto('${url}')
+  FROM ${table}
 )
 SELECT observed_at,
-       any_value(benchmark_price_usd_gpu_hour) AS benchmark_price,
+       max(benchmark_price_usd_gpu_hour) AS benchmark_price,
        max(cumulative_nodes) FILTER (
          WHERE price_usd_gpu_hour <= benchmark_price_usd_gpu_hour
        ) AS capacity_at_reference,
        min(price_usd_gpu_hour) FILTER (
          WHERE cumulative_nodes >= ${targetNodes}
        ) AS clearing_price,
-       any_value(provider_count) AS providers,
-       any_value(offer_count) AS offers
+       max(provider_count) AS providers,
+       max(offer_count) AS offers
 FROM depth
 GROUP BY observed_at
 ORDER BY observed_at DESC;`;
 }
 
-function sqlPrelude() {
-  return "INSTALL httpfs;\nLOAD httpfs;";
+function dataFusionSource(table, url) {
+  return `CREATE EXTERNAL TABLE IF NOT EXISTS ${table}
+STORED AS JSON
+OPTIONS ('format.newline_delimited' 'false')
+LOCATION '${url}';`;
+}
+
+function dataFusionTableName(card) {
+  return `desk_${card.dataTable.id.replaceAll("-", "_")}`;
 }
 
 function sqlList(values) {
@@ -345,48 +252,4 @@ function sqlList(values) {
 
 function formatSqlTimestamp(date) {
   return date.toISOString();
-}
-
-function formatTableTime(date) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    month: "short",
-    timeZone: "UTC",
-  }).formatToParts(date);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.day} ${values.month} ${values.hour}:${values.minute}`;
-}
-
-function formatTableDate(date) {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    day: "2-digit",
-    month: "short",
-    timeZone: "UTC",
-    year: "2-digit",
-  }).formatToParts(date);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.day} ${values.month} ${values.year}`;
-}
-
-function formatUsd(value) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return "—";
-  if (number < 1) return `$${number.toFixed(3)}`;
-  if (number < 10) return `$${number.toFixed(2)}`;
-  return `$${number.toFixed(1)}`;
-}
-
-function formatIndex(value) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number.toFixed(2) : "—";
-}
-
-function formatInteger(value) {
-  const number = Number(value);
-  return Number.isFinite(number)
-    ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(number)
-    : "—";
 }

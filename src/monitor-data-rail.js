@@ -4,41 +4,53 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
   const nodes = {
     toggle: root.querySelector("[data-monitor-data-toggle]"),
     label: root.querySelector("[data-monitor-data-label]"),
-    summary: root.querySelector("[data-monitor-data-summary]"),
-    count: root.querySelector("[data-monitor-data-count]"),
-    asOf: root.querySelector("[data-monitor-data-time]"),
+    dataset: root.querySelector("[data-monitor-data-dataset]"),
+    context: root.querySelector("[data-monitor-data-context]"),
     body: root.querySelector("[data-monitor-data-body]"),
-    tabButtons: Array.from(root.querySelectorAll("[data-monitor-data-tab]")),
-    rowsPanel: root.querySelector("[data-monitor-data-panel='rows']"),
-    commandPanel: root.querySelector("[data-monitor-data-panel='command']"),
-    table: root.querySelector("[data-monitor-data-table]"),
-    commandKind: root.querySelector("[data-monitor-data-command-kind]"),
+    path: root.querySelector("[data-monitor-data-path]"),
+    actionLabel: root.querySelector("[data-monitor-data-action-label]"),
+    prompt: root.querySelector("[data-monitor-data-prompt]"),
+    commandShell: root.querySelector("[data-monitor-data-command-shell]"),
     command: root.querySelector("[data-monitor-data-command]"),
-    caption: root.querySelector("[data-monitor-data-table] caption"),
+    openJson: root.querySelector("[data-monitor-data-open-json]"),
+    mode: root.querySelector("[data-monitor-data-mode]"),
     copy: root.querySelector("[data-monitor-data-copy]"),
     status: root.querySelector("[data-monitor-data-status]"),
   };
   let model = null;
   let open = false;
-  let activeTab = "rows";
+  let mode = "command";
   let bodyAnimation = null;
   let copyFeedbackTimer = null;
 
-  nodes.toggle?.addEventListener("click", (event) => {
+  nodes.toggle?.addEventListener("click", () => {
     open = !open;
     syncOpenState();
-    if (open && event.detail === 0) {
-      window.requestAnimationFrame(() => activeTabButton()?.focus());
-    }
+    if (open) revealWorkspace();
   });
-  nodes.tabButtons.forEach((button) => {
-    button.addEventListener("click", () => {
-      activeTab = button.dataset.monitorDataTab;
-      open = true;
-      renderActivePanel();
-      syncOpenState();
-    });
-    button.addEventListener("keydown", handleTabKeydown);
+  nodes.mode?.addEventListener("click", () => {
+    mode = mode === "command" ? "sql" : "command";
+    renderMode();
+    announce(mode === "sql" ? "Showing DataFusion SQL" : "Showing download command");
+  });
+  nodes.copy?.addEventListener("click", async () => {
+    const copiedMode = mode;
+    const value = copiedMode === "sql" ? model?.sql : model?.command;
+    if (!value) return;
+    let copied = false;
+    try {
+      copied = await copyText(value);
+    } catch {}
+    announce(
+      copied
+        ? copiedMode === "sql"
+          ? "DataFusion SQL copied"
+          : "Download command copied"
+        : "Copy unavailable in this browser",
+    );
+    window.clearTimeout(copyFeedbackTimer);
+    nodes.copy.textContent = copied ? "Copied" : "Unavailable";
+    copyFeedbackTimer = window.setTimeout(syncCopyLabel, 1400);
   });
   root.addEventListener("keydown", (event) => {
     if (event.key !== "Escape" || !open) return;
@@ -46,29 +58,6 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     open = false;
     syncOpenState();
     nodes.toggle?.focus({ preventScroll: true });
-  });
-  nodes.copy?.addEventListener("click", async () => {
-    const value = activeTab === "rows"
-      ? rowsAsTsv(model)
-      : activeTab === "sql"
-        ? model?.sql
-        : model?.curl;
-    if (!value) return;
-    let copied = false;
-    try {
-      copied = await copyText(value);
-    } catch {}
-    const copiedLabel = activeTab === "rows"
-      ? "Rows copied"
-      : activeTab === "sql"
-        ? "SQL query copied"
-        : "Curl command copied";
-    announce(copied ? copiedLabel : "Copy unavailable in this browser");
-    window.clearTimeout(copyFeedbackTimer);
-    nodes.copy.textContent = copied ? "Copied" : "Unavailable";
-    copyFeedbackTimer = window.setTimeout(() => {
-      nodes.copy.textContent = "Copy";
-    }, 1400);
   });
 
   setVisible(false);
@@ -82,34 +71,19 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       setVisible(false);
       return;
     }
-    if (!model.modes.includes(activeTab)) activeTab = model.modes[0] || "rows";
-    nodes.label.textContent = "Data";
-    nodes.summary.textContent = model.summary;
-    nodes.count.textContent = formatRowCount(model.rowCount);
-    const date = model.asOf
-      ? model.asOf instanceof Date
-        ? model.asOf
-        : new Date(model.asOf)
-      : null;
-    if (date) {
-      nodes.asOf.textContent = formatAsOf(date);
-      nodes.asOf.dateTime = date.toISOString();
-      nodes.asOf.hidden = false;
-    } else {
-      nodes.asOf.textContent = "";
-      nodes.asOf.removeAttribute("datetime");
-      nodes.asOf.hidden = true;
+    nodes.label.textContent = "Desk API";
+    nodes.dataset.textContent = model.label;
+    nodes.context.textContent = model.summary;
+    nodes.toggle?.setAttribute("aria-label", toggleLabel(model));
+    if (nodes.openJson) {
+      nodes.openJson.href = model.endpoint;
+      nodes.openJson.setAttribute(
+        "aria-label",
+        `Open full ${model.label} JSON in a new tab`,
+      );
     }
-    const toggleLabel = [
-      "Data",
-      model.label,
-      model.summary,
-      formatRowCount(model.rowCount),
-    ];
-    if (date) toggleLabel.push(`observed ${formatAsOf(date)}`);
-    nodes.toggle?.setAttribute("aria-label", toggleLabel.join(", "));
-    renderTable();
-    renderActivePanel();
+    renderPath();
+    renderMode();
     syncOpenState();
   }
 
@@ -123,83 +97,56 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     root.toggleAttribute("inert", !show);
   }
 
-  function handleTabKeydown(event) {
-    const visibleTabs = nodes.tabButtons.filter((button) => !button.hidden);
-    const currentIndex = visibleTabs.indexOf(event.currentTarget);
-    let nextIndex = null;
-    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % visibleTabs.length;
-    if (event.key === "ArrowLeft") nextIndex = (currentIndex - 1 + visibleTabs.length) % visibleTabs.length;
-    if (event.key === "Home") nextIndex = 0;
-    if (event.key === "End") nextIndex = visibleTabs.length - 1;
-    if (nextIndex === null) return;
-    event.preventDefault();
-    const next = visibleTabs[nextIndex];
-    activeTab = next.dataset.monitorDataTab;
-    renderActivePanel();
-    next.focus();
+  function renderPath() {
+    if (!nodes.path || !model) return;
+    const items = model.breadcrumbs.map((label, index) => {
+      const item = document.createElement("li");
+      const text = document.createElement("span");
+      text.textContent = label;
+      if (index === model.breadcrumbs.length - 1) {
+        text.setAttribute("aria-current", "page");
+      }
+      item.append(text);
+      return item;
+    });
+    nodes.path.replaceChildren(...items);
   }
 
-  function renderTable() {
-    if (!nodes.table || !model) return;
-    const head = document.createElement("thead");
-    const headRow = document.createElement("tr");
-    model.columns.forEach((column) => {
-      const cell = document.createElement("th");
-      cell.scope = "col";
-      cell.textContent = column.label;
-      cell.dataset.align = column.align;
-      headRow.append(cell);
-    });
-    head.append(headRow);
-
-    const body = document.createElement("tbody");
-    model.rows.forEach((row) => {
-      const tr = document.createElement("tr");
-      model.columns.forEach((column) => {
-        const cell = document.createElement("td");
-        cell.textContent = row[column.key] ?? "—";
-        cell.dataset.align = column.align;
-        tr.append(cell);
-      });
-      body.append(tr);
-    });
-    nodes.table.replaceChildren(
-      ...(nodes.caption ? [nodes.caption] : []),
-      head,
-      body,
-    );
-  }
-
-  function renderActivePanel() {
+  function renderMode() {
     if (!model) return;
-    nodes.tabButtons.forEach((button) => {
-      const tab = button.dataset.monitorDataTab;
-      const available = model.modes.includes(tab);
-      const selected = tab === activeTab;
-      button.hidden = !available;
-      button.setAttribute("aria-selected", String(selected));
-      button.tabIndex = selected ? 0 : -1;
-    });
-    const showRows = activeTab === "rows";
-    setPanelVisibility(nodes.rowsPanel, showRows);
-    setPanelVisibility(nodes.commandPanel, !showRows);
-    if (!showRows) {
-      const value = activeTab === "sql" ? model.sql : model.curl;
-      nodes.commandKind.textContent = activeTab === "sql" ? "SQL" : "Download";
-      nodes.command.textContent = value;
-      nodes.copy.setAttribute(
-        "aria-label",
-        activeTab === "sql" ? "Copy SQL query" : "Copy curl command",
-      );
-      nodes.commandPanel?.setAttribute("aria-labelledby", activeTabButton()?.id || "");
-    } else {
-      nodes.copy.setAttribute("aria-label", "Copy visible rows");
-    }
+    const showingSql = mode === "sql";
+    root.dataset.accessMode = mode;
+    nodes.actionLabel.textContent = showingSql ? "Query this view" : "Download full dataset";
+    nodes.prompt.textContent = showingSql ? "SQL" : "$";
+    nodes.command.textContent = showingSql ? model.sql : model.command;
+    nodes.commandShell?.setAttribute(
+      "aria-label",
+      showingSql ? "DataFusion SQL query" : "Dataset download command",
+    );
+    nodes.mode.textContent = showingSql ? "Download command" : "DataFusion SQL";
+    nodes.mode.setAttribute(
+      "aria-label",
+      showingSql ? "Show download command" : "Show DataFusion SQL",
+    );
+    syncCopyLabel();
+    nodes.command?.closest("pre")?.scrollTo({ top: 0, left: 0 });
   }
 
-  function activeTabButton() {
-    return nodes.tabButtons.find(
-      (button) => button.dataset.monitorDataTab === activeTab,
+  function revealWorkspace() {
+    window.requestAnimationFrame(() => {
+      nodes.commandShell?.scrollIntoView({
+        block: "center",
+        behavior: reducedMotion ? "auto" : "smooth",
+      });
+    });
+  }
+
+  function syncCopyLabel() {
+    if (!nodes.copy) return;
+    nodes.copy.textContent = mode === "sql" ? "Copy SQL" : "Copy command";
+    nodes.copy.setAttribute(
+      "aria-label",
+      mode === "sql" ? "Copy DataFusion SQL" : "Copy download command",
     );
   }
 
@@ -248,10 +195,15 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
   }
 }
 
-function setPanelVisibility(panel, visible) {
-  if (!panel) return;
-  panel.hidden = !visible;
-  panel.toggleAttribute("inert", !visible);
+function toggleLabel(model) {
+  const label = [
+    "Desk API",
+    model.label,
+    model.summary,
+    formatRowCount(model.rowCount),
+  ];
+  if (model.asOf) label.push(`observed ${formatAsOf(model.asOf)}`);
+  return label.join(", ");
 }
 
 function formatRowCount(value) {
@@ -259,7 +211,8 @@ function formatRowCount(value) {
   return `${new Intl.NumberFormat("en-US").format(count)} ${count === 1 ? "row" : "rows"}`;
 }
 
-function formatAsOf(date) {
+function formatAsOf(value) {
+  const date = value instanceof Date ? value : new Date(value);
   const parts = new Intl.DateTimeFormat("en-GB", {
     day: "2-digit",
     hour: "2-digit",
@@ -270,15 +223,6 @@ function formatAsOf(date) {
   }).formatToParts(date);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return `${values.day} ${values.month} ${values.hour}:${values.minute} UTC`;
-}
-
-function rowsAsTsv(model) {
-  if (!model) return "";
-  const header = model.columns.map((column) => column.label).join("\t");
-  const rows = model.rows.map((row) =>
-    model.columns.map((column) => row[column.key] ?? "").join("\t")
-  );
-  return [header, ...rows].join("\n");
 }
 
 function createEmptyRail() {

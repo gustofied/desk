@@ -130,7 +130,6 @@ export const CARD_REGISTRY = Object.freeze([
       id: "compute-prices",
       label: "Compute prices",
       file: GPU_INDEX_TABLE_FILE,
-      modes: Object.freeze(["rows", "curl", "sql"]),
     }),
     sharePath: `/cards/${GPU_INDEX_SLUG}`,
     previewImageDir: `assets/social/${GPU_INDEX_ID}`,
@@ -181,7 +180,6 @@ export const CARD_REGISTRY = Object.freeze([
       id: "accelerator-prices",
       label: "Accelerator prices",
       file: GPU_PRICE_SNAPSHOT_TABLE_FILE,
-      modes: Object.freeze(["rows", "curl", "sql"]),
     }),
     sharePath: `/cards/${GPU_PRICE_SNAPSHOT_SLUG}`,
     previewImageDir: `assets/social/${GPU_PRICE_SNAPSHOT_ID}`,
@@ -220,7 +218,6 @@ export const CARD_REGISTRY = Object.freeze([
       id: "h100-market-depth",
       label: "H100 market depth",
       file: GPU_MARKET_DEPTH_TABLE_FILE,
-      modes: Object.freeze(["rows", "curl", "sql"]),
     }),
     sharePath: `/cards/${GPU_MARKET_DEPTH_SLUG}`,
     previewImageDir: `assets/social/${GPU_MARKET_DEPTH_ID}`,
@@ -270,7 +267,6 @@ export const CARD_REGISTRY = Object.freeze([
     dataTable: Object.freeze({
       id: "deal-041",
       label: "Deal workflow",
-      modes: Object.freeze(["rows"]),
     }),
     sharePath: `/cards/${DEAL_VIEW_SLUG}`,
     defaults: Object.freeze({

@@ -72,16 +72,19 @@ existing links and browser saves continue to work.
 
 Source records live under `api/dashboard-snapshots/`.
 
-Monitor includes a compact data rail with the selected rows, a download
-command, and a DuckDB query. The build writes flat, versioned JSON tables for
-the public views:
+Monitor includes a compact Desk API panel with a full-dataset download command
+and a DataFusion SQL query for the selected view. The build writes flat,
+versioned JSON tables for the public views:
 
 - `data/v1/compute-prices.json`
 - `data/v1/accelerator-prices.json`
 - `data/v1/h100-market-depth.json`
 
-The Deal workflow exposes its selected row in Monitor, without a normalized
-download or SQL export.
+The SQL targets `datafusion-cli` 53 or newer so the published JSON arrays can
+be read directly as external tables. Embedded DataFusion clients need an HTTPS
+object store registered by their host application.
+
+The private Deal workflow remains view-only and has no public data export.
 
 ```bash
 npm run check:data       # validate the included market run

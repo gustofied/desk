@@ -88,7 +88,7 @@
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
     <link rel="stylesheet" href="./styles/desk-controls.css?v=73">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=50">
-    <link rel="stylesheet" href="./styles/monitor-data.css?v=7">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=9">
     <link rel="stylesheet" href="./styles/deal-view.css?v=6">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=20">
@@ -351,7 +351,7 @@
 
             <section
               class="desk-data-rail"
-              aria-label="Dataset access"
+              aria-label="Desk API"
               data-monitor-data
               hidden
               inert
@@ -364,10 +364,9 @@
                 aria-controls="desk-data-body"
                 data-monitor-data-toggle
               >
-                <strong data-monitor-data-label>Data</strong>
-                <span data-monitor-data-summary>H200 7D</span>
-                <small data-monitor-data-count>0 rows</small>
-                <time data-monitor-data-time hidden></time>
+                <strong data-monitor-data-label>Desk API</strong>
+                <span data-monitor-data-dataset>Compute prices</span>
+                <small data-monitor-data-context>H200 7D</small>
               </button>
               <div
                 class="desk-data-rail__body"
@@ -376,71 +375,40 @@
                 hidden
                 inert
               >
-                <div class="desk-data-rail__toolbar">
+                <nav class="desk-data-rail__path" aria-label="Dataset path" tabindex="0">
+                  <ol data-monitor-data-path></ol>
+                </nav>
+                <div class="desk-data-rail__workspace">
+                  <p
+                    class="desk-data-rail__action-label"
+                    id="desk-data-action-label"
+                    data-monitor-data-action-label
+                  >Download full dataset</p>
                   <div
-                    class="desk-data-rail__tabs"
-                    role="tablist"
-                    aria-label="Dataset access"
-                    data-monitor-data-tabs
-                  >
-                    <button
-                      id="desk-data-tab-rows"
-                      type="button"
-                      role="tab"
-                      aria-selected="true"
-                      aria-controls="desk-data-panel-rows"
-                      data-monitor-data-tab="rows"
-                    >Rows</button>
-                    <button
-                      id="desk-data-tab-curl"
-                      type="button"
-                      role="tab"
-                      aria-selected="false"
-                      aria-controls="desk-data-panel-command"
-                      tabindex="-1"
-                      data-monitor-data-tab="curl"
-                    >Curl</button>
-                    <button
-                      id="desk-data-tab-sql"
-                      type="button"
-                      role="tab"
-                      aria-selected="false"
-                      aria-controls="desk-data-panel-command"
-                      tabindex="-1"
-                      data-monitor-data-tab="sql"
-                    >SQL</button>
-                  </div>
-                  <button class="desk-data-rail__copy" type="button" data-monitor-data-copy>Copy</button>
-                </div>
-                <div
-                  class="desk-data-rail__panel"
-                  id="desk-data-panel-rows"
-                  role="tabpanel"
-                  aria-labelledby="desk-data-tab-rows"
-                  data-monitor-data-panel="rows"
-                >
-                  <div
-                    class="desk-data-rail__viewport"
+                    class="desk-data-rail__command"
                     role="region"
-                    aria-label="Scrollable dataset preview"
-                    tabindex="0"
+                    aria-labelledby="desk-data-action-label"
+                    data-monitor-data-command-shell
                   >
-                    <table data-monitor-data-table>
-                      <caption class="desk-data-rail__sr-only">Selected market data rows</caption>
-                    </table>
+                    <span class="desk-data-rail__prompt" aria-hidden="true" data-monitor-data-prompt>$</span>
+                    <pre tabindex="0"><code data-monitor-data-command></code></pre>
                   </div>
                 </div>
-                <div
-                  class="desk-data-rail__panel desk-data-rail__command-panel"
-                  id="desk-data-panel-command"
-                  role="tabpanel"
-                  data-monitor-data-panel="command"
-                  hidden
-                  inert
-                >
-                  <span class="desk-data-rail__command-kind" data-monitor-data-command-kind>Download</span>
-                  <pre><code data-monitor-data-command></code></pre>
-                </div>
+                <footer class="desk-data-rail__footer">
+                  <div class="desk-data-rail__secondary-actions">
+                    <a
+                      href="./data/v1/compute-prices.json"
+                      target="_blank"
+                      rel="noopener"
+                      data-monitor-data-open-json
+                    >Open JSON</a>
+                    <button
+                      type="button"
+                      data-monitor-data-mode
+                    >DataFusion SQL</button>
+                  </div>
+                  <button type="button" data-monitor-data-copy>Copy command</button>
+                </footer>
               </div>
               <p class="desk-data-rail__sr-only" aria-live="polite" data-monitor-data-status></p>
             </section>
@@ -601,6 +569,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=125"></script>
+    <script type="module" src="./desk.js?v=129"></script>
   </body>
 </html>

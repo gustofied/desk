@@ -230,12 +230,9 @@ function buildMarketDepthRows(runtime) {
 function buildPublicDataExport(table, records, { asOf, cadence, kind }) {
   if (
     !table?.id ||
-    !table?.file ||
-    !Array.isArray(table.modes) ||
-    !table.modes.includes("curl") ||
-    !table.modes.includes("sql")
+    !table?.file
   ) {
-    throw new Error("A public data table needs an id, file, curl, and SQL modes");
+    throw new Error("A public data table needs an id and file");
   }
   validateFlatRecords(records, table.id);
   const revision = revisionFor(records);
