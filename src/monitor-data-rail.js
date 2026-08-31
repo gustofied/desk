@@ -62,7 +62,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       ? "Rows copied"
       : activeTab === "sql"
         ? "SQL query copied"
-        : "Download command copied";
+        : "Curl command copied";
     announce(copied ? copiedLabel : "Copy unavailable in this browser");
     window.clearTimeout(copyFeedbackTimer);
     nodes.copy.textContent = copied ? "Copied" : "Unavailable";
@@ -83,7 +83,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       return;
     }
     if (!model.modes.includes(activeTab)) activeTab = model.modes[0] || "rows";
-    nodes.label.textContent = "Data";
+    nodes.label.textContent = model.label;
     nodes.summary.textContent = model.summary;
     nodes.count.textContent = formatRowCount(model.rowCount);
     if (model.asOf) {
@@ -173,19 +173,14 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     setPanelVisibility(nodes.commandPanel, !showRows);
     if (!showRows) {
       const value = activeTab === "sql" ? model.sql : model.curl;
-      const sqlMode = activeTab === "sql";
-      nodes.commandKind.textContent = "SQL";
-      nodes.commandKind.hidden = !sqlMode;
+      nodes.commandKind.textContent = activeTab === "sql" ? "DuckDB SQL" : "Download";
       nodes.command.textContent = value;
       nodes.copy.setAttribute(
         "aria-label",
-        sqlMode ? "Copy SQL query" : "Copy download command",
+        activeTab === "sql" ? "Copy SQL query" : "Copy curl command",
       );
-      nodes.commandPanel.dataset.commandMode = sqlMode ? "sql" : "download";
       nodes.commandPanel?.setAttribute("aria-labelledby", activeTabButton()?.id || "");
     } else {
-      nodes.commandKind.hidden = true;
-      delete nodes.commandPanel.dataset.commandMode;
       nodes.copy.setAttribute("aria-label", "Copy visible rows");
     }
   }
@@ -198,7 +193,6 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
 
   function syncOpenState({ animateClose = true } = {}) {
     nodes.toggle?.setAttribute("aria-expanded", String(open));
-    syncToggleLabel();
     if (nodes.body) {
       bodyAnimation?.cancel();
       bodyAnimation = null;
@@ -231,21 +225,6 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       }
     }
     root.dataset.open = String(open);
-  }
-
-  function syncToggleLabel() {
-    if (!nodes.toggle || !model) return;
-    const state = open ? "Close" : "Open";
-    const parts = [
-      `${state} ${model.label}`,
-      model.summary,
-      formatRowCount(model.rowCount),
-    ];
-    if (model.asOf) {
-      const date = model.asOf instanceof Date ? model.asOf : new Date(model.asOf);
-      parts.push(`observed ${formatAsOf(date)}`);
-    }
-    nodes.toggle.setAttribute("aria-label", parts.join(", "));
   }
 
   function announce(message) {
