@@ -126,11 +126,12 @@ function publicDatasetUrl(card) {
 }
 
 function downloadCommand(url) {
-  const fileName = new URL(url).pathname.split("/").at(-1);
   return [
-    "curl -fsSL \\",
-    `  ${url} \\`,
-    `  -o ${fileName}`,
+    "curl \\",
+    "  --fail \\",
+    "  --location \\",
+    "  --remote-name \\",
+    `  ${url}`,
   ].join("\n");
 }
 

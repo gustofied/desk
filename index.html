@@ -88,7 +88,7 @@
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
     <link rel="stylesheet" href="./styles/desk-controls.css?v=73">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=50">
-    <link rel="stylesheet" href="./styles/monitor-data.css?v=9">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=10">
     <link rel="stylesheet" href="./styles/deal-view.css?v=6">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=20">
@@ -383,14 +383,13 @@
                     class="desk-data-rail__action-label"
                     id="desk-data-action-label"
                     data-monitor-data-action-label
-                  >Download full dataset</p>
+                  >Download compute prices</p>
                   <div
                     class="desk-data-rail__command"
                     role="region"
                     aria-labelledby="desk-data-action-label"
                     data-monitor-data-command-shell
                   >
-                    <span class="desk-data-rail__prompt" aria-hidden="true" data-monitor-data-prompt>$</span>
                     <pre tabindex="0"><code data-monitor-data-command></code></pre>
                   </div>
                 </div>
@@ -405,9 +404,9 @@
                     <button
                       type="button"
                       data-monitor-data-mode
-                    >DataFusion SQL</button>
+                    >View SQL</button>
                   </div>
-                  <button type="button" data-monitor-data-copy>Copy command</button>
+                  <button type="button" data-monitor-data-copy>Copy cURL</button>
                 </footer>
               </div>
               <p class="desk-data-rail__sr-only" aria-live="polite" data-monitor-data-status></p>
@@ -569,6 +568,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=129"></script>
+    <script type="module" src="./desk.js?v=130"></script>
   </body>
 </html>

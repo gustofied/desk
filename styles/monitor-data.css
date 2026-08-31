@@ -152,22 +152,11 @@
 }
 
 .desk-data-rail__command {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 16px;
-  align-content: center;
-  min-height: 224px;
+  min-height: 0;
   padding: 32px;
   background: color-mix(in srgb, var(--desk-accent) 4%, transparent);
   border: 1px solid var(--desk-data-rule);
   border-radius: 4px;
-}
-
-.desk-data-rail__prompt {
-  min-width: 24px;
-  color: var(--desk-accent-deep);
-  font: 600 14px/20px "Geist Mono", ui-monospace, monospace;
-  font-variant-numeric: tabular-nums;
 }
 
 .desk-data-rail pre {
@@ -291,7 +280,6 @@
   }
 
   .desk-data-rail__command {
-    min-height: 192px;
     padding: 24px 16px;
   }
 
@@ -325,10 +313,6 @@
 }
 
 @media (max-height: 600px) {
-  .desk-data-rail__command {
-    min-height: 160px;
-  }
-
   .desk-data-rail pre {
     max-height: min(144px, 40dvh);
   }
