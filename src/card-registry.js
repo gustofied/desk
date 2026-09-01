@@ -16,7 +16,7 @@ const DEAL_VIEW_SLUG = "deal-041";
 const DEAL_VIEW_DATA_FILE = "data/deal-041.json";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
-export const PUBLISHED_CARD_VERSION = "v15";
+export const PUBLISHED_CARD_VERSION = "v16";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),
@@ -59,7 +59,7 @@ export const GPU_LAYERS = Object.freeze([
     id: "H100",
     label: "H100",
     unit: "usd-hour",
-    views: Object.freeze(["price", "index"]),
+    views: Object.freeze(["price", "index", "spread"]),
     strokeOpacity: 0.74,
     strokeDasharray: "6 4",
   }),
@@ -67,7 +67,7 @@ export const GPU_LAYERS = Object.freeze([
     id: "H200",
     label: "H200",
     unit: "usd-hour",
-    views: Object.freeze(["price", "index"]),
+    views: Object.freeze(["price", "index", "spread"]),
     strokeOpacity: 0.78,
     strokeDasharray: "10 4",
   }),
@@ -75,7 +75,7 @@ export const GPU_LAYERS = Object.freeze([
     id: "B200",
     label: "B200",
     unit: "usd-hour",
-    views: Object.freeze(["price", "index"]),
+    views: Object.freeze(["price", "index", "spread"]),
     strokeOpacity: 0.62,
     strokeDasharray: "2 3",
   }),
@@ -83,7 +83,7 @@ export const GPU_LAYERS = Object.freeze([
     id: "B300",
     label: "B300",
     unit: "usd-hour",
-    views: Object.freeze(["price", "index"]),
+    views: Object.freeze(["price", "index", "spread"]),
     strokeOpacity: 0.48,
     strokeDasharray: "8 4",
   }),
@@ -161,7 +161,12 @@ export const CARD_REGISTRY = Object.freeze([
     ),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Price", unit: "usd-hour" }),
-      Object.freeze({ id: "index", label: "Index", unit: "index" }),
+      Object.freeze({ id: "index", label: "Return", unit: "index" }),
+      Object.freeze({
+        id: "spread",
+        label: "Spread",
+        unit: "percentage-points",
+      }),
     ]),
   }),
   Object.freeze({
@@ -439,16 +444,24 @@ export function normalizeCardState(cardId, stateParams = {}) {
   const requiresIndex = requestedLayers.some(
     (layerId) => getLayerDefinition(card, layerId)?.unit === "index",
   );
-  const scale = requiresIndex ? "index" : requestedScale;
-  const compatibleLayers = new Set(
-    requestedLayers.filter((layerId) =>
-      getLayerDefinition(card, layerId)?.views.includes(scale),
-    ),
+  let scale = requiresIndex ? "index" : requestedScale;
+  let normalizedLayers = compatibleLayerIds(
+    card,
+    requestedLayers,
+    gpu,
+    scale,
   );
-  compatibleLayers.add(gpu);
-  const normalizedLayers = card.layers
-    .map((layer) => layer.id)
-    .filter((layerId) => compatibleLayers.has(layerId));
+  if (scale === "spread" && !isGpuSpreadPair(card, normalizedLayers)) {
+    scale = card.visualizations.some(({ id }) => id === "index")
+      ? "index"
+      : card.defaults.scale;
+    normalizedLayers = compatibleLayerIds(
+      card,
+      requestedLayers,
+      gpu,
+      scale,
+    );
+  }
   const layers = card.allowComparisons === false ? [gpu] : normalizedLayers;
   const requestedRange = legacyDepthHistory ? "now" : requestedRangeId;
   const allowedRanges = card.ranges || Object.keys(RANGES);
@@ -488,6 +501,27 @@ export function normalizeCardState(cardId, stateParams = {}) {
     theme,
     ...options,
   };
+}
+
+function compatibleLayerIds(card, requestedLayers, gpu, scale) {
+  const compatibleLayers = new Set(
+    requestedLayers.filter((layerId) =>
+      getLayerDefinition(card, layerId)?.views.includes(scale),
+    ),
+  );
+  compatibleLayers.add(gpu);
+  return card.layers
+    .map((layer) => layer.id)
+    .filter((layerId) => compatibleLayers.has(layerId));
+}
+
+function isGpuSpreadPair(card, layerIds) {
+  return (
+    layerIds.length === 2 &&
+    layerIds.every(
+      (layerId) => getLayerDefinition(card, layerId)?.unit === "usd-hour",
+    )
+  );
 }
 
 function normalizeDealState(card, stateParams) {

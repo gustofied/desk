@@ -640,6 +640,10 @@ button.compute-share-card-frame:focus-visible {
   pointer-events: none;
 }
 
+.gpu-index[data-card-scale="spread"] .gpu-benchmark__value-area {
+  opacity: 0.12;
+}
+
 .gpu-benchmark__reference-line {
   fill: none;
   opacity: 0.12;
@@ -675,7 +679,7 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__tooltip-row {
-  grid-template-columns: 20px 36px minmax(48px, auto) minmax(68px, auto);
+  grid-template-columns: 20px 52px minmax(48px, auto) minmax(52px, auto);
 }
 
 .gpu-benchmark__tooltip-row i {

@@ -23,6 +23,7 @@ import {
 } from "./card-registry.js";
 import { createGpuPriceBarModel } from "./gpu-price-bar-model.js";
 import { paintGpuPriceBarChart } from "./gpu-price-bar-presentation.js";
+import { createGpuSpreadSeries } from "./gpu-spread-model.js";
 import { createGpuMarketDepthModel } from "./gpu-market-depth-model.js";
 import { paintGpuMarketDepthChart } from "./gpu-market-depth-presentation.js";
 import { createDealViewModel } from "./deal-view-model.js";
@@ -69,6 +70,7 @@ import {
   chartYDomain,
   comparisonStrokeOpacity,
   INDEX_BASELINE,
+  SPREAD_BASELINE,
   spreadLineLabels,
 } from "./chart-domain.js";
 const root = document.querySelector("[data-gpu-benchmark-card]");
@@ -1472,9 +1474,12 @@ if (root) {
       gpu: state.selected,
       layers: Array.from(state.layers),
     });
-    const composition = labels.length > 1
-      ? `${labels[0]} with ${labels.slice(1).join(" + ")}`
-      : labels[0] || state.selected;
+    const composition = state.scale === "spread" && labels.length === 2
+      ? `${labels[0]} − ${labels[1]}`
+      : labels.length > 1
+        ? `${labels[0]} with ${labels.slice(1).join(" + ")}`
+        : labels[0] || state.selected;
+    if (state.scale === "spread") return composition;
     return `${composition} ${ranges[state.range].label}`;
   }
 
@@ -1656,10 +1661,13 @@ if (root) {
           scale: cardDefinition.defaults.scale,
         })
       : setPrimaryLayer(cardId, base, layerId);
+    const scaleChange = !wasEmpty && base.scale !== next.scale
+      ? `, view changed to ${visualizationLabel(next.scale)}`
+      : "";
     mutateComposition(next, {
       message: wasEmpty
         ? `${layerId} added as the main series`
-        : `${layerId} is now the main series`,
+        : `${layerId} is now the main series${scaleChange}`,
     });
   }
 
@@ -1683,6 +1691,7 @@ if (root) {
     if (state.mode !== "craft") return;
     const hadToken = state.layers.has("TOKEN");
     const next = setCompositionScale(cardId, currentCardState(), scale);
+    if (next.scale !== scale) return;
     mutateComposition(next, {
       message:
         scale === "price" && hadToken && !next.layers.includes("TOKEN")
@@ -1976,7 +1985,8 @@ if (root) {
           state.scale === visualization.id,
         disabled: () =>
           state.craftEmpty || (!isDepthCard && state.mode !== "craft") ||
-          (isDepthCard && state.mode === "catalog"),
+          (isDepthCard && state.mode === "catalog") ||
+          (visualization.id === "spread" && !spreadComparisonReady()),
         run: () => selectScale(visualization.id),
       })),
       ...(isBarCard || isDepthCard || isDealCard
@@ -2258,16 +2268,19 @@ if (root) {
       return `${visualizationLabel(cardState.scale, definition)} ${cardState.target} node target`;
     }
     const labels = orderedLayerLabels(cardState, definition);
-    const composition = labels.length > 1
-      ? `${labels[0]} with ${labels.slice(1).join(" + ")}`
-      : labels[0] || cardState.gpu;
+    const composition = cardState.scale === "spread" && labels.length === 2
+      ? `${labels[0]} − ${labels[1]}`
+      : labels.length > 1
+        ? `${labels[0]} with ${labels.slice(1).join(" + ")}`
+        : labels[0] || cardState.gpu;
     return `${composition} ${ranges[cardState.range].label}`;
   }
 
   function orderedLayerLabels(cardState, definition = cardDefinition) {
+    const normalized = normalizeCardState(definition.id, cardState);
     const layerIds = [
-      cardState.gpu,
-      ...cardState.layers.filter((layerId) => layerId !== cardState.gpu),
+      normalized.gpu,
+      ...normalized.layers.filter((layerId) => layerId !== normalized.gpu),
     ];
     return layerIds.map((layerId) => {
       const layer = getLayerDefinition(definition, layerId);
@@ -3662,11 +3675,11 @@ if (root) {
     const adding = !state.layers.has(layerId);
     const previousScale = state.scale;
     const next = toggleCompositionLayer(cardId, currentCardState(), layerId);
+    const scaleChange = previousScale !== next.scale
+      ? `, view changed to ${visualizationLabel(next.scale)}`
+      : "";
     mutateComposition(next, {
-      message:
-        adding && previousScale !== next.scale
-          ? `${layer.label} added, view changed to Index`
-          : `${layer.label} ${adding ? "added" : "removed"}`,
+      message: `${layer.label} ${adding ? "added" : "removed"}${scaleChange}`,
     });
   }
 
@@ -3778,13 +3791,19 @@ if (root) {
     if (nodes.workspaceTitle) {
       const titleMode = state.mode === "craft" ? "Craft" : "Monitor";
       const label = workspaceLabel();
+      const displayedRange = rangeControlLabel(state.range);
       const rangeSuffix = isBarCard || isDealCard
         ? ""
         : isDepthCard
           ? state.scale === "history" && !/\bhistory\b/i.test(label)
             ? " history"
             : ""
-          : ` ${rangeControlLabel(state.range)}`;
+          : label
+              .trim()
+              .toUpperCase()
+              .endsWith(` ${displayedRange.toUpperCase()}`)
+            ? ""
+            : ` ${displayedRange}`;
       nodes.workspaceTitle.textContent = state.mode === "craft" && state.craftEmpty
         ? "Craft new composition"
         : `${titleMode} ${label}${rangeSuffix}${state.craftDirty ? " edited" : ""}`;
@@ -3815,11 +3834,13 @@ if (root) {
       return;
     }
     const summarySeries = !isBarCard && !isDepthCard && !state.craftEmpty
-      ? createLayerSeries(state.selected, { scale: state.scale })
+      ? cardSeriesForState(currentCardState())[0]
       : null;
     const summaryLatest = summarySeries?.rows.at(-1);
     if (nodes.mobileSummaryLabel) {
-      const summaryLayer = getLayerDefinition(cardDefinition, state.selected);
+      const summaryLayer =
+        summarySeries?.layer ||
+        getLayerDefinition(cardDefinition, state.selected);
       nodes.mobileSummaryLabel.textContent =
         summaryLayer?.shortLabel || summaryLayer?.label || state.selected;
     }
@@ -3853,6 +3874,7 @@ if (root) {
   function syncComposerControls() {
     const editing = state.mode === "craft";
     const empty = editing && state.craftEmpty;
+    const spreadReady = spreadComparisonReady();
     if (nodes.composer) {
       const available = editing;
       nodes.composer.hidden = !available;
@@ -3902,6 +3924,11 @@ if (root) {
       const selected = !empty && state.layers.has(button.dataset.cardLayer);
       const layer = getLayerDefinition(cardDefinition, button.dataset.cardLayer);
       const primary = !empty && button.dataset.cardLayer === state.selected;
+      const replacesSpreadComparison =
+        state.scale === "spread" &&
+        layer?.unit === "usd-hour" &&
+        !selected &&
+        !primary;
       button.hidden = primary;
       button.setAttribute("aria-pressed", String(selected));
       button.dataset.primary = String(primary);
@@ -3912,13 +3939,18 @@ if (root) {
           ? `${layer.label} is ${isBarCard ? "highlighted" : "the main series"}`
           : selected
             ? `Remove ${layer.label} ${isBarCard ? "bar" : "comparison"}`
-            : `Add ${layer.label} ${isBarCard ? "bar" : "comparison"}`,
+            : replacesSpreadComparison
+              ? `Compare with ${layer.label}, replacing the current comparison`
+              : `Add ${layer.label} ${isBarCard ? "bar" : "comparison"}`,
       );
     });
     nodes.scaleButtons.forEach((button) => {
       const selected = !empty && button.dataset.cardScale === state.scale;
       button.setAttribute("aria-pressed", String(selected));
-      button.disabled = !state.shareReady || empty;
+      button.disabled =
+        !state.shareReady ||
+        empty ||
+        (button.dataset.cardScale === "spread" && !spreadReady);
       button.tabIndex = button.disabled ? -1 : 0;
       button.setAttribute(
         "aria-label",
@@ -4014,15 +4046,21 @@ if (root) {
     if (empty && nodes.tooltip) nodes.tooltip.hidden = true;
     if (empty && nodes.chartState) nodes.chartState.hidden = true;
     if (nodes.chartDescription && !empty && !isDealCard) {
-      const labels = activeLayerDefinitions().map((layer) => layer.label).join(", ");
+      const orderedLabels = orderedLayerLabels(currentCardState());
+      const labels = orderedLabels.join(", ");
+      const spreadLabel = orderedLabels.length === 2
+        ? `${orderedLabels[0]} minus ${orderedLabels[1]}`
+        : labels;
       nodes.svg?.setAttribute(
         "aria-label",
         isDepthCard
           ? `${cardDefinition.title}, ${visualizationLabel(state.scale)} chart mode, ${state.options.target} node target`
           : isBarCard
           ? `${labels} hourly price comparison`
+          : state.scale === "spread"
+          ? `${spreadLabel} cumulative return spread`
           : state.scale === "index"
-          ? `${labels} comparison index`
+          ? `${labels} cumulative returns`
           : `${labels} price history`,
       );
       nodes.chartDescription.textContent =
@@ -4032,6 +4070,8 @@ if (root) {
             : `${cardDefinition.title}. Shelf length shows where capacity becomes available. The benchmark and target meet at the executable price.`
           : isBarCard
           ? `${labels} latest hourly benchmark prices. Each wider band shows the middle range of quotes.`
+          : state.scale === "spread"
+          ? `${spreadLabel}. The line shows the cumulative return difference in percentage points. Positive values mean ${orderedLabels[0]} has outperformed ${orderedLabels[1]}; negative values mean ${orderedLabels[1]} has outperformed ${orderedLabels[0]}.`
           : state.scale === "index"
           ? `${labels} rebased to 100 at the start of the selected range.`
           : `${labels} hourly prices. The band shows the middle range of quotes for ${state.selected}.`;
@@ -4326,8 +4366,13 @@ if (root) {
 
   function workspaceLabel() {
     if (state.craftEmpty) return "New composition";
-    return state.catalogName ||
-      (cardDefinition.renderer === "line" ? state.selected : cardDefinition.title);
+    if (state.catalogName) return state.catalogName;
+    if (cardDefinition.renderer !== "line") return cardDefinition.title;
+    if (state.scale === "spread") {
+      const labels = orderedLayerLabels(currentCardState());
+      if (labels.length === 2) return `${labels[0]} − ${labels[1]}`;
+    }
+    return state.selected;
   }
 
   function rangeControlLabel(range) {
@@ -4586,7 +4631,9 @@ if (root) {
       return;
     }
     if (!nodes.shareStatus) return;
-    const primary = createLayerSeries(state.selected, { scale: state.scale });
+    const renderedSeries = cardSeriesForState(currentCardState());
+    const primary =
+      renderedSeries.find((series) => series.primary) || renderedSeries[0];
     const latest = primary?.rows.at(-1);
     if (!latest) {
       nodes.shareStatus.textContent = "";
@@ -4606,9 +4653,11 @@ if (root) {
     ]
       .filter(Boolean)
       .map((layer) => layer.shortLabel || layer.label);
-    const layerNames = layerLabels.length > 1
-      ? `${layerLabels[0]} compared with ${layerLabels.slice(1).join(", ")}`
-      : layerLabels[0];
+    const layerNames = state.scale === "spread"
+      ? primary.layer.label
+      : layerLabels.length > 1
+        ? `${layerLabels[0]} compared with ${layerLabels.slice(1).join(", ")}`
+        : layerLabels[0];
     nodes.shareStatus.textContent =
       `${layerNames} ${ranges[state.range].label} ` +
       `${formatCardHeadline(latest.plotValue, state.scale)}`;
@@ -4716,9 +4765,16 @@ if (root) {
     }
     const rangeSeries = activeSeries({ zoom: false });
     const chartSeries = activeSeries({ zoom: true });
-    const primary = rangeSeries.find((series) => series.layer.id === state.selected);
+    const primary =
+      rangeSeries.find((series) => series.layer.id === state.selected) ||
+      rangeSeries.find((series) => series.primary) ||
+      rangeSeries[0];
     if (!primary?.rows.length) {
-      showFailure(`${state.selected} history is still being collected.`);
+      showFailure(
+        state.scale === "spread"
+          ? "No overlapping observations"
+          : `${state.selected} history is still being collected.`,
+      );
       return;
     }
 
@@ -5027,17 +5083,10 @@ if (root) {
         continue;
       }
 
-      const cardSeries = cardState.layers
-        .map((layerId) => createLayerSeries(layerId, {
-          scale: cardState.scale,
-          range: cardState.range,
-          primaryLayerId: cardState.gpu,
-          definition: entryCard,
-        }))
-        .filter((series) => series?.rows.length);
-      const primary = cardSeries.find(
-        (series) => series.layer.id === cardState.gpu,
-      );
+      const cardSeries = cardSeriesForState(cardState, {
+        definition: entryCard,
+      });
+      const primary = cardSeries.find((series) => series.primary) || cardSeries[0];
       const latest = primary?.rows.at(-1);
       if (!cardNodes || !primary?.rows.length || !latest) continue;
 
@@ -5099,10 +5148,51 @@ if (root) {
     return cardDefinition.layers.filter((layer) => state.layers.has(layer.id));
   }
 
+  function spreadComparisonReady(cardState = currentCardState()) {
+    const normalized = normalizeCardState(cardDefinition.id, cardState);
+    return (
+      normalized.layers.length === 2 &&
+      normalized.layers.every(
+        (layerId) =>
+          getLayerDefinition(cardDefinition, layerId)?.unit === "usd-hour",
+      )
+    );
+  }
+
   function activeSeries({ zoom = false } = {}) {
-    return activeLayerDefinitions()
-      .map((layer) => createLayerSeries(layer.id, { scale: state.scale, zoom }))
+    return cardSeriesForState(currentCardState(), { zoom });
+  }
+
+  function cardSeriesForState(
+    cardState,
+    { zoom = false, definition = cardDefinition } = {},
+  ) {
+    const normalized = normalizeCardState(definition.id, cardState);
+    const layerIds = normalized.layers;
+    const orderedLayerIds = [
+      normalized.gpu,
+      ...layerIds.filter((layerId) => layerId !== normalized.gpu),
+    ];
+    const memberSeries = orderedLayerIds
+      .map((layerId) => createLayerSeries(layerId, {
+        scale: normalized.scale === "spread" ? "price" : normalized.scale,
+        zoom: normalized.scale === "spread" ? false : zoom,
+        range: normalized.range,
+        primaryLayerId: normalized.gpu,
+        definition,
+      }))
       .filter((series) => series?.rows.length);
+
+    if (normalized.scale !== "spread") return memberSeries;
+    if (memberSeries.length !== 2) return [];
+    try {
+      const spread = createGpuSpreadSeries(memberSeries[0], memberSeries[1], {
+        zoomWindow: zoom ? state.zoomWindow : null,
+      });
+      return spread.rows.length ? [spread] : [];
+    } catch {
+      return [];
+    }
   }
 
   function createLayerSeries(
@@ -5172,10 +5262,13 @@ if (root) {
       return;
     }
     const primary =
-      series.find((candidate) => candidate.layer.id === primaryLayerId) || series[0];
+      series.find((candidate) => candidate.layer.id === primaryLayerId) ||
+      series.find((candidate) => candidate.primary) ||
+      series[0];
     const latest = primary.rows.at(-1);
     if (!latest) return;
-    const isPrimary = (candidate) => candidate.layer.id === primary.layer.id;
+    const isPrimary = (candidate) =>
+      candidate === primary || candidate.layer.id === primary.layer.id;
     const svg = d3.select(svgNode);
     svg.selectAll("*").remove();
     svg.attr("viewBox", "0 0 1200 675");
@@ -5284,24 +5377,34 @@ if (root) {
     const valueArea = d3
       .area()
       .x((row) => x(row.date))
-      .y0(scale === "index" ? y(INDEX_BASELINE) : 675)
+      .y0(
+        scale === "index"
+          ? y(INDEX_BASELINE)
+          : scale === "spread"
+            ? y(SPREAD_BASELINE)
+            : 675,
+      )
       .y1((row) => y(row.plotValue))
       .curve(d3.curveMonotoneX);
-    if (scale === "index" || series.length === 1) {
+    if (scale === "index" || scale === "spread" || series.length === 1) {
       svg
         .append("path")
         .datum(primary.rows)
         .attr("d", valueArea)
         .attr("fill", palette.area)
-        .attr("fill-opacity", scale === "index" ? 0.09 : 0.055);
+        .attr(
+          "fill-opacity",
+          scale === "spread" ? 0.12 : scale === "index" ? 0.09 : 0.055,
+        );
     }
-    if (scale === "index") {
+    if (scale === "index" || scale === "spread") {
+      const baseline = scale === "spread" ? SPREAD_BASELINE : INDEX_BASELINE;
       svg
         .append("line")
         .attr("x1", chart.x)
         .attr("x2", chart.x + chart.width)
-        .attr("y1", y(INDEX_BASELINE))
-        .attr("y2", y(INDEX_BASELINE))
+        .attr("y1", y(baseline))
+        .attr("y2", y(baseline))
         .attr("stroke", palette.line)
         .attr("stroke-opacity", 0.12)
         .attr("stroke-width", 1)
@@ -5346,7 +5449,9 @@ if (root) {
 
   function renderChart(series, drawAnimation) {
     const primary =
-      series.find((candidate) => candidate.layer.id === state.selected) || series[0];
+      series.find((candidate) => candidate.layer.id === state.selected) ||
+      series.find((candidate) => candidate.primary) ||
+      series[0];
     const selectedRows = primary?.rows || [];
     const allRows = series.flatMap((candidate) => candidate.rows);
     if (!selectedRows.length || !allRows.length) return;
@@ -5437,11 +5542,14 @@ if (root) {
         .attr("d", area);
     }
 
-    if (state.scale === "index") {
-      const indexArea = d3
+    if (state.scale === "index" || state.scale === "spread") {
+      const baseline = state.scale === "spread"
+        ? SPREAD_BASELINE
+        : INDEX_BASELINE;
+      const relativeArea = d3
         .area()
         .x((row) => x(row.date))
-        .y0(y(INDEX_BASELINE))
+        .y0(y(baseline))
         .y1((row) => y(row.plotValue))
         .curve(d3.curveMonotoneX);
       plot
@@ -5449,15 +5557,15 @@ if (root) {
         .datum(selectedRows)
         .attr("class", "gpu-benchmark__value-area")
         .attr("aria-hidden", "true")
-        .attr("d", indexArea);
+        .attr("d", relativeArea);
       plot
         .append("line")
         .attr("class", "gpu-benchmark__reference-line")
         .attr("aria-hidden", "true")
         .attr("x1", 0)
         .attr("x2", innerWidth)
-        .attr("y1", y(INDEX_BASELINE))
-        .attr("y2", y(INDEX_BASELINE))
+        .attr("y1", y(baseline))
+        .attr("y2", y(baseline))
         .attr("stroke", currentLineColor());
     }
 
@@ -5580,7 +5688,9 @@ if (root) {
       .attr("aria-valuenow", focusIndex)
       .attr(
         "aria-label",
-        `${state.selected} main layer with ${series.length} ${series.length === 1 ? "layer" : "layers"}. Use left and right arrow keys to inspect observations.`,
+        state.scale === "spread"
+          ? `${primary.layer.label} return spread. Use left and right arrow keys to inspect observations.`
+          : `${state.selected} main layer with ${series.length} ${series.length === 1 ? "layer" : "layers"}. Use left and right arrow keys to inspect observations.`,
       )
       .on("focus", () => {
         interaction.style("display", null);
@@ -5743,10 +5853,11 @@ if (root) {
           const row = nearestRow(candidate.rows, selectedRow.date);
           return row
             ? {
-                ...row,
-                layer: candidate.layer,
-                primary: candidate.primary,
-              }
+              ...row,
+              layer: candidate.layer,
+              primary: candidate.primary,
+              members: candidate.members,
+            }
             : null;
         })
         .filter(Boolean);
@@ -5756,12 +5867,14 @@ if (root) {
         .attr("aria-valuenow", focusIndex)
         .attr(
           "aria-valuetext",
-          `${formatDateTime(selectedRow.date)}. ${tooltipRows
-            .map(
-              (row) =>
-                `${row.layer.label} ${formatPlotValue(row.plotValue, state.scale)}`,
-            )
-            .join(". ")}.`,
+          state.scale === "spread"
+            ? spreadObservationText(tooltipRows[0])
+            : `${formatDateTime(selectedRow.date)}. ${tooltipRows
+              .map(
+                (row) =>
+                  `${row.layer.label} ${formatPlotValue(row.plotValue, state.scale)}`,
+              )
+              .join(". ")}.`,
         );
       renderTooltip(selectedRow.date, tooltipRows);
       positionSvgTooltip({
@@ -5782,6 +5895,31 @@ if (root) {
   function renderTooltip(dateValue, rows) {
     const date = document.createElement("time");
     date.textContent = formatDateTime(dateValue);
+    if (state.scale === "spread" && rows[0]) {
+      const row = rows[0];
+      const [primaryMember, comparisonMember] = row.members || [];
+      const spreadEntries = [
+        createSpreadTooltipEntry({
+          label: primaryMember?.layer?.shortLabel || primaryMember?.layer?.label || "Main",
+          value: formatSignedPercent(row.primaryReturn),
+          selected: false,
+        }),
+        createSpreadTooltipEntry({
+          label: comparisonMember?.layer?.shortLabel || comparisonMember?.layer?.label || "Compare",
+          value: formatSignedPercent(row.comparisonReturn),
+          selected: false,
+          secondary: true,
+        }),
+        createSpreadTooltipEntry({
+          label: "Spread",
+          value: formatSpreadPoints(row.plotValue),
+          selected: true,
+        }),
+      ];
+      nodes.tooltip.replaceChildren(date, ...spreadEntries);
+      nodes.tooltip.hidden = false;
+      return;
+    }
     const entries = rows.map((row) => {
       const entry = document.createElement("span");
       const swatch = document.createElement("i");
@@ -5824,6 +5962,58 @@ if (root) {
     });
     nodes.tooltip.replaceChildren(date, ...entries);
     nodes.tooltip.hidden = false;
+  }
+
+  function createSpreadTooltipEntry({
+    label,
+    value,
+    selected,
+    secondary = false,
+  }) {
+    const entry = document.createElement("span");
+    const swatch = document.createElement("i");
+    const name = document.createElement("b");
+    const metric = document.createElement("strong");
+    const detail = document.createElement("small");
+    entry.className = "gpu-benchmark__tooltip-row";
+    if (selected) entry.dataset.selected = "true";
+    swatch.style.backgroundColor = secondary
+      ? "transparent"
+      : currentLineColor();
+    if (secondary) {
+      swatch.style.backgroundImage =
+        `repeating-linear-gradient(90deg, ${currentSecondaryLineColor()} 0 4px, ` +
+        "transparent 4px 7px)";
+      swatch.style.opacity = String(comparisonStrokeOpacity(currentTheme()));
+    }
+    name.textContent = label;
+    metric.textContent = value;
+    detail.textContent = "";
+    entry.append(swatch, name, metric, detail);
+    return entry;
+  }
+
+  function spreadObservationText(row) {
+    if (!row) return "Spread observation unavailable";
+    const [primaryMember, comparisonMember] = row.members || [];
+    const primaryLabel =
+      primaryMember?.layer?.shortLabel || primaryMember?.layer?.label || "Main";
+    const comparisonLabel =
+      comparisonMember?.layer?.shortLabel ||
+      comparisonMember?.layer?.label ||
+      "Comparison";
+    const spread = Number(row.plotValue);
+    const result =
+      Math.abs(spread) < 0.05
+        ? "Returns are level over the selected range."
+        : `${spread > 0 ? primaryLabel : comparisonLabel} has outperformed over the selected range.`;
+    return [
+      formatDateTime(row.date),
+      `${primaryLabel} ${formatSignedPercent(row.primaryReturn)}`,
+      `${comparisonLabel} ${formatSignedPercent(row.comparisonReturn)}`,
+      `Spread ${formatSpreadPoints(spread)}`,
+      result,
+    ].join(". ");
   }
 
   function nearestRow(rows, date) {
@@ -5966,17 +6156,34 @@ if (root) {
 
   function formatPlotValue(value, scale = state.scale) {
     if (scale === "price") return formatUsd(value);
+    if (scale === "spread") return formatSpreadPoints(value);
     const number = Number(value);
     if (!Number.isFinite(number)) return "pending";
-    return number.toFixed(number >= 100 ? 1 : 2);
+    return formatSignedPercent(number - INDEX_BASELINE);
   }
 
   function formatCardHeadline(value, scale = state.scale) {
     if (scale === "price") return formatUsd(value);
+    if (scale === "spread") return formatSpreadPoints(value);
     const change = Number(value) - 100;
     if (!Number.isFinite(change)) return "pending";
-    const rounded = Math.abs(change) < 0.05 ? 0 : change;
-    return `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}%`;
+    return formatSignedPercent(change);
+  }
+
+  function formatSignedPercent(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "pending";
+    const rounded = Math.abs(number) < 0.05 ? 0 : number;
+    const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
+    return `${sign}${Math.abs(rounded).toFixed(1)}%`;
+  }
+
+  function formatSpreadPoints(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "pending";
+    const rounded = Math.abs(number) < 0.05 ? 0 : number;
+    const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
+    return `${sign}${Math.abs(rounded).toFixed(1)} pts`;
   }
 
   function formatDateTime(date) {

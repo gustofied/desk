@@ -24,7 +24,7 @@ links preserve the view's data, range, chart mode, palette, and theme.
 - H100 market depth as a current capacity curve or depth history
 - Deal 041 as a compact private market workflow
 - Token Price Index as a comparison layer
-- Price and index scales for comparisons across similar and mixed series
+- Price, return, and two-GPU return-spread comparisons
 - Four palettes with light and dark themes
 
 The included data is a deterministic product showcase. It is designed to

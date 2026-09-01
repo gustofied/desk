@@ -34,6 +34,7 @@ import { createGpuPriceBarModel } from "../src/gpu-price-bar-model.js";
 import { renderGpuPriceBarSvg } from "../src/gpu-price-bar-presentation.js";
 import { createGpuMarketDepthModel } from "../src/gpu-market-depth-model.js";
 import { renderGpuMarketDepthSvg } from "../src/gpu-market-depth-presentation.js";
+import { createGpuSpreadSeries } from "../src/gpu-spread-model.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 await mkdir(join(root, ".cache", "fontconfig"), { recursive: true });
@@ -366,6 +367,19 @@ function publishedStates() {
     for (const visualization of cardDefinition.visualizations) {
       const scale = visualization.id;
       if (!primary.views.includes(scale)) continue;
+      if (scale === "spread") {
+        for (const comparison of gpuLayers) {
+          if (comparison.id === primary.id || !comparison.views.includes(scale)) {
+            continue;
+          }
+          addPublishedLineStates(statesByPath, {
+            primary,
+            layers: [primary.id, comparison.id],
+            scale,
+          });
+        }
+        continue;
+      }
       const optionalLayers = cardDefinition.layers.filter(
         (layer) =>
           layer.id !== primary.id &&
@@ -378,32 +392,36 @@ function publishedStates() {
             .filter((_, index) => mask & (1 << index))
             .map((layer) => layer.id),
         ];
-        for (const range of cardDefinition.ranges) {
-          for (const palette of Object.keys(palettes)) {
-            for (const theme of THEMES) {
-              const state = normalizeCardState(cardDefinition.id, {
-                gpu: primary.id,
-                layers,
-                scale,
-                range,
-                palette,
-                theme,
-              });
-              const pageHref = publishedCardSharePath(
-                cardDefinition.id,
-                state,
-              );
-              if (statesByPath.has(pageHref)) {
-                throw new Error(`Duplicate published card route: ${pageHref}`);
-              }
-              statesByPath.set(pageHref, state);
-            }
-          }
-        }
+        addPublishedLineStates(statesByPath, { primary, layers, scale });
       }
     }
   }
   return Array.from(statesByPath.values());
+}
+
+function addPublishedLineStates(
+  statesByPath,
+  { primary, layers, scale },
+) {
+  for (const range of cardDefinition.ranges) {
+    for (const palette of Object.keys(palettes)) {
+      for (const theme of THEMES) {
+        const state = normalizeCardState(cardDefinition.id, {
+          gpu: primary.id,
+          layers,
+          scale,
+          range,
+          palette,
+          theme,
+        });
+        const pageHref = publishedCardSharePath(cardDefinition.id, state);
+        if (statesByPath.has(pageHref)) {
+          throw new Error(`Duplicate published card route: ${pageHref}`);
+        }
+        statesByPath.set(pageHref, state);
+      }
+    }
+  }
 }
 
 function publishedBarStates() {
@@ -478,7 +496,7 @@ function publishedDepthStates() {
 
 function previewModel(state) {
   const normalized = normalizeCardState(cardDefinition.id, state);
-  const series = normalized.layers.map((layerId) => {
+  const memberSeries = normalized.layers.map((layerId) => {
     const layer = cardDefinition.layers.find((item) => item.id === layerId);
     const sourceRows = rowsForRange(seriesByLayer.get(layerId) || [], normalized.range);
     if (!layer || !sourceRows.length) {
@@ -497,6 +515,10 @@ function previewModel(state) {
       })),
     };
   });
+  if (normalized.scale === "spread") {
+    return spreadPreviewModel(normalized, memberSeries);
+  }
+  const series = memberSeries;
   const primary =
     series.find((candidate) => candidate.primary) || series[0];
   const latest = primary?.rows.at(-1);
@@ -519,6 +541,44 @@ function previewModel(state) {
       .map(({ layer }) => layer.shortLabel || layer.label)
       .join(", "),
     rangeLabel: shareRangeLabel(primary.rows, normalized.range),
+  };
+}
+
+function spreadPreviewModel(normalized, memberSeries) {
+  const primaryMember = memberSeries.find((candidate) => candidate.primary);
+  const comparisonMember = memberSeries.find((candidate) => !candidate.primary);
+  if (!primaryMember || !comparisonMember || memberSeries.length !== 2) {
+    throw new Error(
+      `Spread previews require exactly two GPU series for ${normalized.gpu}`,
+    );
+  }
+  if (
+    primaryMember.layer.unit !== "usd-hour" ||
+    comparisonMember.layer.unit !== "usd-hour"
+  ) {
+    throw new Error("Spread previews only support GPU price series");
+  }
+
+  const spread = createGpuSpreadSeries(primaryMember, comparisonMember);
+  if (!spread?.rows?.length || !spread.latest) {
+    throw new Error(
+      `Missing overlapping spread data for ${primaryMember.layer.id} and ${comparisonMember.layer.id}`,
+    );
+  }
+
+  const primaryLabel = primaryMember.layer.shortLabel || primaryMember.layer.label;
+  const comparisonLabel =
+    comparisonMember.layer.shortLabel || comparisonMember.layer.label;
+  return {
+    ...normalized,
+    colors: themeColors(palettes[normalized.palette], normalized.theme),
+    series: [spread],
+    primary: spread,
+    members: spread.members,
+    headline: formatSpreadPoints(spread.latest.plotValue),
+    primaryTitle: `${primaryLabel} − ${comparisonLabel}`,
+    comparisonTitle: "",
+    rangeLabel: shareRangeLabel(spread.rows, normalized.range),
   };
 }
 
@@ -558,6 +618,9 @@ function depthPreviewModel(state) {
 }
 
 function renderPublishedCardImage(model) {
+  if (model.scale === "spread") {
+    return renderPublishedSpreadImage(model);
+  }
   const hasComparisons = model.comparisonTitle.length > 0;
   const chart = {
     x: 0,
@@ -612,6 +675,27 @@ function renderPublishedCardImage(model) {
     </svg>`;
 }
 
+function renderPublishedSpreadImage(model) {
+  const chart = {
+    x: 0,
+    y: 158,
+    width: 1200,
+    height: 446,
+  };
+  const { line, area, zeroY } = spreadChartPaths(model.primary.rows, chart);
+
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+      <rect width="1200" height="630" fill="${model.colors.paper}"/>
+      <text x="40" y="54" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">${escapeXml(model.primaryTitle)}</text>
+      <text x="1160" y="54" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(model.rangeLabel)}</text>
+      <text x="40" y="138" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
+      <path d="${area}" fill="${model.colors.area}" fill-opacity="0.12"/>
+      <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${zeroY}" y2="${zeroY}" stroke="${model.colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>
+      <path d="${line}" fill="none" stroke="${model.colors.line}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
+}
+
 function renderPublishedSharePage(
   model,
   pageHref,
@@ -626,7 +710,9 @@ function renderPublishedSharePage(
     : model.primaryTitle;
   const title = `${cardTitle} ${model.rangeLabel}`;
   const description =
-    model.scale === "index"
+    model.scale === "spread"
+      ? `${model.primaryTitle} return spread ${model.headline} over ${rangeDescription}`
+      : model.scale === "index"
       ? `${model.primaryTitle} ${model.headline} over ${rangeDescription}`
       : `${model.headline} per GPU hour over ${rangeDescription}`;
   const imageAlt = `${cardTitle} chart showing ${description}`;
@@ -1034,6 +1120,44 @@ function layeredChartPaths(allRows, primaryRows, chart, scale) {
   };
 }
 
+function spreadChartPaths(rows, chart) {
+  let start = d3.min(rows, (row) => row.date);
+  let end = d3.max(rows, (row) => row.date);
+  if (+start === +end) {
+    start = new Date(+start - 30 * 60 * 1000);
+    end = new Date(+end + 30 * 60 * 1000);
+  }
+  const x = d3
+    .scaleTime()
+    .domain([start, end])
+    .range([chart.x, chart.x + chart.width]);
+  const values = rows.map((row) => Number(row.plotValue)).filter(Number.isFinite);
+  const minimum = Math.min(0, ...values);
+  const maximum = Math.max(0, ...values);
+  const magnitude = Math.max(Math.abs(minimum), Math.abs(maximum), 1);
+  const spread = Math.max(maximum - minimum, magnitude * 0.02, 0.5);
+  const padding = spread * 0.08;
+  const y = d3
+    .scaleLinear()
+    .domain([minimum - padding, maximum + padding])
+    .range([chart.y + chart.height, chart.y]);
+  const curve = d3.curveMonotoneX;
+  return {
+    line: d3
+      .line()
+      .x((row) => x(row.date))
+      .y((row) => y(row.plotValue))
+      .curve(curve)(rows),
+    area: d3
+      .area()
+      .x((row) => x(row.date))
+      .y0(y(0))
+      .y1((row) => y(row.plotValue))
+      .curve(curve)(rows),
+    zeroY: y(0),
+  };
+}
+
 function chartPaths(rows, chart) {
   let start = d3.min(rows, (row) => row.date);
   let end = d3.max(rows, (row) => row.date);
@@ -1187,6 +1311,14 @@ function formatIndexChange(value) {
   if (!Number.isFinite(change)) return "pending";
   const rounded = Math.abs(change) < 0.05 ? 0 : change;
   return `${rounded > 0 ? "+" : ""}${rounded.toFixed(1)}%`;
+}
+
+function formatSpreadPoints(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return "pending";
+  const rounded = Math.abs(amount) < 0.05 ? 0 : amount;
+  const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
+  return `${sign}${Math.abs(rounded).toFixed(1)} pts`;
 }
 
 function formatSnapshotDate(timestamp) {

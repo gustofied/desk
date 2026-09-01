@@ -21,6 +21,22 @@ export function setPrimaryLayer(cardId, cardState, layerId) {
   const current = normalizeCardVisualization(card.id, cardState);
   if (!layer || layer.primary === false) return current;
 
+  if (
+    current.scale === "spread" &&
+    layer.unit === "usd-hour" &&
+    card.allowComparisons !== false &&
+    layer.allowComparisons !== false
+  ) {
+    const comparisonId = current.layers.includes(layer.id)
+      ? current.layers.find((currentLayerId) => currentLayerId !== layer.id)
+      : current.gpu;
+    return normalizeCardVisualization(card.id, {
+      ...current,
+      gpu: layer.id,
+      layers: comparisonId ? [layer.id, comparisonId] : [layer.id],
+    });
+  }
+
   return normalizeCardVisualization(card.id, {
     ...current,
     gpu: layer.id,
@@ -46,6 +62,16 @@ export function toggleCompositionLayer(cardId, cardState, layerId) {
 
   const layers = new Set(current.layers);
   const adding = !layers.has(layer.id);
+  if (
+    adding &&
+    current.scale === "spread" &&
+    layer.unit === "usd-hour"
+  ) {
+    return normalizeCardVisualization(card.id, {
+      ...current,
+      layers: [current.gpu, layer.id],
+    });
+  }
   if (adding) layers.add(layer.id);
   else layers.delete(layer.id);
 
@@ -64,6 +90,15 @@ export function setCompositionScale(cardId, cardState, scale) {
   const layers = current.layers.filter((layerId) =>
     getLayerDefinition(card, layerId)?.views.includes(scale),
   );
+  if (
+    scale === "spread" &&
+    (layers.length !== 2 ||
+      layers.some(
+        (layerId) => getLayerDefinition(card, layerId)?.unit !== "usd-hour",
+      ))
+  ) {
+    return current;
+  }
   return normalizeCardVisualization(card.id, {
     ...current,
     layers,
