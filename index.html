@@ -47,19 +47,21 @@
         let theme = requestedTheme === "light" || requestedTheme === "dark"
           ? requestedTheme
           : systemTheme;
-        let palette = palettes.includes(requestedPalette) ? requestedPalette : "azure";
+        let palette = palettes.includes(requestedPalette)
+          ? requestedPalette
+          : "azure";
         try {
           const savedTheme = window.localStorage.getItem("desk-theme");
-          if (
-            requestedTheme !== "light" &&
-            requestedTheme !== "dark" &&
-            (savedTheme === "light" || savedTheme === "dark")
-          ) {
-            theme = savedTheme;
-          }
           const savedPalette = window.localStorage.getItem("desk-palette");
-          if (!palettes.includes(requestedPalette) && palettes.includes(savedPalette)) {
-            palette = savedPalette;
+          const hasSavedAppearance =
+            savedTheme === "light" ||
+            savedTheme === "dark" ||
+            palettes.includes(savedPalette);
+          if (hasSavedAppearance) {
+            theme = savedTheme === "light" || savedTheme === "dark"
+              ? savedTheme
+              : systemTheme;
+            palette = palettes.includes(savedPalette) ? savedPalette : "azure";
           }
         } catch {}
         document.documentElement.dataset.theme = theme;
@@ -86,16 +88,16 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=74">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=50">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=77">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=53">
     <link rel="stylesheet" href="./styles/monitor-data.css?v=11">
     <link rel="stylesheet" href="./styles/deal-view.css?v=6">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
-    <link rel="stylesheet" href="./styles/demo.css?v=20">
+    <link rel="stylesheet" href="./styles/demo.css?v=21">
   </head>
   <body>
     <div class="desk-top-controls">
-      <nav class="desk-display-controls" id="desk-display-toolbar" role="toolbar" aria-label="Display settings" aria-hidden="true" inert>
+      <nav class="desk-display-controls" id="desk-display-toolbar" role="toolbar" aria-label="Desk appearance" aria-hidden="true" inert>
         <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Azure palette" aria-pressed="true" data-palette-value="azure">
           <i aria-hidden="true"></i>
         </button>
@@ -186,6 +188,8 @@
           class="desk-card-focus"
           id="desk-card-focus"
           tabindex="-1"
+          data-card-theme="light"
+          data-card-palette="azure"
           data-card-layout-panel="focus"
         >
           <div class="gpu-index-detail-stage" data-index-panel="detail">
@@ -563,6 +567,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=132"></script>
+    <script type="module" src="./desk.js?v=138"></script>
   </body>
 </html>

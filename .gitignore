@@ -7,5 +7,7 @@ assets/fonts/
 cards/gpu-price-index/published/
 assets/social/gpu-price-snapshot/published/
 cards/gpu-price-snapshot/published/
-assets/social/gpu-market-depth/published/
+assets/social/gpu-market-depth/published/*
+!assets/social/gpu-market-depth/published/v14/
+!assets/social/gpu-market-depth/published/v14/**
 cards/gpu-market-depth/published/

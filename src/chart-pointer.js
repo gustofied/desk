@@ -4,7 +4,19 @@
 // clientX/clientY, getScreenCTM, or root-SVG coordinate conversion.
 export function horizontalHitZones(values, position, width) {
   const maximum = Math.max(0, Number(width) || 0);
-  const points = values.map((value, index) => ({
+  const zoneCount = Math.min(
+    values.length,
+    Math.max(1, Math.round(maximum)),
+  );
+  const sampledValues = zoneCount === values.length
+    ? values.map((value, index) => ({ value, index }))
+    : Array.from({ length: zoneCount }, (_, sampleIndex) => {
+        const index = zoneCount === 1
+          ? values.length - 1
+          : Math.round((sampleIndex * (values.length - 1)) / (zoneCount - 1));
+        return { value: values[index], index };
+      });
+  const points = sampledValues.map(({ value, index }) => ({
     value,
     index,
     position: clamp(Number(position(value, index)) || 0, 0, maximum),

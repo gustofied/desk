@@ -1043,10 +1043,8 @@ function renderDefaultComparisonImage() {
 }
 
 function endpointLabelMarkup(series, colors, chart, x, y) {
-  const opacity = comparisonStrokeOpacity(colors.theme);
   const labelPositions = spreadLineLabels(
     series
-      .filter((candidate) => !candidate.primary)
       .map((candidate) => ({
         candidate,
         endpointX: x(candidate.rows.at(-1).date),
@@ -1061,15 +1059,19 @@ function endpointLabelMarkup(series, colors, chart, x, y) {
     .map(({ candidate, endpointX, lineY, labelY }) => {
       const layer = candidate.layer;
       const label = layer.shortLabel || layer.label;
+      const color = candidate.primary ? colors.line : colors.secondary;
+      const opacity = candidate.primary
+        ? 1
+        : comparisonStrokeOpacity(colors.theme);
       return (
         `<path d="M${endpointX},${lineY}H${chartRight - 8}V${labelY}" fill="none" ` +
-        `stroke="${colors.secondary}" stroke-opacity="${opacity}" ` +
-        `stroke-width="1.5" stroke-dasharray="${layer.strokeDasharray || ""}"/>` +
+        `stroke="${color}" stroke-opacity="${opacity}" ` +
+        `stroke-width="1.5" stroke-dasharray="${candidate.primary ? "" : layer.strokeDasharray || ""}"/>` +
         `<text x="${chartRight - 12}" y="${labelY + 6}" text-anchor="end" ` +
-        `fill="${colors.secondary}" fill-opacity="${opacity}" ` +
+        `fill="${color}" fill-opacity="${opacity}" ` +
         `stroke="${colors.paper}" stroke-width="8" stroke-linejoin="round" ` +
         `style="paint-order:stroke fill" ` +
-        `font-family="Geist Mono, monospace" font-size="18" font-weight="500" ` +
+        `font-family="Geist Mono, monospace" font-size="18" font-weight="${candidate.primary ? 600 : 500}" ` +
         `letter-spacing="0.3">${escapeXml(label)}</text>`
       );
     })

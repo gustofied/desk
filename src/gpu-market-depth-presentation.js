@@ -461,14 +461,13 @@ function configureHistoryNavigation(svgNode, focusedTimestamp, ariaLabel) {
 
   columns.forEach((column, index) => {
     column.setAttribute("aria-hidden", "true");
-    column.addEventListener("pointerenter", () => setActive(column, true), {
-      signal,
-    });
+    column.addEventListener("pointerenter", () => {
+      setActive(columns[activeIndex], false);
+      setActive(column, true);
+    }, { signal });
     column.addEventListener("pointerleave", () => {
       setActive(column, false);
-      if (target === target.ownerDocument.activeElement) {
-        setActive(columns[activeIndex], true);
-      }
+      setActive(columns[activeIndex], true);
     }, { signal });
     column.addEventListener("pointerdown", () => {
       setActive(columns[activeIndex], false);
@@ -481,7 +480,7 @@ function configureHistoryNavigation(svgNode, focusedTimestamp, ariaLabel) {
   target.addEventListener("focus", () => selectColumn(activeIndex, false), {
     signal,
   });
-  target.addEventListener("blur", () => setActive(columns[activeIndex], false), {
+  target.addEventListener("blur", () => setActive(columns[activeIndex], true), {
     signal,
   });
   target.addEventListener("keydown", (event) => {
@@ -500,6 +499,7 @@ function configureHistoryNavigation(svgNode, focusedTimestamp, ariaLabel) {
       selectColumn(columns.length - 1);
     }
   }, { signal });
+  selectColumn(activeIndex, false);
 }
 
 function historyColumnMarkup(

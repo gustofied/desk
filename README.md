@@ -8,7 +8,8 @@ Market data for compute desks.
 
 Desk is a browser workspace for compute market views. Catalog organizes views,
 Monitor opens one for inspection, and Craft composes and saves a view. Share
-links preserve the view's data, range, chart mode, palette, and theme.
+links preserve the view's data, range, and chart mode. Their artwork uses the
+sender's appearance; returning visitors keep their saved Desk appearance.
 
 ## Workspace
 
@@ -49,7 +50,8 @@ Open <http://localhost:4173>.
   current browser.
 - Use **Command G** to find views and controls, change the display, or copy an
   exact view link.
-- Shared links keep the selected composition and use matching social artwork.
+- Shared links keep the selected composition. Their social artwork matches the
+  sender, while a returning visitor's saved Desk appearance takes priority.
 - Keyboard navigation, reduced motion, responsive layouts, and chart inspection
   are supported throughout.
 

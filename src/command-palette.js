@@ -10,7 +10,7 @@ const defaultGroups = [
   "Chart",
   "Range",
   "Compare",
-  "Appearance",
+  "Desk appearance",
 ];
 const maxRenderedCommands = 64;
 

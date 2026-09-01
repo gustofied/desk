@@ -88,7 +88,6 @@ if (root) {
     .querySelector(".gpu-index-detail__body")
     ?.setAttribute("aria-label", cardDefinition.title);
   const craftDraftStorageKey = `desk.craft-draft.v1.${cardId}`;
-  const catalogColorStorageKey = "desk.catalog-colors.v1";
   const catalogScrollStorageKey = "desk.catalog-scroll.v1";
   const activeCatalogSessionKey = "desk.active-catalog.v1";
   const reducedMotion = window.matchMedia(
@@ -179,6 +178,8 @@ if (root) {
     layers: serializeLayerIds(initialCompositionLayers, cardDefinition),
     scale: initialCompositionScale,
     range: initialRange,
+    palette: document.documentElement.dataset.palette,
+    theme: document.documentElement.dataset.theme,
   };
   const initialStateNeedsRepair =
     cardStateParamIds(cardDefinition).some(
@@ -216,7 +217,6 @@ if (root) {
     activeCatalogViewId: loadActiveCatalogSession(catalogCollections),
     catalogMenuOpen: false,
     catalogDialogMode: null,
-    catalogColorMode: loadCatalogColorMode(),
     zoomWindow: null,
     savedCatalog,
     activeCatalogId: requestedCatalogItem?.id || null,
@@ -376,11 +376,16 @@ if (root) {
   initialize();
 
   function initialize() {
+    syncCardAppearance();
     if (state.craftEmpty) clearStoredCraftDraft();
     state.craftBaseline = state.craftEmpty
       ? null
       : requestedCatalogItem
-        ? compositionKey(cardId, requestedCatalogItem.state)
+        ? compositionKey(cardId, {
+            ...requestedCatalogItem.state,
+            palette: currentPalette(),
+            theme: currentTheme(),
+          })
         : state.mode === "craft"
           ? null
           : compositionKey(cardId, currentCardState());
@@ -856,7 +861,10 @@ if (root) {
         setCatalogMenuOpen(false);
       }
     });
-    nodes.catalogBar?.addEventListener("focusout", () => {
+    nodes.catalogBar?.addEventListener("focusout", (event) => {
+      const nextTarget = event.relatedTarget;
+      if (!(nextTarget instanceof Node)) return;
+      if (nodes.catalogBar?.contains(nextTarget)) return;
       window.requestAnimationFrame(() => {
         if (
           state.catalogMenuOpen &&
@@ -2009,23 +2017,23 @@ if (root) {
       })),
       {
         id: "appearance.theme.light",
-        group: "Appearance",
+        group: "Desk appearance",
         order: 0,
-        title: "Use light mode",
-        subtitle: "/settings/theme/light",
-        hint: "Theme",
-        keywords: ["white", "bright", "display"],
+        title: "Make Desk light",
+        subtitle: "Workspace appearance",
+        hint: "Desk",
+        keywords: ["white", "bright", "display", "workspace", "desk"],
         active: () => currentTheme() === "light",
         run: () => setTheme("light"),
       },
       {
         id: "appearance.theme.dark",
-        group: "Appearance",
+        group: "Desk appearance",
         order: 1,
-        title: "Use dark mode",
-        subtitle: "/settings/theme/dark",
-        hint: "Theme",
-        keywords: ["black", "night", "display"],
+        title: "Make Desk dark",
+        subtitle: "Workspace appearance",
+        hint: "Desk",
+        keywords: ["black", "night", "display", "workspace", "desk"],
         active: () => currentTheme() === "dark",
         run: () => setTheme("dark"),
       },
@@ -2036,55 +2044,15 @@ if (root) {
         ["sand", "Warm Sand"],
       ].map(([palette, title], index) => ({
         id: `appearance.palette.${palette}`,
-        group: "Appearance",
+        group: "Desk appearance",
         order: index + 2,
-        title: `Use ${title}`,
-        subtitle: `/settings/palette/${palette}`,
-        hint: "Palette",
-        keywords: ["color", "colour", "display", title],
+        title: `Use ${title} for Desk`,
+        subtitle: "Workspace color",
+        hint: "Desk",
+        keywords: ["color", "colour", "display", "workspace", "desk", title],
         active: () => currentPalette() === palette,
         run: () => setPalette(palette),
       })),
-      {
-        id: "appearance.catalog.match-desk",
-        group: "Appearance",
-        order: 6,
-        title: "Match Desk colors",
-        subtitle: "Use one palette across Catalog",
-        hint: "Catalog",
-        keywords: [
-          "catalog",
-          "views",
-          "cards",
-          "color",
-          "colour",
-          "theme",
-          "same",
-          "reset",
-        ],
-        active: () => state.catalogColorMode === "match-desk",
-        run: () => setCatalogColorMode("match-desk"),
-      },
-      {
-        id: "appearance.catalog.card-colors",
-        group: "Appearance",
-        order: 7,
-        title: "Show view colors",
-        subtitle: "Use each view’s saved appearance",
-        hint: "Catalog",
-        keywords: [
-          "catalog",
-          "views",
-          "cards",
-          "color",
-          "colour",
-          "theme",
-          "individual",
-          "saved",
-        ],
-        active: () => state.catalogColorMode === "card-colors",
-        run: () => setCatalogColorMode("card-colors"),
-      },
     ]);
   }
 
@@ -2331,31 +2299,8 @@ if (root) {
     return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
   }
 
-  function loadCatalogColorMode() {
-    try {
-      return window.localStorage.getItem(catalogColorStorageKey) === "card-colors"
-        ? "card-colors"
-        : "match-desk";
-    } catch {
-      return "match-desk";
-    }
-  }
-
-  function setCatalogColorMode(mode) {
-    if (mode !== "match-desk" && mode !== "card-colors") return;
-    if (state.catalogColorMode === mode) return;
-    state.catalogColorMode = mode;
-    try {
-      window.localStorage.setItem(catalogColorStorageKey, mode);
-    } catch {}
-    state.catalogDirty = true;
-    if (state.layout === "all") renderWorkspaceGallery();
-    commandPalette.refresh();
-    announceWorkspace(
-      mode === "match-desk"
-        ? "Catalog now matches Desk colors"
-        : "Catalog now shows each view’s colors",
-    );
+  function currentCardTheme() {
+    return currentTheme();
   }
 
   function configureUtcClock() {
@@ -2381,20 +2326,37 @@ if (root) {
     return palettes.includes(palette) ? palette : "azure";
   }
 
+  function currentCardPalette() {
+    return currentPalette();
+  }
+
+  function syncCardAppearance() {
+    if (!nodes.focusPanel) return;
+    nodes.focusPanel.dataset.cardTheme = currentCardTheme();
+    nodes.focusPanel.dataset.cardPalette = currentCardPalette();
+  }
+
   function currentLineColor() {
-    return readCssToken("--desk-accent-deep", "#315f82");
+    return cardPalette(currentCardState()).line;
   }
 
   function currentSecondaryLineColor() {
-    return readCssToken("--desk-comparison-line", currentLineColor());
+    return cardPalette(currentCardState()).secondary;
   }
 
   function currentAreaColor() {
-    return currentSecondaryLineColor();
+    return cardPalette(currentCardState()).area;
   }
 
   function currentPaperColor() {
-    return readCssToken("--desk-canvas", currentTheme() === "dark" ? "#181818" : "#ffffff");
+    return cardPalette(currentCardState()).paper;
+  }
+
+  function currentWorkspacePaperColor() {
+    return readCssToken(
+      "--desk-canvas",
+      currentTheme() === "dark" ? "#181818" : "#ffffff",
+    );
   }
 
   function readCssToken(name, fallback) {
@@ -2408,10 +2370,9 @@ if (root) {
       return;
     }
     document.documentElement.dataset.theme = theme;
-    try {
-      window.localStorage.setItem("desk-theme", theme);
-    } catch {}
+    storeDeskAppearance();
     syncAppearanceControls();
+    syncCardAppearance();
     syncCraftDirtyState();
     updateLocation();
     refreshAppearance();
@@ -2424,13 +2385,19 @@ if (root) {
       return;
     }
     document.documentElement.dataset.palette = palette;
-    try {
-      window.localStorage.setItem("desk-palette", palette);
-    } catch {}
+    storeDeskAppearance();
     syncAppearanceControls();
+    syncCardAppearance();
     syncCraftDirtyState();
     updateLocation();
     refreshAppearance();
+  }
+
+  function storeDeskAppearance() {
+    try {
+      window.localStorage.setItem("desk-theme", currentTheme());
+      window.localStorage.setItem("desk-palette", currentPalette());
+    } catch {}
   }
 
   function syncAppearanceControls() {
@@ -2445,11 +2412,12 @@ if (root) {
         String(button.dataset.paletteValue === currentPalette()),
       );
     }
-    nodes.themeColor?.setAttribute("content", currentPaperColor());
+    nodes.themeColor?.setAttribute("content", currentWorkspacePaperColor());
   }
 
   function refreshAppearance() {
     if (!state.runtimePayload) return;
+    state.catalogDirty = true;
     render(false);
     if (state.layout === "all" && !reducedMotion && nodes.galleryGrid) {
       animate(
@@ -3595,7 +3563,6 @@ if (root) {
 
   function catalogEntryDisplayState(entry) {
     const authoredState = catalogEntryState(entry);
-    if (state.catalogColorMode === "card-colors") return authoredState;
     return {
       ...authoredState,
       palette: currentPalette(),
@@ -3618,7 +3585,11 @@ if (root) {
     state.catalogName = catalogName;
     state.craftEmpty = false;
     state.craftDirty = false;
-    state.craftBaseline = compositionKey(cardId, next);
+    state.craftBaseline = compositionKey(cardId, {
+      ...next,
+      palette: currentPalette(),
+      theme: currentTheme(),
+    });
     state.zoomWindow = null;
     setCompareOpen(false);
     setDepthCraftMenu(null);
@@ -3636,9 +3607,7 @@ if (root) {
         next[option.id],
       ]),
     );
-    document.documentElement.dataset.palette = next.palette;
-    document.documentElement.dataset.theme = next.theme;
-    syncAppearanceControls();
+    syncCardAppearance();
     return next;
   }
 
@@ -4501,8 +4470,8 @@ if (root) {
       layers: serializeLayerIds(state.layers, cardDefinition),
       scale: state.scale,
       range: state.range,
-      palette: currentPalette(),
-      theme: currentTheme(),
+      palette: currentCardPalette(),
+      theme: currentCardTheme(),
       ...state.options,
     };
   }
@@ -4883,7 +4852,7 @@ if (root) {
     const historyStart = state.scale === "history" && model.history.length
       ? new Date(model.history[0].timestamp * 1000)
       : null;
-    const format = d3.timeFormat("%d %b");
+    const format = d3.utcFormat("%d %b");
     if (historyStart) {
       updateRangeDate(nodes.rangeStart, historyStart, format);
     } else if (nodes.rangeStart) {
@@ -4949,7 +4918,7 @@ if (root) {
     nodes.chartState.hidden = true;
     nodes.tooltip.hidden = true;
     const observed = new Date(model.asOf * 1000);
-    const format = d3.timeFormat("%d %b");
+    const format = d3.utcFormat("%d %b");
     updateRangeDate(nodes.rangeStart, observed, format);
     updateRangeDate(nodes.rangeEnd, observed, format);
     const palette = cardPalette(currentCardState());
@@ -5229,7 +5198,7 @@ if (root) {
   function updateRangeDates(rows) {
     const start = rows[0]?.date;
     const end = rows.at(-1)?.date;
-    const format = d3.timeFormat("%d %b");
+    const format = d3.utcFormat("%d %b");
     updateRangeDate(nodes.rangeStart, start, format);
     updateRangeDate(nodes.rangeEnd, end, format);
   }
@@ -5432,7 +5401,7 @@ if (root) {
           "stroke-opacity",
           candidateIsPrimary
             ? 1
-            : comparisonStrokeOpacity(options.theme || currentTheme()),
+            : comparisonStrokeOpacity(options.theme || currentCardTheme()),
         )
         .attr(
           "stroke-dasharray",
@@ -5597,7 +5566,7 @@ if (root) {
           "stroke-opacity",
           candidate.primary
             ? 1
-            : comparisonStrokeOpacity(currentTheme()),
+            : comparisonStrokeOpacity(currentCardTheme()),
         )
         .attr(
           "stroke-dasharray",
@@ -5609,7 +5578,6 @@ if (root) {
     if (series.length > 1) {
       const labelPositions = spreadLineLabels(
         series
-          .filter((candidate) => !candidate.primary)
           .map((candidate) => ({
             candidate,
             endpointX: x(candidate.rows.at(-1).date),
@@ -5620,7 +5588,10 @@ if (root) {
         16,
       );
       labelPositions.forEach(({ candidate, endpointX, lineY, labelY }) => {
-        const stateClass = "is-layer";
+        const stateClass = candidate.primary ? "is-selected" : "is-layer";
+        const color = candidate.primary
+          ? currentLineColor()
+          : currentSecondaryLineColor();
         plot
           .append("path")
           .attr(
@@ -5632,10 +5603,7 @@ if (root) {
             "d",
             `M${endpointX},${lineY}H${innerWidth - 8}V${labelY}`,
           )
-          .attr(
-            "stroke",
-            currentSecondaryLineColor(),
-          );
+          .attr("stroke", color);
         plot
           .append("text")
           .attr("class", `gpu-benchmark__line-label ${stateClass}`)
@@ -5644,10 +5612,7 @@ if (root) {
           .attr("y", labelY)
           .attr("dominant-baseline", "middle")
           .attr("text-anchor", "end")
-          .attr(
-            "fill",
-            currentSecondaryLineColor(),
-          )
+          .attr("fill", color)
           .text(candidate.layer.shortLabel || candidate.layer.label);
       });
     }
@@ -5945,7 +5910,7 @@ if (root) {
       swatch.style.opacity = String(
         row.primary
           ? 1
-          : comparisonStrokeOpacity(currentTheme()),
+          : comparisonStrokeOpacity(currentCardTheme()),
       );
       label.textContent = row.layer.shortLabel || row.layer.label;
       value.textContent = formatPlotValue(row.plotValue, state.scale);
@@ -5984,7 +5949,7 @@ if (root) {
       swatch.style.backgroundImage =
         `repeating-linear-gradient(90deg, ${currentSecondaryLineColor()} 0 4px, ` +
         "transparent 4px 7px)";
-      swatch.style.opacity = String(comparisonStrokeOpacity(currentTheme()));
+      swatch.style.opacity = String(comparisonStrokeOpacity(currentCardTheme()));
     }
     name.textContent = label;
     metric.textContent = value;
@@ -6097,7 +6062,6 @@ if (root) {
   ) {
     const labelPositions = spreadLineLabels(
       series
-        .filter((candidate) => !isPrimary(candidate))
         .map((candidate) => ({
           candidate,
           endpointX: x(candidate.rows.at(-1).date),
@@ -6109,8 +6073,11 @@ if (root) {
     );
     const chartRight = chart.x + chart.width;
     for (const { candidate, endpointX, lineY, labelY } of labelPositions) {
-      const color = palette.secondary;
-      const opacity = comparisonStrokeOpacity(currentTheme());
+      const candidateIsPrimary = isPrimary(candidate);
+      const color = candidateIsPrimary ? palette.line : palette.secondary;
+      const opacity = candidateIsPrimary
+        ? 1
+        : comparisonStrokeOpacity(palette.theme || currentCardTheme());
       svg
         .append("path")
         .attr(
@@ -6123,7 +6090,7 @@ if (root) {
         .attr("stroke-width", 1.5)
         .attr(
           "stroke-dasharray",
-          candidate.layer.strokeDasharray || null,
+          candidateIsPrimary ? null : candidate.layer.strokeDasharray || null,
         )
         .attr("aria-hidden", "true");
       appendShareText(svg, {
@@ -6132,7 +6099,7 @@ if (root) {
         text: candidate.layer.shortLabel || candidate.layer.label,
         fill: color,
         size: 18,
-        weight: 500,
+        weight: candidateIsPrimary ? 600 : 500,
         family: "Geist Mono, monospace",
         anchor: "end",
         spacing: 0.3,
@@ -6192,6 +6159,7 @@ if (root) {
       hour: "2-digit",
       minute: "2-digit",
       month: "short",
+      timeZone: "UTC",
       timeZoneName: "short",
     });
   }

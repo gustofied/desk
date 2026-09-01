@@ -63,7 +63,7 @@ body {
 
 :root[data-desk-layout="all"] body {
   align-items: start;
-  padding-top: 96px;
+  padding-top: 80px;
   padding-bottom: 96px;
 }
 
