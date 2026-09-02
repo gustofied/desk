@@ -9,8 +9,8 @@ views, monitor and share. Built for anyone building or running a compute desk.
 
 ![Desk Catalog showing deal, price, snapshot, and market depth views](assets/showcase/desk-catalog-gallery.jpg)
 
-For the broader market infrastructure, see
-[The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar).
+See [The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar) for
+my wider work on compute markets.
 
 ## Workspace
 
