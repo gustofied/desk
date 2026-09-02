@@ -7,6 +7,7 @@ import {
   GPU_LAYERS,
 } from "../src/card-registry.js";
 import { createGpuMarketDepthModel } from "../src/gpu-market-depth-model.js";
+import { createPowerBasisModel } from "../src/power-basis-model.js";
 
 const HOUR_SECONDS = 60 * 60;
 const DAY_SECONDS = 24 * HOUR_SECONDS;
@@ -15,6 +16,7 @@ const projectRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const priceCard = getCardDefinition("gpu-index");
 const priceSnapshotCard = getCardDefinition("gpu-price-snapshot");
 const depthCard = getCardDefinition("gpu-market-depth");
+const powerCard = getCardDefinition("power-basis");
 const dealCard = getCardDefinition("deal-view");
 const gpuLayers = GPU_LAYERS.filter((layer) => layer.unit === "usd-hour");
 const tokenLayer = GPU_LAYERS.find((layer) => layer.id === "TOKEN");
@@ -59,6 +61,9 @@ priceRuntime.revision = revisionFor(priceRuntime);
 const depthSourceFile = join(projectRoot, depthCard.sourceFile);
 const depthSource = await readJson(depthSourceFile);
 const depthRuntime = buildMarketDepthRuntime(depthSource, depthSourceFile);
+const powerSourceFile = join(projectRoot, powerCard.sourceFile);
+const powerSource = await readJson(powerSourceFile);
+const powerRuntime = buildPowerBasisRuntime(powerSource, powerSourceFile);
 const dealSourceFile = join(projectRoot, dealCard.sourceFile);
 const dealSource = await readJson(dealSourceFile);
 const dealRuntime = buildDealRuntime(dealSource, dealSourceFile);
@@ -68,6 +73,10 @@ const dealRuntime = buildDealRuntime(dealSource, dealSourceFile);
 createGpuMarketDepthModel(depthRuntime, depthCard, {
   targetNodes: depthRuntime.targetNodes,
 });
+createPowerBasisModel(powerRuntime, powerCard, {
+  locationId: powerCard.defaults.layer,
+  range: "all",
+});
 
 const computePriceRows = buildComputePriceRows(priceRuntime, priceCard);
 const acceleratorPriceRows = buildAcceleratorPriceRows(
@@ -75,6 +84,7 @@ const acceleratorPriceRows = buildAcceleratorPriceRows(
   gpuLayers,
 );
 const marketDepthRows = buildMarketDepthRows(depthRuntime);
+const powerPriceRows = buildPowerPriceRows(powerRuntime);
 const publicDataExports = [
   buildPublicDataExport(priceCard.dataTable, computePriceRows, {
     asOf: priceRuntime.asOf,
@@ -91,11 +101,21 @@ const publicDataExports = [
     cadence: depthRuntime.dataset.cadence,
     kind: depthRuntime.dataset.kind,
   }),
+  buildPublicDataExport(powerCard.dataTable, powerPriceRows, {
+    asOf: powerRuntime.asOf,
+    cadence: powerRuntime.dataset.cadence,
+    kind: powerRuntime.dataset.kind,
+  }),
 ];
 
 const dataManifest = {
   version: 1,
-  asOf: Math.max(priceRuntime.asOf, depthRuntime.asOf, dealRuntime.asOf),
+  asOf: Math.max(
+    priceRuntime.asOf,
+    depthRuntime.asOf,
+    powerRuntime.asOf,
+    dealRuntime.asOf,
+  ),
   cards: {
     [priceCard.id]: {
       file: priceCard.dataFile,
@@ -106,6 +126,11 @@ const dataManifest = {
       file: depthCard.dataFile,
       revision: depthRuntime.revision,
       asOf: depthRuntime.asOf,
+    },
+    [powerCard.id]: {
+      file: powerCard.dataFile,
+      revision: powerRuntime.revision,
+      asOf: powerRuntime.asOf,
     },
     [dealCard.id]: {
       file: dealCard.dataFile,
@@ -126,6 +151,7 @@ if (buildOptions.check) {
   console.log(
     `Validated ${priceCard.id} (${priceRuntime.revision}) and ` +
       `${depthCard.id} (${depthRuntime.revision}) and ` +
+      `${powerCard.id} (${powerRuntime.revision}) and ` +
       `${dealCard.id} (${dealRuntime.revision}) source contracts, plus ` +
       `${publicDataExports.length} public data exports.`,
   );
@@ -133,6 +159,7 @@ if (buildOptions.check) {
   await Promise.all([
     writeJson(join(projectRoot, priceCard.dataFile), priceRuntime),
     writeJson(join(projectRoot, depthCard.dataFile), depthRuntime),
+    writeJson(join(projectRoot, powerCard.dataFile), powerRuntime),
     writeJson(join(projectRoot, dealCard.dataFile), dealRuntime),
     writeJson(join(projectRoot, "data", "manifest.json"), dataManifest),
     ...publicDataExports.map((dataExport) =>
@@ -142,6 +169,7 @@ if (buildOptions.check) {
   console.log(
     `Built ${priceCard.dataFile} (${priceRuntime.revision}), ` +
       `${depthCard.dataFile} (${depthRuntime.revision}), ` +
+      `${powerCard.dataFile} (${powerRuntime.revision}), ` +
       `${dealCard.dataFile} (${dealRuntime.revision}), and data/manifest.json ` +
       `(${dataManifest.revision}), plus ${publicDataExports.length} public ` +
       "data exports.",
@@ -227,6 +255,34 @@ function buildMarketDepthRows(runtime) {
   return rows;
 }
 
+function buildPowerPriceRows(runtime) {
+  const locations = new Map(
+    runtime.locations.map((location) => [location.id, location]),
+  );
+  const rows = Object.entries(runtime.series).flatMap(([locationId, series]) => {
+    const location = locations.get(locationId);
+    if (!location) throw new Error(`Missing power location ${locationId}`);
+    return series.map((point) => ({
+      observed_at: isoTimestamp(point[0], `${locationId} power observation`),
+      instrument: location.id,
+      market: location.market,
+      location: location.location,
+      real_time_price_usd_mwh: point[1],
+      day_ahead_price_usd_mwh: point[2],
+      basis_usd_mwh: point[3],
+      currency: location.currency,
+      unit: location.unit,
+      interval_minutes: location.intervalMinutes,
+    }));
+  });
+  assertUniqueRows(
+    rows,
+    (row) => `${row.observed_at}\u0000${row.instrument}`,
+    "power prices",
+  );
+  return rows;
+}
+
 function buildPublicDataExport(table, records, { asOf, cadence, kind }) {
   if (
     !table?.id ||
@@ -293,6 +349,156 @@ function isoTimestamp(value, label) {
     throw new Error(`${label} timestamp is invalid`);
   }
   return new Date(value * 1000).toISOString();
+}
+
+function buildPowerBasisRuntime(source, sourceFile) {
+  validatePowerBasisSource(source, sourceFile);
+  const locations = source.locations.map((location) => ({
+    id: location.id,
+    label: location.label,
+    market: location.market,
+    location: location.location,
+    timezone: location.timezone,
+    currency: location.currency,
+    unit: location.unit,
+    intervalMinutes: location.interval_minutes,
+  }));
+  const series = Object.fromEntries(
+    locations.map((location) => [
+      location.id,
+      source.series[location.id].map((row) => {
+        const realTime = round(row.real_time_price);
+        const dayAhead = round(row.day_ahead_price);
+        return [
+          timestampSeconds(
+            row.observed_at,
+            `${sourceFile} ${location.id} observation`,
+          ),
+          realTime,
+          dayAhead,
+          round(realTime - dayAhead),
+        ];
+      }),
+    ]),
+  );
+  const asOf = timestampSeconds(source.as_of, `${sourceFile} as_of`);
+  const start = timestampSeconds(
+    source.observation_window.started_at,
+    `${sourceFile} observation start`,
+  );
+  const end = timestampSeconds(
+    source.observation_window.ended_at,
+    `${sourceFile} observation end`,
+  );
+  const runtime = {
+    version: 1,
+    cardId: powerCard.id,
+    asOf,
+    columns: ["timestamp", "realTime", "dayAhead", "basis"],
+    locations,
+    series,
+    dataset: {
+      kind: provenanceKind([source]),
+      sourceId: source.id,
+      cadence: source.cadence,
+      cadenceSeconds: cadenceSecondsFor(source.cadence),
+      start,
+      end,
+      observationCount: source.observation_window.observation_count,
+    },
+  };
+  runtime.revision = revisionFor(runtime);
+  return runtime;
+}
+
+function validatePowerBasisSource(source, sourceFile) {
+  if (
+    source?.version !== 1 ||
+    source?.contract !== "desk_showcase_power_basis" ||
+    source?.id !== "power-basis" ||
+    source?.cadence !== "hourly" ||
+    !Array.isArray(source?.locations) ||
+    !source.locations.length ||
+    !source.series ||
+    typeof source.series !== "object" ||
+    Array.isArray(source.series) ||
+    !source.observation_window
+  ) {
+    throw new Error(`Unsupported power-basis data in ${sourceFile}`);
+  }
+
+  const ids = new Set();
+  let commonStart = null;
+  let commonEnd = null;
+  let commonCount = null;
+  for (const location of source.locations) {
+    if (
+      typeof location?.id !== "string" ||
+      !location.id.trim() ||
+      ids.has(location.id) ||
+      !location.label ||
+      !location.market ||
+      !location.location ||
+      !location.timezone ||
+      location.currency !== "USD" ||
+      location.unit !== "USD per MWh" ||
+      location.interval_minutes !== 60
+    ) {
+      throw new Error(`${sourceFile} has an invalid power location`);
+    }
+    ids.add(location.id);
+    const rows = source.series[location.id];
+    if (!Array.isArray(rows) || rows.length < 2) {
+      throw new Error(`${sourceFile} is missing ${location.id} observations`);
+    }
+    let previousTimestamp = 0;
+    for (const [index, row] of rows.entries()) {
+      const timestamp = timestampSeconds(
+        row?.observed_at,
+        `${sourceFile} ${location.id} observation ${index}`,
+      );
+      if (
+        timestamp <= previousTimestamp ||
+        (previousTimestamp && timestamp - previousTimestamp !== HOUR_SECONDS) ||
+        !Number.isFinite(Number(row?.real_time_price)) ||
+        !Number.isFinite(Number(row?.day_ahead_price))
+      ) {
+        throw new Error(`${sourceFile} has an invalid ${location.id} observation ${index}`);
+      }
+      previousTimestamp = timestamp;
+    }
+    const start = timestampSeconds(
+      rows[0].observed_at,
+      `${sourceFile} ${location.id} first observation`,
+    );
+    const end = timestampSeconds(
+      rows.at(-1).observed_at,
+      `${sourceFile} ${location.id} last observation`,
+    );
+    commonStart ??= start;
+    commonEnd ??= end;
+    commonCount ??= rows.length;
+    if (start !== commonStart || end !== commonEnd || rows.length !== commonCount) {
+      throw new Error(`${sourceFile} power locations must align`);
+    }
+  }
+
+  const declaredStart = timestampSeconds(
+    source.observation_window.started_at,
+    `${sourceFile} observation start`,
+  );
+  const declaredEnd = timestampSeconds(
+    source.observation_window.ended_at,
+    `${sourceFile} observation end`,
+  );
+  if (
+    declaredStart !== commonStart ||
+    declaredEnd !== commonEnd ||
+    source.observation_window.observation_count !== commonCount ||
+    timestampSeconds(source.as_of, `${sourceFile} as_of`) !== commonEnd
+  ) {
+    throw new Error(`${sourceFile} observation window does not match its data`);
+  }
 }
 
 function buildDealRuntime(source, sourceFile) {

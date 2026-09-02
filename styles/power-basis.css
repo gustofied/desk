@@ -1,0 +1,47 @@
+.power-basis__spread-area,
+.power-basis__line,
+.power-basis__zero,
+.power-basis__readout {
+  pointer-events: none;
+}
+
+.power-basis__line,
+.power-basis__zero {
+  shape-rendering: geometricPrecision;
+}
+
+.power-basis__column {
+  cursor: crosshair;
+  outline: none;
+}
+
+.power-basis__readout {
+  transition: opacity 200ms var(--desk-ease);
+}
+
+.power-basis__interactive {
+  outline: none;
+}
+
+.power-basis__interactive:focus-visible {
+  outline: 2px solid var(--desk-accent-deep);
+  outline-offset: 2px;
+}
+
+.power-basis__live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .power-basis__readout {
+    transition: none;
+  }
+}

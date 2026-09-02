@@ -147,7 +147,12 @@
 }
 
 @media (max-width: 640px) {
-  :root[data-desk-view="monitor"] .gpu-index[data-card-renderer="line"] .gpu-benchmark__mobile-summary {
+  :root[data-desk-view="monitor"]
+    .gpu-index:is(
+      [data-card-renderer="line"],
+      [data-card-renderer="power-basis"]
+    )
+    .gpu-benchmark__mobile-summary {
     display: grid;
     width: calc(100% + 16px);
     min-height: 40px;
@@ -343,7 +348,9 @@
 
 .desk-view-action[data-catalog-switcher] {
   display: flex;
-  width: 96px;
+  width: auto;
+  min-width: 96px;
+  max-width: 140px;
   gap: 7px;
   align-items: center;
   justify-content: center;
@@ -932,7 +939,7 @@ button.compute-share-card-frame:focus-visible {
   position: relative;
   z-index: 3;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
   align-items: stretch;
   width: calc(100% + 16px);
   min-height: 40px;
@@ -942,8 +949,15 @@ button.compute-share-card-frame:focus-visible {
   border-bottom: 1px solid var(--market-card-rule);
 }
 
-.gpu-benchmark__compare-toggle {
+.gpu-benchmark__craft-home {
   grid-column: 1;
+  min-width: 72px !important;
+  border-right: 1px solid color-mix(in srgb, var(--desk-accent-deep) 10%, transparent) !important;
+  opacity: 0.48 !important;
+}
+
+.gpu-benchmark__compare-toggle {
+  grid-column: 2;
   min-width: 96px !important;
 }
 
@@ -959,7 +973,7 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__depth-craft {
-  grid-column: 1 / 3;
+  grid-column: 2 / 4;
   display: flex;
   min-width: 0;
   min-height: 40px;
@@ -1127,7 +1141,7 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__save {
-  grid-column: 3;
+  grid-column: 4;
   grid-row: 1;
   min-width: 72px !important;
   border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent) !important;
@@ -1236,25 +1250,122 @@ button.compute-share-card-frame:focus-visible {
   inset: 0;
   z-index: 1;
   display: grid;
+  padding: 32px;
   place-items: center;
-  pointer-events: none;
+  color: var(--desk-accent-deep);
 }
 
-.gpu-benchmark__craft-empty p {
-  margin: 0;
-  color: var(--desk-accent-deep);
+.gpu-benchmark__craft-start {
+  display: grid;
+  width: min(760px, 100%);
+}
+
+.gpu-benchmark__craft-types {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: color-mix(in srgb, var(--desk-canvas) 94%, var(--desk-accent));
+  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
+}
+
+.gpu-benchmark__craft-types button {
+  min-width: 0;
+  min-height: 48px;
+  padding: 8px 10px;
+  overflow: hidden;
+  color: inherit;
   font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  opacity: 0.48;
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  background: transparent;
+  border: 0;
+  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
+  transition:
+    background-color 180ms var(--desk-ease-out),
+    color 180ms var(--desk-ease-out),
+    opacity 180ms var(--desk-ease-out),
+    transform 140ms var(--desk-ease-out);
+}
+
+.gpu-benchmark__craft-types button:first-child {
+  border-left: 0;
+}
+
+.gpu-benchmark__craft-types button:active {
+  transform: translateY(1px);
+}
+
+.gpu-benchmark__craft-types button:focus-visible {
+  z-index: 1;
+  background: var(--desk-accent-pale);
+  outline: 2px solid var(--desk-accent-deep);
+  outline-offset: -2px;
+}
+
+.gpu-benchmark__craft-types button:disabled {
+  cursor: default;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .gpu-benchmark__craft-types button:not(:disabled):hover {
+    background: color-mix(in srgb, var(--desk-accent) 14%, transparent);
+  }
+}
+
+@media (max-width: 800px) {
+  .gpu-benchmark__craft-empty {
+    padding: 24px;
+  }
+
+  .gpu-benchmark__craft-types {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .gpu-benchmark__craft-types button {
+    border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
+  }
+
+  .gpu-benchmark__craft-types button:nth-child(-n + 2) {
+    border-top: 0;
+  }
+
+  .gpu-benchmark__craft-types button:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .gpu-benchmark__craft-types button:nth-child(odd):last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .gpu-index[data-craft-empty="true"] .gpu-benchmark__chart {
+    min-height: 304px;
+  }
+
+  .gpu-benchmark__craft-empty {
+    padding: 20px;
+  }
+
+  .gpu-benchmark__craft-types {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .gpu-benchmark__craft-types button,
+  .gpu-benchmark__craft-types button:nth-child(-n + 2) {
+    grid-column: auto;
+    border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
+    border-left: 0;
+  }
+
+  .gpu-benchmark__craft-types button:first-child {
+    border-top: 0;
+  }
 }
 
 .gpu-index[data-craft-empty="true"] .gpu-benchmark__footer {
-  background: #fff;
-}
-
-.gpu-index[data-craft-empty="true"] .gpu-benchmark__footer > * {
-  visibility: hidden;
+  display: none;
 }
 
 .gpu-benchmark__announce {
@@ -1273,10 +1384,6 @@ button.compute-share-card-frame:focus-visible {
     background: color-mix(in srgb, var(--desk-accent) 10%, transparent);
     opacity: 0.84;
   }
-}
-
-.gpu-index[data-craft-empty="true"] .desk-card-focus[data-card-theme="dark"] .gpu-benchmark__footer {
-  background: #181818;
 }
 
 .desk-card-focus[data-card-theme="dark"] .gpu-benchmark__composer {
@@ -1489,7 +1596,7 @@ button.compute-share-card-frame:focus-visible {
   }
 
   .gpu-benchmark__composer {
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
   }
 
   .gpu-benchmark__depth-craft {
@@ -1519,6 +1626,10 @@ button.compute-share-card-frame:focus-visible {
 
   .gpu-benchmark__compare-toggle {
     min-width: 80px !important;
+  }
+
+  .gpu-benchmark__craft-home {
+    min-width: 56px !important;
   }
 
   .gpu-benchmark__save {
@@ -1672,7 +1783,9 @@ button.compute-share-card-frame:focus-visible {
   }
 
   .desk-view-action[data-catalog-switcher] {
-    width: 84px;
+    width: auto;
+    min-width: 84px;
+    max-width: 112px;
   }
 
   .desk-palette-option {

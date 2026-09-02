@@ -47,8 +47,8 @@
   gap: 8px;
   align-items: center;
   justify-content: center;
-  width: 80px;
-  min-width: 80px;
+  width: 64px;
+  min-width: 64px;
   min-height: 24px;
   padding: 8px;
   color: var(--desk-control-ink);
@@ -203,6 +203,11 @@
   box-shadow: inset 2px 0 0 var(--desk-accent-deep);
 }
 
+.desk-catalog-option[data-system] {
+  margin-bottom: 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
+}
+
 .desk-catalog-option:focus-visible,
 .desk-catalog-menu__create button:focus-visible,
 .desk-catalog-menu footer button:focus-visible {
@@ -231,6 +236,14 @@
 .desk-catalog-menu footer {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.desk-catalog-menu footer:has(button:not(:disabled)) {
+  border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
+}
+
+.desk-catalog-menu footer:not(:has(button:not(:disabled))) {
+  display: none;
 }
 
 .desk-catalog-menu footer button {
@@ -644,6 +657,35 @@
   background: #1f1f1f;
   border-color: color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
   box-shadow: 0 16px 40px rgb(0 0 0 / 32%);
+}
+
+@media (min-width: 641px) and (max-width: 720px) {
+  .desk-card-rail {
+    overflow: hidden;
+  }
+
+  .compute-card-skin--market .desk-card-rail .desk-card-tabs {
+    flex: 1 1 0;
+    width: 0;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+  }
+
+  .compute-card-skin--market .desk-card-rail .desk-card-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .compute-card-skin--market .desk-card-rail .desk-card-tabs button {
+    flex: 0 0 56px;
+    width: 56px;
+    min-width: 56px;
+    padding-inline: 4px;
+  }
+
+  .compute-card-skin--market .desk-card-rail .desk-card-tabs button[aria-selected="true"] strong {
+    display: none;
+  }
 }
 
 @media (max-width: 640px) {

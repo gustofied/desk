@@ -1,15 +1,49 @@
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 2;
-const LEGACY_STORAGE_VERSION = 1;
+const STORAGE_VERSION = 3;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2]);
 const ALL_CARDS_ID = "all";
+const OVERVIEW_CATALOG_ID = "overview";
+const HEDGE_CATALOG_ID = "hedge";
 const PRIVATE_CATALOG_ID = "private";
-const PRIVATE_CATALOG_KEYS = Object.freeze([
-  "preset-deal-view-deal-041",
-  "preset-gpu-index-b200",
-  "preset-gpu-price-snapshot-prices",
-  "preset-gpu-market-depth-h100-us",
+const STARTER_CATALOGS = Object.freeze([
+  Object.freeze({
+    id: OVERVIEW_CATALOG_ID,
+    name: "Overview",
+    keys: Object.freeze([
+      "preset-gpu-price-snapshot-prices",
+      "preset-gpu-index-h200",
+      "preset-gpu-index-b200",
+      "preset-gpu-index-compute-market",
+      "preset-gpu-market-depth-h100-us",
+      "preset-gpu-market-depth-h100-history",
+      "preset-power-basis-pjm-west",
+      "preset-power-basis-pjm-west-spread",
+      "preset-deal-view-deal-041",
+    ]),
+  }),
+  Object.freeze({
+    id: HEDGE_CATALOG_ID,
+    name: "Hedge",
+    keys: Object.freeze([
+      "preset-gpu-index-compute-market",
+      "preset-gpu-index-h100-b200-spread",
+      "preset-gpu-index-h200-b300-spread",
+      "preset-power-basis-pjm-west-spread",
+      "preset-gpu-market-depth-h100-history",
+    ]),
+  }),
+  Object.freeze({
+    id: PRIVATE_CATALOG_ID,
+    name: "Private",
+    keys: Object.freeze([
+      "preset-deal-view-deal-041",
+      "preset-gpu-index-b200",
+      "preset-gpu-price-snapshot-prices",
+      "preset-gpu-market-depth-h100-us",
+    ]),
+  }),
 ]);
-const MAX_COLLECTIONS = 13;
+const MAX_COLLECTIONS = 16;
 const MAX_COLLECTION_NAME_LENGTH = 48;
 const MAX_COLLECTION_KEYS = 128;
 const MAX_KEY_LENGTH = 240;
@@ -22,8 +56,15 @@ export const MAX_CATALOG_COLLECTION_NAME_LENGTH =
 export function loadCatalogCollections() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === null) return emptyState();
-    return normalizeState(JSON.parse(stored));
+    if (stored === null) {
+      const initial = emptyState();
+      return persistLoadedState(initial);
+    }
+    const parsed = JSON.parse(stored);
+    const normalized = normalizeState(parsed);
+    return parsed?.version === STORAGE_VERSION
+      ? normalized
+      : persistLoadedState(normalized);
   } catch (error) {
     console.error("Catalog data could not be read", error);
     return emptyState(true);
@@ -232,8 +273,18 @@ function writeState(state) {
   );
 }
 
+function persistLoadedState(state) {
+  try {
+    writeState(state);
+    return state;
+  } catch (error) {
+    console.error("Catalog data could not be saved", error);
+    return { ...state, unavailable: true };
+  }
+}
+
 function normalizeState(value) {
-  if (value?.version === LEGACY_STORAGE_VERSION) {
+  if (LEGACY_STORAGE_VERSIONS.has(value?.version)) {
     return normalizeState(migrateLegacyState(value));
   }
   if (
@@ -345,64 +396,50 @@ function emptyState(unavailable = false) {
   const now = new Date().toISOString();
   return {
     version: STORAGE_VERSION,
-    activeId: ALL_CARDS_ID,
+    activeId: unavailable ? ALL_CARDS_ID : OVERVIEW_CATALOG_ID,
     collections: unavailable
       ? []
-      : [
-          {
-            id: PRIVATE_CATALOG_ID,
-            name: "Private",
-            keys: [...PRIVATE_CATALOG_KEYS],
-            createdAt: now,
-            updatedAt: now,
-          },
-        ],
+      : STARTER_CATALOGS.map((catalog) => ({
+          id: catalog.id,
+          name: catalog.name,
+          keys: [...catalog.keys],
+          createdAt: now,
+          updatedAt: now,
+        })),
     unavailable,
   };
 }
 
 function migrateLegacyState(value) {
-  const legacyValue = {
+  const sourceVersion = value.version;
+  const legacyState = normalizeState({
     ...value,
     version: STORAGE_VERSION,
-  };
-  const normalized = normalizeState(legacyValue);
-  const namedPrivate = normalized.collections.find(
-    (collection) => collection.name.toLocaleLowerCase() === "private",
-  );
+  });
   const now = new Date().toISOString();
-
-  if (namedPrivate) {
-    return {
-      ...normalized,
-      collections: normalized.collections.map((collection) =>
-        collection.id === namedPrivate.id
-          ? {
-              ...collection,
-              keys: normalizeKeys([...collection.keys, ...PRIVATE_CATALOG_KEYS]),
-              updatedAt: now,
-            }
-          : collection,
-      ),
-    };
+  const collections = [...legacyState.collections];
+  const additions = sourceVersion === 2
+    ? STARTER_CATALOGS.filter((catalog) => catalog.id !== PRIVATE_CATALOG_ID)
+    : STARTER_CATALOGS;
+  for (const starter of additions) {
+    const starterName = starter.name.toLocaleLowerCase();
+    const exists = collections.some(
+      (collection) =>
+        collection.id === starter.id ||
+        collection.name.toLocaleLowerCase() === starterName,
+    );
+    if (exists || collections.length >= MAX_COLLECTIONS) continue;
+    collections.push({
+      id: starter.id,
+      name: starter.name,
+      keys: [...starter.keys],
+      createdAt: now,
+      updatedAt: now,
+    });
   }
-
-  if (normalized.collections.length >= MAX_COLLECTIONS) {
-    return normalized;
-  }
-
   return {
-    ...normalized,
-    collections: [
-      ...normalized.collections,
-      {
-        id: PRIVATE_CATALOG_ID,
-        name: "Private",
-        keys: [...PRIVATE_CATALOG_KEYS],
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
+    ...legacyState,
+    collections,
   };
 }
 

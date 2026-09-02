@@ -7,14 +7,15 @@ views, monitor and share. Built for anyone building or running a compute desk.
 
 [Open Desk](https://desk.adamsioud.com)
 
-![Desk Catalog showing deal, price, snapshot, and market depth views](assets/showcase/desk-catalog-gallery.jpg)
+![Desk Overview catalog showing compute market views](assets/showcase/desk-catalog-gallery.jpg)
 
 See [The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar) for
-my wider work on compute markets.
+how I compose views and work across compute markets.
 
 ## Workspace
 
-- **Catalog** arranges saved and preset views into named galleries that can be reordered.
+- **Catalog** opens with Overview, Hedge, and Private arrangements that can be
+  edited and reordered.
 - **Monitor** opens one view for hovering, zooming, and closer reading.
 - **Craft** keeps that view in place while exposing its data and presentation
   controls.
@@ -24,9 +25,10 @@ my wider work on compute markets.
 - Hourly H100, H200, B200, and B300 price history
 - Current accelerator price comparison
 - H100 market depth as a current capacity curve or depth history
+- PJM West real-time, day-ahead, and spread history
 - Deal 041 as a compact private market workflow
 - Token Price Index as a comparison layer
-- Price, return, and two-GPU return-spread comparisons
+- Price, percentage-change, and two-GPU spread comparisons
 - Four palettes with light and dark themes
 
 The included data is a deterministic product showcase. It is designed to
@@ -82,6 +84,7 @@ the public views:
 - `data/v1/compute-prices.json`
 - `data/v1/accelerator-prices.json`
 - `data/v1/h100-market-depth.json`
+- `data/v1/power-prices.json`
 
 The SQL targets `datafusion-cli` 53 or newer so the published JSON arrays can
 be read directly as external tables. Embedded DataFusion clients need an HTTPS
@@ -111,9 +114,17 @@ desk \
   --range=7d
 ```
 
-`desk --help` lists the price, snapshot, and market-depth datasets together
-with their available filters. Use `--stdout` to stream rows or `--output` to
-choose a file.
+```bash
+desk \
+  data sync \
+  power-prices \
+  --location=PJM-WEST \
+  --range=7d
+```
+
+`desk --help` lists the price, snapshot, market depth, and power datasets
+together with their available filters. Use `--stdout` to stream rows or
+`--output` to choose a file.
 
 ```bash
 npm run check:data       # validate the included market run

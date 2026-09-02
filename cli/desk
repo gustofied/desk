@@ -17,6 +17,7 @@ const DATASETS = new Set([
   "compute-prices",
   "accelerator-prices",
   "h100-market-depth",
+  "power-prices",
 ]);
 
 process.stdout.on("error", (error) => {
@@ -84,9 +85,12 @@ function parseOptions(dataset, args) {
     allowed.add("range");
   } else if (dataset === "accelerator-prices") {
     allowed.add("series");
-  } else {
+  } else if (dataset === "h100-market-depth") {
     allowed.add("view");
     allowed.add("target");
+  } else if (dataset === "power-prices") {
+    allowed.add("location");
+    allowed.add("range");
   }
 
   for (let index = 0; index < args.length; index += 1) {
@@ -127,7 +131,7 @@ function parseOptions(dataset, args) {
     }
   } else if (dataset === "accelerator-prices") {
     values.series = parseSeries(values.series, ACCELERATOR_SERIES);
-  } else {
+  } else if (dataset === "h100-market-depth") {
     values.view = String(values.view || "now").toLowerCase();
     if (!["now", "history"].includes(values.view)) {
       throw usageError("--view must be now or history");
@@ -135,6 +139,15 @@ function parseOptions(dataset, args) {
     values.target = Number(values.target || 128);
     if (!Number.isSafeInteger(values.target) || values.target <= 0) {
       throw usageError("--target must be a positive whole number");
+    }
+  } else if (dataset === "power-prices") {
+    values.location = String(values.location || "PJM-WEST").toUpperCase();
+    values.range = String(values.range || "all").toLowerCase();
+    if (!/^[A-Z0-9-]+$/.test(values.location)) {
+      throw usageError("--location must be a market location id");
+    }
+    if (!["1d", "7d", "all"].includes(values.range)) {
+      throw usageError("--range must be 1d, 7d, or all");
     }
   }
 
@@ -207,9 +220,34 @@ async function fetchDataset(source) {
 function transformDataset(dataset, rows, options) {
   if (dataset === "compute-prices") return filterPriceHistory(rows, options);
   if (dataset === "accelerator-prices") return filterSnapshot(rows, options);
-  return options.view === "history"
-    ? deriveDepthHistory(rows, options.target)
-    : latestDepthCurve(rows, options.target);
+  if (dataset === "h100-market-depth") {
+    return options.view === "history"
+      ? deriveDepthHistory(rows, options.target)
+      : latestDepthCurve(rows, options.target);
+  }
+  if (dataset === "power-prices") return filterPowerPrices(rows, options);
+  throw new Error(`unsupported dataset ${dataset}`);
+}
+
+function filterPowerPrices(rows, options) {
+  const filtered = rows.filter((row) => {
+    validateTimestamp(row);
+    for (const field of [
+      "real_time_price_usd_mwh",
+      "day_ahead_price_usd_mwh",
+      "basis_usd_mwh",
+    ]) {
+      if (typeof row[field] !== "number" || !Number.isFinite(row[field])) {
+        throw new Error(`power row has an invalid ${field}`);
+      }
+    }
+    return String(row.instrument).toUpperCase() === options.location;
+  });
+  if (!filtered.length) throw new Error("the selected location returned no rows");
+  if (options.range === "all") return filtered;
+  const latest = latestTimestamp(filtered);
+  const duration = options.range === "1d" ? 86_400_000 : 604_800_000;
+  return filtered.filter((row) => timestamp(row) >= latest - duration);
 }
 
 function filterPriceHistory(rows, options) {
@@ -361,6 +399,7 @@ Datasets
   compute-prices       --series=H200,TPI --range=1d|7d|all
   accelerator-prices   --series=H100,H200,B200,B300
   h100-market-depth    --view=now|history --target=128
+  power-prices         --location=PJM-WEST --range=1d|7d|all
 
 Options
   -o, --output <file>  Write to a specific file

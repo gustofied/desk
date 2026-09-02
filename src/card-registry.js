@@ -11,12 +11,16 @@ const GPU_MARKET_DEPTH_ID = "gpu-market-depth";
 const GPU_MARKET_DEPTH_SLUG = "gpu-market-depth";
 const GPU_MARKET_DEPTH_DATA_FILE = "data/gpu-market-depth.json";
 const GPU_MARKET_DEPTH_TABLE_FILE = "data/v1/h100-market-depth.json";
+const POWER_BASIS_ID = "power-basis";
+const POWER_BASIS_SLUG = "power-basis";
+const POWER_BASIS_DATA_FILE = "data/power-basis.json";
+const POWER_BASIS_TABLE_FILE = "data/v1/power-prices.json";
 const DEAL_VIEW_ID = "deal-view";
 const DEAL_VIEW_SLUG = "deal-041";
 const DEAL_VIEW_DATA_FILE = "data/deal-041.json";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
-export const PUBLISHED_CARD_VERSION = "v16";
+export const PUBLISHED_CARD_VERSION = "v17";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),
@@ -114,13 +118,24 @@ export const GPU_MARKET_DEPTH_LAYERS = Object.freeze([
   }),
 ]);
 
+export const POWER_BASIS_LAYERS = Object.freeze([
+  Object.freeze({
+    id: "PJM-WEST",
+    label: "PJM West",
+    shortLabel: "PJM WEST",
+    unit: "usd-mwh",
+    views: Object.freeze(["price", "basis"]),
+  }),
+]);
+
 export const CARD_REGISTRY = Object.freeze([
   Object.freeze({
     id: GPU_INDEX_ID,
     slug: GPU_INDEX_SLUG,
     hash: "gpu-benchmark-card",
     renderer: "line",
-    title: "Compute Prices",
+    title: "Price history",
+    craftLabel: "Price history",
     description: "Accelerator rental prices and token expenditure.",
     sourceDir: "api/dashboard-snapshots/gpu-benchmark",
     dataFile: GPU_INDEX_DATA_FILE,
@@ -128,7 +143,7 @@ export const CARD_REGISTRY = Object.freeze([
     dataAdapter: "series",
     dataTable: Object.freeze({
       id: "compute-prices",
-      label: "Compute prices",
+      label: "Price history",
       file: GPU_INDEX_TABLE_FILE,
     }),
     sharePath: `/cards/${GPU_INDEX_SLUG}`,
@@ -145,8 +160,8 @@ export const CARD_REGISTRY = Object.freeze([
     ranges: Object.freeze(["1d", "7d", "all"]),
     allowComparisons: true,
     layers: GPU_LAYERS,
-    catalogPresets: Object.freeze(
-      GPU_PRICE_LAYERS.map((layer) =>
+    catalogPresets: Object.freeze([
+      ...GPU_PRICE_LAYERS.map((layer) =>
         Object.freeze({
           id: layer.id.toLowerCase(),
           label: layer.label,
@@ -158,10 +173,40 @@ export const CARD_REGISTRY = Object.freeze([
           }),
         }),
       ),
-    ),
+      Object.freeze({
+        id: "compute-market",
+        label: "Compute market",
+        state: Object.freeze({
+          gpu: "H200",
+          layers: Object.freeze(["H100", "H200", "B200", "TOKEN"]),
+          scale: "index",
+          range: "7d",
+        }),
+      }),
+      Object.freeze({
+        id: "h100-b200-spread",
+        label: "H100 − B200",
+        state: Object.freeze({
+          gpu: "H100",
+          layers: Object.freeze(["H100", "B200"]),
+          scale: "spread",
+          range: "all",
+        }),
+      }),
+      Object.freeze({
+        id: "h200-b300-spread",
+        label: "H200 − B300",
+        state: Object.freeze({
+          gpu: "H200",
+          layers: Object.freeze(["H200", "B300"]),
+          scale: "spread",
+          range: "all",
+        }),
+      }),
+    ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Price", unit: "usd-hour" }),
-      Object.freeze({ id: "index", label: "Return", unit: "index" }),
+      Object.freeze({ id: "index", label: "Change", unit: "index" }),
       Object.freeze({
         id: "spread",
         label: "Spread",
@@ -174,7 +219,8 @@ export const CARD_REGISTRY = Object.freeze([
     slug: GPU_PRICE_SNAPSHOT_SLUG,
     hash: "gpu-benchmark-card",
     renderer: "categorical-bar",
-    title: "Accelerator prices",
+    title: "Latest prices",
+    craftLabel: "Latest prices",
     description: "Current hourly benchmark price by GPU.",
     sourceCardId: GPU_INDEX_ID,
     sourceDir: "api/dashboard-snapshots/gpu-benchmark",
@@ -183,7 +229,7 @@ export const CARD_REGISTRY = Object.freeze([
     dataAdapter: "snapshot",
     dataTable: Object.freeze({
       id: "accelerator-prices",
-      label: "Accelerator prices",
+      label: "Latest prices",
       file: GPU_PRICE_SNAPSHOT_TABLE_FILE,
     }),
     sharePath: `/cards/${GPU_PRICE_SNAPSHOT_SLUG}`,
@@ -202,7 +248,7 @@ export const CARD_REGISTRY = Object.freeze([
     allowComparisons: true,
     layers: GPU_PRICE_LAYERS,
     catalogPresets: Object.freeze([
-      Object.freeze({ id: "prices", label: "Accelerator prices" }),
+      Object.freeze({ id: "prices", label: "Latest prices" }),
     ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Price", unit: "usd-hour" }),
@@ -214,6 +260,7 @@ export const CARD_REGISTRY = Object.freeze([
     hash: "gpu-benchmark-card",
     renderer: "cumulative-depth",
     title: "H100 depth",
+    craftLabel: "Market depth",
     description: "Qualifying H100 capacity available across hourly prices.",
     sourceFile: "api/dashboard-snapshots/gpu-market-depth.json",
     dataFile: GPU_MARKET_DEPTH_DATA_FILE,
@@ -250,10 +297,68 @@ export const CARD_REGISTRY = Object.freeze([
     ]),
     catalogPresets: Object.freeze([
       Object.freeze({ id: "h100-us", label: "H100 depth" }),
+      Object.freeze({
+        id: "h100-history",
+        label: "H100 depth history",
+        state: Object.freeze({ scale: "history", target: "128" }),
+      }),
     ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "depth", label: "Now", unit: "nodes" }),
       Object.freeze({ id: "history", label: "History", unit: "nodes" }),
+    ]),
+  }),
+  Object.freeze({
+    id: POWER_BASIS_ID,
+    slug: POWER_BASIS_SLUG,
+    hash: "gpu-benchmark-card",
+    renderer: "power-basis",
+    primaryParam: "location",
+    title: "Power prices",
+    craftLabel: "Power prices",
+    description: "Real-time and day-ahead power prices.",
+    sourceFile: "api/dashboard-snapshots/power-basis.json",
+    dataFile: POWER_BASIS_DATA_FILE,
+    dataUrl: `./${POWER_BASIS_DATA_FILE}`,
+    dataAdapter: "power-basis",
+    dataTable: Object.freeze({
+      id: "power-prices",
+      label: "Power prices",
+      file: POWER_BASIS_TABLE_FILE,
+    }),
+    sharePath: `/cards/${POWER_BASIS_SLUG}`,
+    previewImageDir: `assets/social/${POWER_BASIS_ID}`,
+    previewPageDir: `cards/${POWER_BASIS_SLUG}`,
+    defaults: Object.freeze({
+      layer: "PJM-WEST",
+      layers: Object.freeze(["PJM-WEST"]),
+      range: "1d",
+      scale: "price",
+      palette: "azure",
+      theme: "light",
+    }),
+    ranges: Object.freeze(["1d", "7d", "all"]),
+    allowComparisons: false,
+    layers: POWER_BASIS_LAYERS,
+    catalogPresets: Object.freeze([
+      Object.freeze({
+        id: "pjm-west",
+        label: "PJM West",
+        state: Object.freeze({ location: "PJM-WEST" }),
+      }),
+      Object.freeze({
+        id: "pjm-west-spread",
+        label: "PJM West spread",
+        state: Object.freeze({
+          location: "PJM-WEST",
+          scale: "basis",
+          range: "7d",
+        }),
+      }),
+    ]),
+    visualizations: Object.freeze([
+      Object.freeze({ id: "price", label: "Price", unit: "usd-mwh" }),
+      Object.freeze({ id: "basis", label: "Spread", unit: "usd-mwh" }),
     ]),
   }),
   Object.freeze({
@@ -264,6 +369,7 @@ export const CARD_REGISTRY = Object.freeze([
     stateKind: "deal",
     publishable: false,
     title: "Deal 041",
+    craftLabel: "Deal",
     description: "Reserved B200 capacity moving from mandate to execution.",
     sourceFile: "api/dashboard-snapshots/deal-041.json",
     dataFile: DEAL_VIEW_DATA_FILE,
@@ -300,13 +406,13 @@ export const CARD_REGISTRY = Object.freeze([
     stateOptions: Object.freeze([
       Object.freeze({
         id: "gpu",
-        label: "GPU",
+        label: "Model",
         values: Object.freeze(["H100", "H200", "B200", "B300"]),
         default: "B200",
       }),
       Object.freeze({
         id: "quantity",
-        label: "GPUs",
+        label: "Capacity",
         type: "integer",
         min: 8,
         max: 4096,
@@ -314,7 +420,7 @@ export const CARD_REGISTRY = Object.freeze([
       }),
       Object.freeze({
         id: "quote",
-        label: "Quote",
+        label: "Rate",
         type: "decimal",
         min: 0.1,
         max: 100,
@@ -323,7 +429,7 @@ export const CARD_REGISTRY = Object.freeze([
       }),
       Object.freeze({
         id: "rfs",
-        label: "RFS",
+        label: "Start",
         type: "month",
         min: "2026-01",
         max: "2035-12",
@@ -377,7 +483,7 @@ export function cardStateParamIds(card = getCardDefinition()) {
     ];
   }
   return [
-    "gpu",
+    card.primaryParam || "gpu",
     "layers",
     "scale",
     "range",
@@ -421,11 +527,14 @@ export function normalizeCardState(cardId, stateParams = {}) {
     card.id === GPU_MARKET_DEPTH_ID &&
     (requestedRangeId === "1d" || requestedRangeId === "7d");
   const primaryLayers = card.layers.filter((layer) => layer.primary !== false);
-  const requestedGpu = String(stateParams.gpu || "").toUpperCase();
+  const primaryParam = card.primaryParam || "gpu";
+  const requestedGpu = String(
+    stateParams[primaryParam] ?? stateParams.gpu ?? "",
+  ).toUpperCase();
   const gpu = primaryLayers.some((layer) => layer.id === requestedGpu)
     ? requestedGpu
     : card.defaults.layer;
-  const fallbackLayers = stateParams.gpu
+  const fallbackLayers = (stateParams[primaryParam] ?? stateParams.gpu)
     ? [gpu]
     : card.defaults.layers;
   const requestedLayers = parseLayerIds(
@@ -494,6 +603,7 @@ export function normalizeCardState(cardId, stateParams = {}) {
 
   return {
     gpu,
+    ...(primaryParam === "gpu" ? {} : { [primaryParam]: gpu }),
     layers,
     scale,
     range,

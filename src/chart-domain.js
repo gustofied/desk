@@ -2,13 +2,17 @@ export const INDEX_BASELINE = 100;
 export const SPREAD_BASELINE = 0;
 
 export function chartYDomain(values, { scale = "price" } = {}) {
-  const finiteValues = values.filter(Number.isFinite);
-  if (scale === "index") finiteValues.push(INDEX_BASELINE);
-  if (scale === "spread") finiteValues.push(SPREAD_BASELINE);
-  if (!finiteValues.length) {
+  const observedValues = values.filter(Number.isFinite);
+  if (!observedValues.length) {
     if (scale === "index") return [99, 101];
     return scale === "spread" ? [-1, 1] : [0, 1];
   }
+
+  const observedMinimum = Math.min(...observedValues);
+  const observedMaximum = Math.max(...observedValues);
+  const finiteValues = [...observedValues];
+  if (scale === "index") finiteValues.push(INDEX_BASELINE);
+  if (scale === "spread") finiteValues.push(SPREAD_BASELINE);
 
   const minimum = Math.min(...finiteValues);
   const maximum = Math.max(...finiteValues);
@@ -17,9 +21,23 @@ export function chartYDomain(values, { scale = "price" } = {}) {
   const minimumSpread = isRelativeScale ? 0.5 : 0.08;
   const spread = Math.max(maximum - minimum, magnitude * 0.02, minimumSpread);
   const padding = spread * (isRelativeScale ? 0.08 : 0.12);
-  const lower = minimum - padding;
+  let lower = minimum - padding;
+  let upper = maximum + padding;
 
-  return [scale === "price" ? Math.max(0, lower) : lower, maximum + padding];
+  const baseline = scale === "index"
+    ? INDEX_BASELINE
+    : scale === "spread"
+      ? SPREAD_BASELINE
+      : null;
+  if (baseline !== null) {
+    if (observedMinimum >= baseline && observedMaximum > baseline) {
+      lower = baseline;
+    } else if (observedMaximum <= baseline && observedMinimum < baseline) {
+      upper = baseline;
+    }
+  }
+
+  return [scale === "price" ? Math.max(0, lower) : lower, upper];
 }
 
 export function comparisonStrokeOpacity(theme = "light") {

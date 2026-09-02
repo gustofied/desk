@@ -573,8 +573,7 @@ function historyReadoutMarkup(palette, layout, compact) {
       fill="${palette.line}" stroke="${palette.paper}" stroke-width="2.5"
       vector-effect="non-scaling-stroke"/>
     <text x="18" y="${coordinate(readoutY)}" font-family="Geist Mono, monospace"
-      font-size="${fontSize}" letter-spacing="0.25" paint-order="stroke fill"
-      stroke="${palette.paper}" stroke-width="8" stroke-linejoin="round">
+      font-size="${fontSize}" letter-spacing="0.25">
       <tspan data-depth-history-date="" fill="${palette.line}" font-weight="650"></tspan>
       <tspan data-depth-history-benchmark-value="" dx="22" fill="${palette.secondary}"></tspan>
       <tspan data-depth-history-clearing-value="" dx="22" fill="${palette.line}" font-weight="600"></tspan>
@@ -797,9 +796,10 @@ function configureShelfNavigation(svgNode, focusedPrice, ariaLabel) {
 
   buckets.forEach((bucket, index) => {
     bucket.setAttribute("aria-hidden", "true");
-    bucket.addEventListener("pointerenter", () => setActive(bucket, true), {
-      signal,
-    });
+    bucket.addEventListener("pointerenter", () => {
+      setActive(buckets[activeIndex], false);
+      setActive(bucket, true);
+    }, { signal });
     bucket.addEventListener("pointerleave", () => {
       setActive(bucket, false);
       if (target === target.ownerDocument.activeElement) {
@@ -936,8 +936,7 @@ function shelfReadout(bucket, palette, x, y) {
   return `
     <g data-depth-bucket-readout="" opacity="0" pointer-events="none">
       <text x="${x}" y="${y}" font-family="Geist Mono, monospace"
-        font-size="15" letter-spacing="0.25" paint-order="stroke fill"
-        stroke="${palette.paper}" stroke-width="8" stroke-linejoin="round">
+        font-size="15" letter-spacing="0.25">
         <tspan fill="${palette.line}" font-weight="650">${escapeXml(formatPrice(bucket.price))}</tspan>
         <tspan dx="18" fill="${palette.secondary}" font-size="12">${escapeXml(`${formatInteger(bucket.incrementalNodes)} ADDED`)}</tspan>
         <tspan dx="18" fill="${palette.secondary}" font-size="12">${escapeXml(`${formatInteger(bucket.cumulativeNodes)} TOTAL`)}</tspan>

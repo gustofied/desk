@@ -26,6 +26,8 @@ import { paintGpuPriceBarChart } from "./gpu-price-bar-presentation.js";
 import { createGpuSpreadSeries } from "./gpu-spread-model.js";
 import { createGpuMarketDepthModel } from "./gpu-market-depth-model.js";
 import { paintGpuMarketDepthChart } from "./gpu-market-depth-presentation.js";
+import { createPowerBasisModel } from "./power-basis-model.js";
+import { paintPowerBasisChart } from "./power-basis-presentation.js";
 import { createDealViewModel } from "./deal-view-model.js";
 import { mountDealView } from "./deal-view-presentation.js";
 import { createCommandPalette } from "./command-palette.js";
@@ -77,10 +79,17 @@ const root = document.querySelector("[data-gpu-benchmark-card]");
 
 if (root) {
   const params = new URL(window.location.href).searchParams;
-  const cardDefinition = getCardDefinition(params.get("card") || root.dataset.cardId);
+  const neutralCraftRequested =
+    params.get("view") === "craft" && params.get("draft") === "new";
+  const cardDefinition = getCardDefinition(
+    neutralCraftRequested
+      ? "gpu-index"
+      : params.get("card") || root.dataset.cardId,
+  );
   const cardId = cardDefinition.id;
   const isBarCard = cardDefinition.renderer === "categorical-bar";
   const isDepthCard = cardDefinition.renderer === "cumulative-depth";
+  const isPowerCard = cardDefinition.renderer === "power-basis";
   const isDealCard = cardDefinition.renderer === "deal";
   root.dataset.cardId = cardId;
   root.dataset.cardRenderer = cardDefinition.renderer || "line";
@@ -105,7 +114,9 @@ if (root) {
   const requestedCard = params.get("card");
   const requestedViewParam = params.get("view");
   const requestedView =
-    requestedCard === cardId ? requestedViewParam : null;
+    neutralCraftRequested || requestedCard === cardId
+      ? requestedViewParam
+      : null;
   const supportedViewParams = [
     "card",
     "gallery",
@@ -127,8 +138,7 @@ if (root) {
   const initialView = initialMode === "catalog" ? "share" : "detail";
   const initialCraftEmpty =
     initialMode === "craft" &&
-    params.get("draft") === "new" &&
-    families.length > 1;
+    params.get("draft") === "new";
   const initialLayout =
     initialMode === "catalog" &&
     (
@@ -175,6 +185,9 @@ if (root) {
   const initialNormalizedState = {
     ...requestedState,
     gpu: selected,
+    ...(cardDefinition.primaryParam
+      ? { [cardDefinition.primaryParam]: selected }
+      : {}),
     layers: serializeLayerIds(initialCompositionLayers, cardDefinition),
     scale: initialCompositionScale,
     range: initialRange,
@@ -257,6 +270,7 @@ if (root) {
     modeButtons: Array.from(document.querySelectorAll("[data-desk-mode]")),
     galleryToggle: document.querySelector("[data-index-gallery-toggle]"),
     workspaceTitle: root.querySelector("#desk-workspace-title"),
+    workspaceRegion: root.querySelector(".gpu-index-detail__body"),
     mobileSummaryLabel: root.querySelector("[data-mobile-summary-label]"),
     mobileSummaryValue: root.querySelector("[data-mobile-summary-value]"),
     mobileSummaryRange: root.querySelector("[data-mobile-summary-range]"),
@@ -315,7 +329,8 @@ if (root) {
     depthCraftViews: root.querySelector("[data-depth-craft-views]"),
     depthCraftViewButtons: [],
     dealCraft: root.querySelector("[data-deal-craft]"),
-    dealCraftGpu: root.querySelector("[data-deal-craft-gpu]"),
+    dealCraftModels: root.querySelector("[data-deal-craft-models]"),
+    dealCraftModelButtons: [],
     dealCraftQuantity: root.querySelector("[data-deal-craft-quantity]"),
     dealCraftQuote: root.querySelector("[data-deal-craft-quote]"),
     dealCraftRfs: root.querySelector("[data-deal-craft-rfs]"),
@@ -329,7 +344,10 @@ if (root) {
     chartDescription: root.querySelector("[data-gpu-chart-description]"),
     tooltip: root.querySelector("[data-gpu-tooltip]"),
     chartState: root.querySelector("[data-gpu-state]"),
+    craftHome: root.querySelector("[data-craft-home]"),
     craftEmpty: root.querySelector("[data-craft-empty]"),
+    craftTypeList: root.querySelector("[data-craft-type-list]"),
+    craftTypeButtons: [],
     pageClock: document.querySelector("[data-desk-clock]"),
     pageClockDate: document.querySelector("[data-desk-clock-date]"),
     pageClockTime: document.querySelector("[data-desk-clock-time]"),
@@ -399,6 +417,7 @@ if (root) {
     setInitialPanel();
     setShareReady(false);
     configureAppearanceControls();
+    configureCraftStartControls();
     configureComposerControls();
     configureDealCraftControls();
     configureSaveControls();
@@ -443,7 +462,7 @@ if (root) {
           state.layout === "all"
         ) {
           setCatalogMenuOpen(!state.catalogMenuOpen, { moveFocus: true });
-        } else if (mode === "craft") openCraft(false);
+        } else if (mode === "craft") openNeutralCraft(false);
         else switchWorkspaceMode(mode, false);
       });
     }
@@ -458,6 +477,9 @@ if (root) {
     nodes.cardRail?.addEventListener("keydown", handleCardRailKeydown, true);
     nodes.compareToggle?.addEventListener("click", (event) => {
       setCompareOpen(!state.compareOpen, event.detail === 0);
+    });
+    nodes.craftHome?.addEventListener("click", (event) => {
+      returnToCraftStart(event.detail === 0);
     });
     nodes.comparePanel?.addEventListener("keydown", handleComparePanelKeydown);
     nodes.zoomReset?.addEventListener("click", resetCustomZoom);
@@ -482,6 +504,26 @@ if (root) {
     loadCards();
   }
 
+  function configureCraftStartControls() {
+    if (!nodes.craftTypeList) return;
+    nodes.craftTypeButtons = CARD_REGISTRY
+      .filter((definition) => definition.craftable !== false)
+      .map((definition) => {
+        const button = document.createElement("button");
+        const label = definition.craftLabel || definition.title;
+        button.type = "button";
+        button.dataset.craftType = definition.id;
+        button.textContent = label;
+        button.title = definition.description;
+        button.setAttribute("aria-label", `Start ${label} in Craft`);
+        button.addEventListener("click", (event) => {
+          startCraftType(definition.id, event.detail === 0);
+        });
+        return button;
+      });
+    nodes.craftTypeList.replaceChildren(...nodes.craftTypeButtons);
+  }
+
   function configureComposerControls() {
     if (nodes.primaryGroup) {
       nodes.primaryButtons = families.map((family) => {
@@ -490,7 +532,8 @@ if (root) {
         button.role = "radio";
         button.dataset.cardPrimary = family;
         button.setAttribute("aria-checked", "false");
-        button.textContent = family;
+        const layer = getLayerDefinition(cardDefinition, family);
+        button.textContent = layer?.shortLabel || layer?.label || family;
         return button;
       });
       nodes.primaryGroup.replaceChildren(...nodes.primaryButtons);
@@ -722,8 +765,29 @@ if (root) {
 
   function configureDealCraftControls() {
     if (!isDealCard || !nodes.dealCraft) return;
+    const modelOption = cardDefinition.stateOptions?.find(
+      (option) => option.id === "gpu",
+    );
+    if (nodes.dealCraftModels && modelOption?.values?.length) {
+      nodes.dealCraftModelButtons = modelOption.values.map((value) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.role = "radio";
+        button.dataset.dealCraftModel = value;
+        button.setAttribute("aria-checked", "false");
+        button.textContent = value;
+        return button;
+      });
+      nodes.dealCraftModels.replaceChildren(...nodes.dealCraftModelButtons);
+      configureChoiceButtons(
+        nodes.dealCraftModelButtons,
+        (button) => button.dataset.dealCraftModel,
+        selectDealCraftModel,
+        "aria-checked",
+        "radio",
+      );
+    }
     const controls = [
-      ["gpu", nodes.dealCraftGpu],
       ["quantity", nodes.dealCraftQuantity],
       ["quote", nodes.dealCraftQuote],
       ["rfs", nodes.dealCraftRfs],
@@ -743,6 +807,22 @@ if (root) {
         commitDealCraftField(optionId, control);
       });
     });
+  }
+
+  function selectDealCraftModel(modelId) {
+    if (
+      !isDealCard ||
+      state.mode !== "craft" ||
+      state.craftEmpty ||
+      modelId === state.options.gpu
+    ) {
+      return;
+    }
+    const next = normalizeCardState(cardId, {
+      ...currentCardState(),
+      gpu: modelId,
+    });
+    mutateComposition(next, { message: "Model updated" });
   }
 
   function commitDealCraftField(optionId, control) {
@@ -1075,6 +1155,7 @@ if (root) {
           `${candidate.name}, ${count} ${count === 1 ? "view" : "views"}`,
         );
         option.dataset.catalogCollection = candidate.id;
+        if (candidate.system) option.dataset.system = "";
         const label = document.createElement("span");
         label.textContent = candidate.name;
         label.title = candidate.name;
@@ -1103,14 +1184,21 @@ if (root) {
   }
 
   function loadActiveCatalogSession(collections) {
+    const fallback =
+      collections.activeId === ALL_CARDS_CATALOG_ID ||
+      collections.collections.some(
+        (collection) => collection.id === collections.activeId,
+      )
+        ? collections.activeId
+        : ALL_CARDS_CATALOG_ID;
     try {
       const id = window.sessionStorage.getItem(activeCatalogSessionKey) || "";
       return id === ALL_CARDS_CATALOG_ID ||
           collections.collections.some((collection) => collection.id === id)
         ? id
-        : ALL_CARDS_CATALOG_ID;
+        : fallback;
     } catch {
-      return ALL_CARDS_CATALOG_ID;
+      return fallback;
     }
   }
 
@@ -1472,8 +1560,11 @@ if (root) {
   }
 
   function suggestedCatalogName() {
-    if (isBarCard) return "Accelerator prices";
+    if (isBarCard) return "Latest prices";
     if (isDepthCard) return `H100 depth ${state.options.target} nodes`;
+    if (isPowerCard) {
+      return getLayerDefinition(cardDefinition, state.selected)?.label || "Power prices";
+    }
     if (isDealCard) {
       const id = state.runtimePayload?.id || "041";
       return `Deal ${id} ${state.options.gpu}`;
@@ -1512,7 +1603,7 @@ if (root) {
   function setCompareOpen(open, moveFocus = false) {
     if (!nodes.comparePanel || !nodes.compareToggle) return;
     const nextOpen = Boolean(open);
-    if (nextOpen && state.mode !== "craft") return;
+    if (nextOpen && (state.mode !== "craft" || state.craftEmpty)) return;
     const panel = nodes.comparePanel;
     state.compareOpen = nextOpen;
     nodes.compareToggle.setAttribute("aria-expanded", String(nextOpen));
@@ -1536,7 +1627,11 @@ if (root) {
       if (moveFocus) {
         window.requestAnimationFrame(() => {
           const target = state.craftEmpty
-            ? nodes.primaryButtons[0]
+            ? nodes.craftTypeButtons[0]
+            : isDealCard
+              ? nodes.dealCraftModelButtons.find(
+                  (button) => button.getAttribute("aria-checked") === "true",
+                ) || nodes.dealCraftModelButtons[0]
             : nodes.optionButtons.find(
                 (button) =>
                   !button.disabled && button.getAttribute("aria-checked") === "true",
@@ -1568,26 +1663,42 @@ if (root) {
   }
 
   async function openCraft(focusNavigation = false) {
-    if (state.mode === "monitor" && !state.craftEmpty) {
-      state.craftDirty = state.craftBaseline
-        ? compositionKey(cardId, currentCardState()) !== state.craftBaseline
-        : true;
-      await switchWorkspaceMode("craft", focusNavigation);
-      return;
-    }
     if (state.craftDraft) {
       await resumeCraftDraft(focusNavigation);
       return;
     }
-    if (state.mode === "catalog") {
-      if (state.craftDirty) {
-        await switchWorkspaceMode("craft", focusNavigation);
-      } else {
-        await beginNewComposition(focusNavigation);
+    await openNeutralCraft(focusNavigation);
+  }
+
+  async function openNeutralCraft(focusNavigation = false) {
+    if (state.mode === "craft") {
+      if (state.craftEmpty) {
+        if (focusNavigation) {
+          nodes.craftTypeButtons[0]?.focus({ preventScroll: true });
+        }
+        return;
       }
+      preserveCraftDraft();
+      await beginNewComposition(focusNavigation, { keepDraft: true });
       return;
     }
-    await switchWorkspaceMode("craft", focusNavigation);
+
+    if (cardId === "gpu-index") {
+      await beginNewComposition(focusNavigation);
+      return;
+    }
+
+    if (state.mode === "catalog") persistCatalogScrollPosition();
+    window.location.assign(neutralCraftUrl());
+  }
+
+  function neutralCraftUrl() {
+    const url = cardUrl("gpu-index", "craft", {
+      palette: currentPalette(),
+      theme: currentTheme(),
+    });
+    url.searchParams.set("draft", "new");
+    return url;
   }
 
   function preserveCraftDraft() {
@@ -1623,7 +1734,10 @@ if (root) {
     announceWorkspace("Draft resumed in Craft");
   }
 
-  async function beginNewComposition(focusNavigation = false) {
+  async function beginNewComposition(
+    focusNavigation = false,
+    { keepDraft = false } = {},
+  ) {
     const next = createComposition(cardId, {
       palette: currentPalette(),
       theme: currentTheme(),
@@ -1632,11 +1746,13 @@ if (root) {
     applyCompositionFields(next);
     state.activeCatalogId = null;
     state.catalogName = "";
-    state.craftEmpty = families.length > 1;
-    state.craftDirty = !state.craftEmpty;
+    state.craftEmpty = true;
+    state.craftDirty = false;
     state.craftBaseline = null;
-    state.craftDraft = null;
-    clearStoredCraftDraft();
+    if (!keepDraft) {
+      state.craftDraft = null;
+      clearStoredCraftDraft();
+    }
     state.zoomWindow = null;
     setCompareOpen(false);
 
@@ -1652,19 +1768,70 @@ if (root) {
       await showPanel("detail", true, "focus", false, "craft");
     }
 
-    if (isDepthCard) setDepthCraftMenu("target", focusNavigation);
-    else setCompareOpen(true, focusNavigation);
-    announceWorkspace("New composition opened in Craft");
+    if (focusNavigation) {
+      window.requestAnimationFrame(() => {
+        nodes.craftTypeButtons[0]?.focus({ preventScroll: true });
+      });
+    }
+    announceWorkspace("Start a new view in Craft");
+  }
+
+  function returnToCraftStart(focusNavigation = false) {
+    openNeutralCraft(focusNavigation);
+  }
+
+  function startCraftType(nextCardId, focusEditor = false) {
+    const nextCard = CARD_REGISTRY.find(
+      (definition) => definition.id === nextCardId && definition.craftable !== false,
+    );
+    if (!nextCard) return;
+    const next = createComposition(nextCard.id, {
+      palette: currentPalette(),
+      theme: currentTheme(),
+    });
+
+    if (nextCard.id !== cardId) {
+      window.location.assign(cardUrl(nextCard.id, "craft", next));
+      return;
+    }
+
+    applyCompositionFields(next);
+    state.activeCatalogId = null;
+    state.catalogName = "";
+    state.craftEmpty = false;
+    state.craftDirty = true;
+    state.craftBaseline = null;
+    state.craftDraft = null;
+    clearStoredCraftDraft();
+    state.zoomWindow = null;
+    setCompareOpen(false);
+    setDepthCraftMenu(null);
+    syncControls();
+    render(true);
+    updateLocation();
+
+    if (focusEditor) {
+      window.requestAnimationFrame(() => {
+        const target = isDealCard
+          ? nodes.compareToggle
+          : isDepthCard
+            ? nodes.depthTargetTrigger
+            : nodes.compareToggle;
+        target?.focus({ preventScroll: true });
+      });
+    }
+    announceWorkspace(`${nextCard.craftLabel || nextCard.title} ready in Craft`);
   }
 
   function selectPrimaryData(layerId) {
     if (state.mode !== "craft" || !families.includes(layerId)) return;
     const wasEmpty = state.craftEmpty;
     const base = currentCardState();
+    const primaryParam = cardDefinition.primaryParam || "gpu";
     const next = wasEmpty
       ? normalizeCardState(cardId, {
           ...base,
-          gpu: layerId,
+          [primaryParam]: layerId,
           layers: layerId,
           scale: cardDefinition.defaults.scale,
         })
@@ -1776,13 +1943,11 @@ if (root) {
         title: () =>
           state.craftDraft
             ? "Resume draft"
-            : state.mode === "catalog" && !state.craftDirty
-              ? "Start a new composition"
-              : "Open Craft",
-        subtitle: cardDefinition.title,
+            : "Open Craft",
+        subtitle: () => state.craftDraft ? cardDefinition.title : "View types",
         hint: "Craft",
         keywords: ["craft", "edit", "compose", "compare", "layers", "chart", "compute", "gpu"],
-        disabled: () => !state.shareReady,
+        disabled: () => false,
         active: () => state.mode === "craft",
         run: () => openCraft(true),
       },
@@ -1802,7 +1967,7 @@ if (root) {
         id: "catalog.accelerator-prices",
         group: "Catalog",
         order: 1,
-        title: "Open Accelerator prices",
+        title: "Open Latest prices",
         subtitle: "Bar chart",
         hint: "Prices",
         keywords: ["bar", "bars", "ranking", "snapshot", "gpu", "market"],
@@ -1840,6 +2005,27 @@ if (root) {
         disabled: () => !state.shareReady,
         active: () => isDealCard && state.mode === "monitor",
         run: () => openCardPreset("deal-view", "monitor", true),
+      },
+      {
+        id: "catalog.power-basis",
+        group: "Catalog",
+        order: 4,
+        title: "Open PJM West",
+        subtitle: "Real time and day ahead power",
+        hint: "Power",
+        keywords: [
+          "power",
+          "electricity",
+          "lmp",
+          "real time",
+          "day ahead",
+          "basis",
+          "pjm",
+          "west",
+        ],
+        disabled: () => !state.shareReady,
+        active: () => isPowerCard && state.mode === "catalog",
+        run: () => openCardPreset("power-basis", "card", true),
       },
       {
         id: "actions.copy-card-link",
@@ -1926,7 +2112,7 @@ if (root) {
         disabled: () => !state.activeCatalogId,
         run: deleteCurrentCatalogItem,
       },
-      ...families.map((family, index) => ({
+      ...(cardDefinition.renderer === "line" ? families : []).map((family, index) => ({
         id: `gpu.${family.toLowerCase()}`,
         group: "Catalog",
         order: index + 1,
@@ -1941,7 +2127,7 @@ if (root) {
           state.selected === family,
         run: () => selectCardTab(family, { detail: 0 }),
       })),
-      ...(isDealCard ? [] : cardDefinition.layers).map((layer, index) => ({
+      ...(isDealCard || isPowerCard ? [] : cardDefinition.layers).map((layer, index) => ({
         id: `layer.${layer.id.toLowerCase()}`,
         group: "Layers",
         order: index,
@@ -1962,7 +2148,7 @@ if (root) {
           (state.selected === layer.id && state.layers.has(layer.id)),
         run: () => toggleLayer(layer.id),
       })),
-      ...(isDealCard ? [] : families).map((family, index) => ({
+      ...(isDealCard || families.length <= 1 ? [] : families).map((family, index) => ({
         id: `primary.${family.toLowerCase()}`,
         group: isBarCard ? "Highlight" : "Main data",
         order: index,
@@ -2234,6 +2420,11 @@ if (root) {
     }
     if (definition.renderer === "cumulative-depth") {
       return `${visualizationLabel(cardState.scale, definition)} ${cardState.target} node target`;
+    }
+    if (definition.renderer === "power-basis") {
+      const normalized = normalizeCardState(definition.id, cardState);
+      const location = getLayerDefinition(definition, normalized.gpu);
+      return `${location?.label || normalized.gpu} ${visualizationLabel(normalized.scale, definition)} ${ranges[normalized.range].label}`;
     }
     const labels = orderedLayerLabels(cardState, definition);
     const composition = cardState.scale === "spread" && labels.length === 2
@@ -3064,17 +3255,26 @@ if (root) {
 
   function activeCatalogKey() {
     if (state.craftDraft && !state.craftDraft.activeCatalogId) return null;
-    return state.activeCatalogId
-      ? savedCatalogKey(cardId, state.activeCatalogId)
-      : presetCatalogKey(cardId, activePresetId());
+    if (state.activeCatalogId) {
+      return savedCatalogKey(cardId, state.activeCatalogId);
+    }
+    const presetId = activePresetId();
+    return presetId ? presetCatalogKey(cardId, presetId) : null;
   }
 
   function activePresetId() {
     const presets = cardDefinition.catalogPresets || [];
-    const selectedPreset = presets.find(
-      (preset) => preset.state?.gpu === state.selected,
-    );
-    return selectedPreset?.id || presets[0]?.id || state.selected;
+    const activeComposition = compositionKey(cardId, currentCardState());
+    const selectedPreset = presets.find((preset) => {
+      const presetState = normalizeCardState(cardId, {
+        ...cardDefinition.defaults,
+        ...preset.state,
+        palette: currentPalette(),
+        theme: currentTheme(),
+      });
+      return compositionKey(cardId, presetState) === activeComposition;
+    });
+    return selectedPreset?.id || "";
   }
 
   function syncLayout(animateChange) {
@@ -3156,8 +3356,9 @@ if (root) {
       const active = mode === state.mode;
       if (active) button.setAttribute("aria-current", "page");
       else button.removeAttribute("aria-current");
-      button.disabled =
-        !state.shareReady || (mode === "monitor" && state.craftEmpty);
+      button.disabled = mode === "craft"
+        ? false
+        : !state.shareReady || (mode === "monitor" && state.craftEmpty);
       if (mode === "catalog") {
         const switchesCatalog = active && state.layout === "all";
         if (switchesCatalog) {
@@ -3175,6 +3376,10 @@ if (root) {
           button.removeAttribute("aria-expanded");
         }
       }
+      if (mode === "craft") {
+        if (active && !state.craftEmpty) button.title = "View types";
+        else button.removeAttribute("title");
+      }
       button.setAttribute(
         "aria-label",
         mode === "catalog"
@@ -3183,11 +3388,11 @@ if (root) {
             : `Open ${catalogCollection.name} in Catalog`
           : mode === "monitor"
             ? `Monitor ${label}`
-            : state.mode === "catalog" && state.craftDraft
-              ? "Resume draft in Craft"
-              : state.mode === "catalog" && !state.craftDirty
-                ? "Start a new composition in Craft"
-                : `Edit ${label} in Craft`,
+            : active
+              ? state.craftEmpty
+                ? "Craft, current section"
+                : "Return to Craft view types"
+              : "Start a new view in Craft",
       );
     }
     if (nodes.galleryToggle) {
@@ -3277,9 +3482,6 @@ if (root) {
       updateFamilyQuoteNodes();
       syncMobileSummary();
       render(true);
-      if (state.mode === "craft" && state.craftEmpty) {
-        setCompareOpen(true);
-      }
     } catch (error) {
       setShareReady(false);
       console.error("Desk market data failed to load", error);
@@ -3322,6 +3524,18 @@ if (root) {
     if (definition.renderer === "cumulative-depth") {
       if (!Array.isArray(payload.priceLevels) || !Array.isArray(payload.snapshots)) {
         throw new Error(`Unsupported market depth data at ${url}`);
+      }
+      return;
+    }
+    if (definition.renderer === "power-basis") {
+      if (
+        payload.cardId !== definition.id ||
+        !Array.isArray(payload.locations) ||
+        !payload.locations.length ||
+        !payload.series ||
+        typeof payload.series !== "object"
+      ) {
+        throw new Error(`Unsupported power data at ${url}`);
       }
       return;
     }
@@ -3774,7 +3988,7 @@ if (root) {
             ? ""
             : ` ${displayedRange}`;
       nodes.workspaceTitle.textContent = state.mode === "craft" && state.craftEmpty
-        ? "Craft new composition"
+        ? "Craft"
         : `${titleMode} ${label}${rangeSuffix}${state.craftDirty ? " edited" : ""}`;
     }
     syncMobileSummary();
@@ -3800,6 +4014,23 @@ if (root) {
         nodes.mobileSummaryRange.textContent =
           stage.charAt(0).toUpperCase() + stage.slice(1);
       }
+      return;
+    }
+    if (isPowerCard && state.runtimePayload) {
+      try {
+        const model = createPowerModel(currentCardState(), state.runtimePayload);
+        if (nodes.mobileSummaryLabel) {
+          nodes.mobileSummaryLabel.textContent = model.location.shortLabel || model.location.label;
+        }
+        if (nodes.mobileSummaryValue) {
+          nodes.mobileSummaryValue.textContent = state.scale === "basis"
+            ? formatSignedPowerPrice(model.latest.basis)
+            : formatPowerPrice(model.latest.realTime);
+        }
+        if (nodes.mobileSummaryRange) {
+          nodes.mobileSummaryRange.textContent = rangeControlLabel(state.range);
+        }
+      } catch {}
       return;
     }
     const summarySeries = !isBarCard && !isDepthCard && !state.craftEmpty
@@ -3829,7 +4060,12 @@ if (root) {
     nodes.dealCraft.hidden = !available;
     nodes.dealCraft.toggleAttribute("inert", !available);
     if (!available) return;
-    syncDealCraftControlValue(nodes.dealCraftGpu, state.options.gpu);
+    nodes.dealCraftModelButtons.forEach((button) => {
+      const selected = button.dataset.dealCraftModel === state.options.gpu;
+      button.setAttribute("aria-checked", String(selected));
+      button.tabIndex = selected ? 0 : -1;
+      button.disabled = !state.shareReady;
+    });
     syncDealCraftControlValue(nodes.dealCraftQuantity, state.options.quantity);
     syncDealCraftControlValue(nodes.dealCraftQuote, state.options.quote);
     syncDealCraftControlValue(nodes.dealCraftRfs, state.options.rfs);
@@ -3844,24 +4080,42 @@ if (root) {
     const editing = state.mode === "craft";
     const empty = editing && state.craftEmpty;
     const spreadReady = spreadComparisonReady();
+    nodes.workspaceRegion?.setAttribute(
+      "aria-label",
+      empty ? "Craft view types" : cardDefinition.title,
+    );
     if (nodes.composer) {
-      const available = editing;
+      const available = editing && !empty;
       nodes.composer.hidden = !available;
       nodes.composer.toggleAttribute("inert", !available);
     }
+    if (nodes.craftHome) {
+      nodes.craftHome.hidden = !editing || empty;
+      nodes.craftHome.disabled = !editing || empty;
+    }
     syncDealCraftControls(editing, empty);
     syncDepthCraftControls(editing, empty);
-    if (nodes.compareToggle) nodes.compareToggle.hidden = isDepthCard || isDealCard;
-    if (nodes.comparePanel && (isDepthCard || isDealCard)) {
+    if (nodes.compareToggle) {
+      nodes.compareToggle.hidden = empty || isDepthCard;
+    }
+    if (nodes.comparePanel && isDepthCard) {
       nodes.comparePanel.hidden = true;
       nodes.comparePanel.setAttribute("inert", "");
     }
     if (nodes.primaryGroup) {
       nodes.primaryGroup.setAttribute("aria-required", String(empty));
     }
-    if (nodes.primaryLabel) nodes.primaryLabel.textContent = isBarCard ? "Highlight" : "Main";
+    if (nodes.primaryLabel) {
+      nodes.primaryLabel.textContent = isPowerCard
+        ? "Market"
+        : isBarCard
+          ? "Highlight"
+          : "Main";
+      nodes.primaryLabel.hidden = families.length <= 1;
+    }
     if (nodes.layerLabel) nodes.layerLabel.textContent = isBarCard ? "Bars" : "Compare";
-    if (nodes.primaryRow) nodes.primaryRow.hidden = isDepthCard;
+    if (nodes.primaryRow) nodes.primaryRow.hidden = isDepthCard || isDealCard;
+    if (nodes.primaryGroup) nodes.primaryGroup.hidden = families.length <= 1;
     if (nodes.layerRow) {
       nodes.layerRow.hidden = cardDefinition.allowComparisons === false;
     }
@@ -3871,7 +4125,7 @@ if (root) {
     }
     nodes.primaryGroup?.setAttribute(
       "aria-label",
-      isBarCard ? "Highlighted bar" : "Main data",
+      isPowerCard ? "Power market" : isBarCard ? "Highlighted bar" : "Main data",
     );
     nodes.layerGroup?.setAttribute(
       "aria-label",
@@ -3879,14 +4133,19 @@ if (root) {
     );
     nodes.primaryButtons.forEach((button, index) => {
       const selected = !empty && button.dataset.cardPrimary === state.selected;
+      const layer = getLayerDefinition(
+        cardDefinition,
+        button.dataset.cardPrimary,
+      );
+      const label = layer?.shortLabel || layer?.label || button.dataset.cardPrimary;
       button.setAttribute("aria-checked", String(selected));
       button.tabIndex = selected || (empty && index === 0) ? 0 : -1;
       button.disabled = !state.shareReady;
       button.setAttribute(
         "aria-label",
         selected
-          ? `${button.dataset.cardPrimary} ${isBarCard ? "highlighted bar" : "main series"}`
-          : `Use ${button.dataset.cardPrimary} as ${isBarCard ? "the highlighted bar" : "main series"}`,
+          ? `${label} ${isBarCard ? "highlighted bar" : isPowerCard ? "power market" : "main series"}`
+          : `Use ${label} as ${isBarCard ? "the highlighted bar" : isPowerCard ? "the power market" : "main series"}`,
       );
     });
     nodes.layerButtons.forEach((button) => {
@@ -3923,7 +4182,11 @@ if (root) {
       button.tabIndex = button.disabled ? -1 : 0;
       button.setAttribute(
         "aria-label",
-        `Use ${visualizationLabel(button.dataset.cardScale)} chart mode`,
+        button.dataset.cardScale === "price"
+          ? "Show hourly price"
+          : button.dataset.cardScale === "index"
+            ? "Show percentage change from the range start"
+            : "Show the relative change between two series",
       );
     });
     nodes.depthCraftViewButtons.forEach((button) => {
@@ -3940,6 +4203,10 @@ if (root) {
     if (nodes.dataLabel) {
       nodes.dataLabel.textContent = isDepthCard
         ? "Target"
+        : isDealCard
+          ? "Data"
+        : isPowerCard
+          ? "Power"
         : empty
           ? "Add data"
           : "Data";
@@ -3948,7 +4215,8 @@ if (root) {
       nodes.compareCount.textContent = isDepthCard
         ? String(state.options.target)
         : String(dataCount);
-      nodes.compareCount.hidden = empty || (!isDepthCard && dataCount === 0);
+      nodes.compareCount.hidden =
+        isPowerCard || isDealCard || empty || (!isDepthCard && dataCount === 0);
     }
     if (nodes.compareToggle) {
       nodes.compareToggle.setAttribute("aria-expanded", String(state.compareOpen));
@@ -3957,8 +4225,12 @@ if (root) {
         "aria-label",
         isDepthCard
           ? `Target, ${state.options.target} nodes`
+          : isDealCard
+            ? `Data, ${state.options.gpu}, ${state.options.quantity} GPUs`
           : empty
           ? "Add data"
+          : isPowerCard
+            ? `Power data, ${workspaceLabel()}, ${visualizationLabel(state.scale)} view`
           : isBarCard
             ? `Data, ${dataCount} bar${dataCount === 1 ? "" : "s"}, ${state.selected} highlighted`
             : `Data, ${state.selected} main series, ${comparisonCount} comparison${comparisonCount === 1 ? "" : "s"}`,
@@ -4006,6 +4278,11 @@ if (root) {
     root.dataset.craftEmpty = String(empty);
     root.dataset.craftDirty = String(editing && state.craftDirty);
     if (nodes.craftEmpty) nodes.craftEmpty.hidden = !empty;
+    nodes.craftTypeButtons.forEach((button) => {
+      button.disabled = !empty;
+      button.tabIndex = empty ? 0 : -1;
+    });
+    if (nodes.dealWorkspace && empty) nodes.dealWorkspace.hidden = true;
     if (nodes.svg) {
       const hideChartSvg = empty || isDealCard;
       nodes.svg.toggleAttribute("hidden", hideChartSvg);
@@ -4022,27 +4299,33 @@ if (root) {
         : labels;
       nodes.svg?.setAttribute(
         "aria-label",
-        isDepthCard
+        isPowerCard
+          ? `${workspaceLabel()}, real-time and day-ahead power prices, ${visualizationLabel(state.scale)} view`
+        : isDepthCard
           ? `${cardDefinition.title}, ${visualizationLabel(state.scale)} chart mode, ${state.options.target} node target`
           : isBarCard
           ? `${labels} hourly price comparison`
           : state.scale === "spread"
-          ? `${spreadLabel} cumulative return spread`
+          ? `${spreadLabel} price-change spread`
           : state.scale === "index"
-          ? `${labels} cumulative returns`
+          ? `${labels} percentage change from the range start`
           : `${labels} price history`,
       );
       nodes.chartDescription.textContent =
-        isDepthCard
+        isPowerCard
+          ? state.scale === "basis"
+            ? `${workspaceLabel()} real-time price minus its day-ahead reference. The zero line separates positive and negative spreads.`
+            : `${workspaceLabel()} real-time power price with its day-ahead reference and the spread between them.`
+        : isDepthCard
           ? state.scale === "history"
             ? `${cardDefinition.title}. Color intensity shows available capacity by price through time. The solid path shows the executable price for the selected target.`
             : `${cardDefinition.title}. Shelf length shows where capacity becomes available. The benchmark and target meet at the executable price.`
           : isBarCard
           ? `${labels} latest hourly benchmark prices. Each wider band shows the middle range of quotes.`
           : state.scale === "spread"
-          ? `${spreadLabel}. The line shows the cumulative return difference in percentage points. Positive values mean ${orderedLabels[0]} has outperformed ${orderedLabels[1]}; negative values mean ${orderedLabels[1]} has outperformed ${orderedLabels[0]}.`
+          ? `${spreadLabel}. The line shows the difference in price change, in percentage points. Positive values mean ${orderedLabels[0]} has risen more; negative values mean ${orderedLabels[1]} has risen more.`
           : state.scale === "index"
-          ? `${labels} rebased to 100 at the start of the selected range.`
+          ? `${labels} percentage change from the start of the selected range.`
           : `${labels} hourly prices. The band shows the middle range of quotes for ${state.selected}.`;
     }
   }
@@ -4149,7 +4432,7 @@ if (root) {
   async function switchWorkspaceMode(mode, focusNavigation = false) {
     if (!["catalog", "monitor", "craft"].includes(mode)) return;
     if (mode === "monitor" && state.craftEmpty) {
-      announceWorkspace("Choose a main series before opening Monitor");
+      announceWorkspace("Start a view before opening Monitor");
       return;
     }
     if (mode === state.mode) {
@@ -4307,7 +4590,7 @@ if (root) {
       );
     }
     if (panel === "detail" && state.mode === "craft" && state.craftEmpty) {
-      return nodes.primaryButtons[0] || nodes.compareToggle;
+      return nodes.craftTypeButtons[0];
     }
     if (panel === "detail") return nodes.detailPanel;
     if (isDealCard) return nodes.focusCardMonitor;
@@ -4334,8 +4617,11 @@ if (root) {
   }
 
   function workspaceLabel() {
-    if (state.craftEmpty) return "New composition";
+    if (state.craftEmpty) return "Craft";
     if (state.catalogName) return state.catalogName;
+    if (isPowerCard) {
+      return getLayerDefinition(cardDefinition, state.selected)?.label || cardDefinition.title;
+    }
     if (cardDefinition.renderer !== "line") return cardDefinition.title;
     if (state.scale === "spread") {
       const labels = orderedLayerLabels(currentCardState());
@@ -4375,14 +4661,16 @@ if (root) {
           : state.mode === "monitor"
             ? "monitor"
             : "card";
-    const url = replaceCardLocation(
-      cardId,
-      view,
-      currentCardState(),
-    );
     if (state.mode === "craft" && state.craftEmpty) {
+      const url = replaceCardLocation(cardId, "craft", {
+        palette: currentPalette(),
+        theme: currentTheme(),
+      });
       url.searchParams.set("draft", "new");
+      window.history.replaceState({}, "", url);
+      return;
     }
+    const url = replaceCardLocation(cardId, view, currentCardState());
     if (state.activeCatalogId) {
       url.searchParams.set("item", state.activeCatalogId);
     }
@@ -4467,6 +4755,9 @@ if (root) {
   function currentCardState() {
     return {
       gpu: state.selected,
+      ...(cardDefinition.primaryParam
+        ? { [cardDefinition.primaryParam]: state.selected }
+        : {}),
       layers: serializeLayerIds(state.layers, cardDefinition),
       scale: state.scale,
       range: state.range,
@@ -4599,6 +4890,12 @@ if (root) {
       } catch {}
       return;
     }
+    if (isPowerCard && state.runtimePayload) {
+      try {
+        syncPowerShareStatus(createPowerModel(currentCardState(), state.runtimePayload));
+      } catch {}
+      return;
+    }
     if (!nodes.shareStatus) return;
     const renderedSeries = cardSeriesForState(currentCardState());
     const primary =
@@ -4675,9 +4972,29 @@ if (root) {
     }
     nodes.shareArtifactSvg?.setAttribute(
       "aria-label",
-      `Accelerator prices. ${model.bars
+      `Latest prices. ${model.bars
         .map((bar) => `${bar.label} ${formatUsd(bar.value)}`)
         .join(", ")} per GPU hour. Observed ${formatUtcDateTime(observed)}`,
+    );
+  }
+
+  function syncPowerShareStatus(model) {
+    const observed = model.rows.at(-1)?.date;
+    const value = state.scale === "basis"
+      ? formatSignedPowerPrice(model.latest.basis)
+      : formatPowerPrice(model.latest.realTime);
+    if (nodes.shareStatus) {
+      nodes.shareStatus.textContent =
+        `${model.location.label} ${ranges[state.range].label} ${value}`;
+    }
+    if (nodes.shareObserved && observed) {
+      nodes.shareObserved.textContent = formatUtcDateTime(observed);
+      nodes.shareObserved.setAttribute("datetime", observed.toISOString());
+    }
+    nodes.shareArtifactSvg?.setAttribute(
+      "aria-label",
+      `${model.location.label}. Real time ${formatPowerPrice(model.latest.realTime)} per megawatt-hour. ` +
+        `Day ahead ${formatPowerPrice(model.latest.dayAhead)}. Spread ${formatSignedPowerPrice(model.latest.basis)}.`,
     );
   }
 
@@ -4730,6 +5047,10 @@ if (root) {
     }
     if (isBarCard) {
       renderBarWorkspace(drawAnimation);
+      return;
+    }
+    if (isPowerCard) {
+      renderPowerBasisWorkspace(drawAnimation);
       return;
     }
     const rangeSeries = activeSeries({ zoom: false });
@@ -4835,6 +5156,62 @@ if (root) {
     });
   }
 
+  function createPowerModel(cardState = currentCardState(), payload = null) {
+    const definition = getCardDefinition("power-basis");
+    const normalized = normalizeCardState(definition.id, cardState);
+    const sourcePayload =
+      payload || state.runtimePayloads.get(definition.sourceCardId || definition.id);
+    return createPowerBasisModel(sourcePayload, definition, {
+      locationId: normalized.gpu,
+      range: normalized.range,
+    });
+  }
+
+  function renderPowerBasisWorkspace(drawAnimation) {
+    if (!state.runtimePayload) return;
+    let model;
+    try {
+      model = createPowerModel(currentCardState(), state.runtimePayload);
+    } catch (error) {
+      console.error("Power prices could not render", error);
+      showFailure("Power prices are temporarily unavailable.");
+      return;
+    }
+
+    nodes.chartState.hidden = true;
+    nodes.tooltip.hidden = true;
+    updateRangeDates(model.rows);
+    const palette = cardPalette(currentCardState());
+    paintPowerBasisChart(nodes.shareArtifactSvg, model, {
+      colors: palette,
+      title: state.catalogName || model.location.label,
+      mode: state.scale,
+      compact: true,
+      artifact: true,
+      reducedMotion,
+      interactive: false,
+    });
+    syncMonitorDataModel({ powerModel: model });
+    syncPowerShareStatus(model);
+    state.catalogDirty = true;
+    if (state.layout === "all") renderWorkspaceGallery();
+
+    if (
+      state.layout === "focus" &&
+      state.panel === "detail" &&
+      nodes.chart.clientWidth > 0
+    ) {
+      paintPowerBasisChart(nodes.svg, model, {
+        colors: palette,
+        title: state.catalogName || model.location.label,
+        mode: state.scale,
+        reducedMotion: reducedMotion || !drawAnimation,
+        interactive: true,
+        minimal: mobileViewport.matches,
+      });
+    }
+  }
+
   function renderDepthWorkspace(drawAnimation) {
     if (!state.runtimePayload) return;
     let model;
@@ -4911,7 +5288,7 @@ if (root) {
       });
     } catch (error) {
       console.error("GPU price bars could not render", error);
-      showFailure("Accelerator prices are temporarily unavailable.");
+      showFailure("Latest prices are temporarily unavailable.");
       return;
     }
 
@@ -4924,7 +5301,7 @@ if (root) {
     const palette = cardPalette(currentCardState());
     paintGpuPriceBarChart(nodes.shareArtifactSvg, model, {
       colors: palette,
-      title: state.catalogName || "Accelerator prices",
+      title: state.catalogName || "Latest prices",
       reducedMotion,
       interactive: false,
     });
@@ -4940,7 +5317,7 @@ if (root) {
     ) {
       paintGpuPriceBarChart(nodes.svg, model, {
         colors: palette,
-        title: state.catalogName || "Accelerator prices",
+        title: state.catalogName || "Latest prices",
         reducedMotion: reducedMotion || !drawAnimation,
         interactive: true,
       });
@@ -5045,6 +5422,31 @@ if (root) {
           colors: cardPalette(displayState),
           compact: true,
           title,
+          reducedMotion: true,
+          interactive: false,
+          decorative: true,
+        });
+        continue;
+      }
+
+      if (entryCard.renderer === "power-basis") {
+        const payload = state.runtimePayloads.get(
+          entryCard.sourceCardId || entryCard.id,
+        );
+        if (!payload) continue;
+        const model = createPowerModel(cardState, payload);
+        cardNodes.button.setAttribute(
+          "aria-label",
+          `Monitor ${title}, ${formatPowerPrice(model.latest.realTime)} real time, ` +
+            `${formatSignedPowerPrice(model.latest.basis)} spread, ${ranges[cardState.range].label}`,
+        );
+        paintPowerBasisChart(cardNodes.artifact, model, {
+          colors: cardPalette(displayState),
+          compact: true,
+          artifact: true,
+          minimal: true,
+          title,
+          mode: cardState.scale,
           reducedMotion: true,
           interactive: false,
           decorative: true,
@@ -5654,7 +6056,7 @@ if (root) {
       .attr(
         "aria-label",
         state.scale === "spread"
-          ? `${primary.layer.label} return spread. Use left and right arrow keys to inspect observations.`
+          ? `${primary.layer.label} price-change spread. Use left and right arrow keys to inspect observations.`
           : `${state.selected} main layer with ${series.length} ${series.length === 1 ? "layer" : "layers"}. Use left and right arrow keys to inspect observations.`,
       )
       .on("focus", () => {
@@ -5970,8 +6372,8 @@ if (root) {
     const spread = Number(row.plotValue);
     const result =
       Math.abs(spread) < 0.05
-        ? "Returns are level over the selected range."
-        : `${spread > 0 ? primaryLabel : comparisonLabel} has outperformed over the selected range.`;
+        ? "Price changes are level over the selected range."
+        : `${spread > 0 ? primaryLabel : comparisonLabel} has risen more over the selected range.`;
     return [
       formatDateTime(row.date),
       `${primaryLabel} ${formatSignedPercent(row.primaryReturn)}`,
@@ -6119,6 +6521,21 @@ if (root) {
     if (number < 1) return `$${number.toFixed(3)}`;
     if (number < 10) return `$${number.toFixed(2)}`;
     return `$${number.toFixed(1)}`;
+  }
+
+  function formatPowerPrice(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "pending";
+    const sign = number < 0 ? "−" : "";
+    return `${sign}$${Math.abs(number).toFixed(2)}`;
+  }
+
+  function formatSignedPowerPrice(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "pending";
+    const rounded = Math.abs(number) < 0.005 ? 0 : number;
+    const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
+    return `${sign}$${Math.abs(rounded).toFixed(2)}`;
   }
 
   function formatPlotValue(value, scale = state.scale) {

@@ -126,7 +126,7 @@ export function gpuPriceBarMarkup(
   model,
   {
     colors,
-    title = "Accelerator prices",
+    title = "Latest prices",
     compact = false,
   } = {},
 ) {

@@ -13,7 +13,7 @@
   "scripts": {
     "check:data": "node scripts/refresh-market-data.mjs --check && node scripts/build-runtime-data.mjs --check",
     "refresh:data": "node scripts/refresh-market-data.mjs",
-    "generate:data": "node scripts/generate-showcase-market.mjs && node scripts/generate-market-depth.mjs",
+    "generate:data": "node scripts/generate-showcase-market.mjs && node scripts/generate-market-depth.mjs && node scripts/generate-power-basis.mjs",
     "build:data": "node scripts/build-runtime-data.mjs",
     "build:previews": "node scripts/build-card-previews.mjs",
     "build": "npm run check:cli && npm run build:data && npm run build:previews && esbuild src/main.js --bundle --format=esm --target=es2022 --minify --outfile=desk.js",

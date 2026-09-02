@@ -6,6 +6,7 @@ export function createMonitorDataModel({
   series = [],
   barModel = null,
   depthModel = null,
+  powerModel = null,
 }) {
   if (!card?.dataAdapter || !card?.dataTable?.file) return null;
 
@@ -17,6 +18,9 @@ export function createMonitorDataModel({
   }
   if (card.dataAdapter === "depth") {
     return createMarketDepthDataModel(card, cardState, depthModel);
+  }
+  if (card.dataAdapter === "power-basis") {
+    return createPowerBasisDataModel(card, cardState, powerModel);
   }
   return null;
 }
@@ -153,6 +157,34 @@ function createMarketDepthDataModel(card, state, model) {
     sql: history
       ? depthHistorySql(card, endpoint, model.targetNodes)
       : depthNowSql(card, endpoint),
+  });
+}
+
+function createPowerBasisDataModel(card, state, model) {
+  if (!model?.rows?.length || !model.latest || !model.location) return null;
+  const endpoint = publicDatasetUrl(card);
+  const range = String(state.range).toUpperCase();
+  const locationLabel = model.location.shortLabel || model.location.label;
+  const firstDate = model.rows[0].date;
+  const latestDate = model.rows.at(-1).date;
+
+  return finalizeModel(card, {
+    summary: `${locationLabel} ${range}`,
+    breadcrumbs: ["Desk", card.dataTable.label, locationLabel, range],
+    rowCount: model.rows.length,
+    asOf: latestDate,
+    endpoint,
+    command: syncCommand(card.dataTable.id, {
+      location: model.location.id,
+      range: state.range,
+    }),
+    sql: powerBasisSql(
+      card,
+      endpoint,
+      model.location.id,
+      firstDate,
+      state.scale,
+    ),
   });
 }
 
@@ -351,6 +383,21 @@ SELECT observed_at,
        max(offer_count) AS offers
 FROM depth
 GROUP BY observed_at
+ORDER BY observed_at DESC;`;
+}
+
+function powerBasisSql(card, url, locationId, firstDate, scale) {
+  const table = dataFusionTableName(card);
+  const select = scale === "basis"
+    ? "basis_usd_mwh"
+    : "real_time_price_usd_mwh, day_ahead_price_usd_mwh, basis_usd_mwh";
+  return `${dataFusionSource(table, url)}
+
+SELECT to_timestamp(observed_at) AS observed_at,
+       instrument, ${select}
+FROM ${table}
+WHERE instrument = ${sqlValue(locationId)}
+  AND to_timestamp(observed_at) >= to_timestamp('${formatSqlTimestamp(firstDate)}')
 ORDER BY observed_at DESC;`;
 }
 

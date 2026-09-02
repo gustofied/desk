@@ -35,6 +35,8 @@ import { renderGpuPriceBarSvg } from "../src/gpu-price-bar-presentation.js";
 import { createGpuMarketDepthModel } from "../src/gpu-market-depth-model.js";
 import { renderGpuMarketDepthSvg } from "../src/gpu-market-depth-presentation.js";
 import { createGpuSpreadSeries } from "../src/gpu-spread-model.js";
+import { createPowerBasisModel } from "../src/power-basis-model.js";
+import { renderPowerBasisSvg } from "../src/power-basis-presentation.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 await mkdir(join(root, ".cache", "fontconfig"), { recursive: true });
@@ -43,6 +45,7 @@ const { default: sharp } = await import("sharp");
 const cardDefinition = getCardDefinition("gpu-index");
 const barCardDefinition = getCardDefinition("gpu-price-snapshot");
 const depthCardDefinition = getCardDefinition("gpu-market-depth");
+const powerCardDefinition = getCardDefinition("power-basis");
 const gpuLayers = cardDefinition.layers.filter(
   (layer) => layer.unit === "usd-hour",
 );
@@ -55,6 +58,8 @@ const barImageRoot = join(root, barCardDefinition.previewImageDir);
 const barPageRoot = join(root, barCardDefinition.previewPageDir);
 const depthImageRoot = join(root, depthCardDefinition.previewImageDir);
 const depthPageRoot = join(root, depthCardDefinition.previewPageDir);
+const powerImageRoot = join(root, powerCardDefinition.previewImageDir);
+const powerPageRoot = join(root, powerCardDefinition.previewPageDir);
 const generatedRoots = [
   imageRoot,
   pageRoot,
@@ -62,6 +67,8 @@ const generatedRoots = [
   barPageRoot,
   depthImageRoot,
   depthPageRoot,
+  powerImageRoot,
+  powerPageRoot,
 ];
 const manifestPath = join(root, ".cache", "generated-card-files.json");
 const runtimeData = JSON.parse(
@@ -69,6 +76,9 @@ const runtimeData = JSON.parse(
 );
 const depthRuntimeData = JSON.parse(
   await readFile(join(root, depthCardDefinition.dataFile), "utf8"),
+);
+const powerRuntimeData = JSON.parse(
+  await readFile(join(root, powerCardDefinition.dataFile), "utf8"),
 );
 const depthTargets = Object.freeze(["64", "128", "256"]);
 const depthViews = Object.freeze(
@@ -106,6 +116,7 @@ await generateLegacyPreviews();
 const publishedLineCount = await generatePublishedPreviews();
 const publishedBarCount = await generatePublishedBarPreviews();
 const publishedDepthCount = await generatePublishedDepthPreviews();
+const publishedPowerCount = await generatePublishedPowerPreviews();
 await generateDefaultPreview();
 
 generatedFiles.sort();
@@ -120,6 +131,7 @@ await writeFile(
       revisions: {
         prices: runtimeData.revision,
         marketDepth: depthRuntimeData.revision,
+        powerBasis: powerRuntimeData.revision,
       },
       files: generatedFiles,
     },
@@ -130,9 +142,9 @@ await writeFile(
 );
 
 console.log(
-  `Built ${publishedLineCount + publishedBarCount + publishedDepthCount} exact view previews ` +
+  `Built ${publishedLineCount + publishedBarCount + publishedDepthCount + publishedPowerCount} exact view previews ` +
     `(${publishedLineCount} line, ${publishedBarCount} bar, ` +
-    `${publishedDepthCount} depth) with ` +
+    `${publishedDepthCount} depth, ${publishedPowerCount} power) with ` +
     `${workerCount} workers.`,
 );
 
@@ -351,6 +363,49 @@ async function generatePublishedDepthPreviews() {
   return states.length;
 }
 
+async function generatePublishedPowerPreviews() {
+  const states = publishedPowerStates();
+  await runWithConcurrency(states, workerCount, async (state) => {
+    const model = powerPreviewModel(state);
+    const pageHref = publishedCardSharePath(powerCardDefinition.id, state);
+    const imageHref = publishedCardPreviewPath(
+      powerCardDefinition.id,
+      state,
+      powerRuntimeData.revision,
+    );
+    const pagePath = join(root, pageHref, "index.html");
+    const imagePath = join(root, imageHref);
+    const previewImage = await encodePreview(
+      renderPowerBasisSvg(model, {
+        colors: model.colors,
+        title: model.location.label,
+        mode: model.scale,
+        artifact: true,
+      }),
+    );
+    const previewRevision = imageRevision(previewImage);
+
+    await mkdir(dirname(imagePath), { recursive: true });
+    await mkdir(dirname(pagePath), { recursive: true });
+    await Promise.all([
+      writeFile(imagePath, previewImage),
+      writeFile(
+        pagePath,
+        renderPublishedPowerSharePage(
+          model,
+          pageHref,
+          imageHref,
+          previewRevision,
+        ),
+        "utf8",
+      ),
+    ]);
+    track(imagePath, pagePath);
+  });
+
+  return states.length;
+}
+
 async function generateDefaultPreview() {
   const deskPreviewPath = join(imageRoot, "desk-comparison.png");
   await mkdir(dirname(deskPreviewPath), { recursive: true });
@@ -494,6 +549,51 @@ function publishedDepthStates() {
   return Array.from(statesByPath.values());
 }
 
+function publishedPowerStates() {
+  const statesByPath = new Map();
+
+  for (const location of powerCardDefinition.layers) {
+    for (const visualization of powerCardDefinition.visualizations) {
+      for (const range of powerCardDefinition.ranges) {
+        for (const palette of Object.keys(palettes)) {
+          for (const theme of THEMES) {
+            const state = normalizeCardState(powerCardDefinition.id, {
+              location: location.id,
+              layers: [location.id],
+              scale: visualization.id,
+              range,
+              palette,
+              theme,
+            });
+            const pageHref = publishedCardSharePath(
+              powerCardDefinition.id,
+              state,
+            );
+            if (statesByPath.has(pageHref)) {
+              throw new Error(`Duplicate published power route: ${pageHref}`);
+            }
+            statesByPath.set(pageHref, state);
+          }
+        }
+      }
+    }
+  }
+
+  const expectedCount =
+    powerCardDefinition.layers.length *
+    powerCardDefinition.visualizations.length *
+    powerCardDefinition.ranges.length *
+    Object.keys(palettes).length *
+    THEMES.length;
+  if (statesByPath.size !== expectedCount || expectedCount !== 48) {
+    throw new Error(
+      `Expected 48 published power previews, received ${statesByPath.size}`,
+    );
+  }
+
+  return Array.from(statesByPath.values());
+}
+
 function previewModel(state) {
   const normalized = normalizeCardState(cardDefinition.id, state);
   const memberSeries = normalized.layers.map((layerId) => {
@@ -617,6 +717,22 @@ function depthPreviewModel(state) {
   };
 }
 
+function powerPreviewModel(state) {
+  const normalized = normalizeCardState(powerCardDefinition.id, state);
+  const model = createPowerBasisModel(powerRuntimeData, powerCardDefinition, {
+    locationId: normalized.location,
+    range: normalized.range,
+  });
+  return {
+    ...normalized,
+    ...model,
+    colors: themeColors(
+      palettes[normalized.palette],
+      normalized.theme,
+    ),
+  };
+}
+
 function renderPublishedCardImage(model) {
   if (model.scale === "spread") {
     return renderPublishedSpreadImage(model);
@@ -711,7 +827,7 @@ function renderPublishedSharePage(
   const title = `${cardTitle} ${model.rangeLabel}`;
   const description =
     model.scale === "spread"
-      ? `${model.primaryTitle} return spread ${model.headline} over ${rangeDescription}`
+      ? `${model.primaryTitle} price-change spread ${model.headline} over ${rangeDescription}`
       : model.scale === "index"
       ? `${model.primaryTitle} ${model.headline} over ${rangeDescription}`
       : `${model.headline} per GPU hour over ${rangeDescription}`;
@@ -907,6 +1023,84 @@ function renderPublishedDepthSharePage(
   });
   const destination =
     `/?${destinationParams.toString()}#${depthCardDefinition.hash}`;
+  const destinationHref = escapeHtml(destination);
+  const redirectScript = JSON.stringify(destination).replaceAll("<", "\\u003c");
+
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="${escapeHtml(description)}">
+    <meta name="theme-color" content="${model.colors.paper}">
+    <link rel="canonical" href="${pageUrl}">
+    <meta property="og:title" content="${escapeHtml(title)}">
+    <meta property="og:description" content="${escapeHtml(description)}">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Desk">
+    <meta property="og:url" content="${pageUrl}">
+    <meta property="og:image" content="${imageUrl}">
+    <meta property="og:image:secure_url" content="${imageUrl}">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="${escapeHtml(imageAlt)}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${escapeHtml(title)}">
+    <meta name="twitter:description" content="${escapeHtml(description)}">
+    <meta name="twitter:image" content="${imageUrl}">
+    <meta name="twitter:image:alt" content="${escapeHtml(imageAlt)}">
+    <title>${escapeHtml(title)} | Desk</title>
+    <script>
+      const target = new URL(${redirectScript}, window.location.origin);
+      window.location.replace(target);
+    </script>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: ${model.colors.paper}; color: ${model.colors.line}; font: 500 16px/24px Geist, system-ui, sans-serif; }
+      a { color: inherit; text-underline-offset: 0.2em; }
+    </style>
+  </head>
+  <body>
+    <a href="${destinationHref}">Open view</a>
+  </body>
+</html>
+`;
+}
+
+function renderPublishedPowerSharePage(
+  model,
+  pageHref,
+  imageHref,
+  previewRevision,
+) {
+  const pageUrl =
+    `${SITE_ORIGIN}${pageHref}?v=` +
+    `${PUBLISHED_CARD_VERSION}-${powerRuntimeData.revision}`;
+  const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
+  const rangeLabel = RANGES[model.range]?.label || model.range.toUpperCase();
+  const rangeDescription = RANGES[model.range]?.longLabel || model.range;
+  const isBasis = model.scale === "basis";
+  const title = `${model.location.label} ${isBasis ? "spread" : "power"} ${rangeLabel}`;
+  const description = isBasis
+    ? `${formatPowerBasis(model.latest.basis)} spread over ${rangeDescription}. ` +
+      `Real time ${formatPowerPrice(model.latest.realTime)}.`
+    : `Real time ${formatPowerPrice(model.latest.realTime)} against ` +
+      `${formatPowerPrice(model.latest.dayAhead)} day ahead over ${rangeDescription}.`;
+  const imageAlt = isBasis
+    ? `${model.location.label} spread chart showing ${description}`
+    : `${model.location.label} real-time and day-ahead power chart showing ${description}`;
+  const destinationParams = new URLSearchParams({
+    card: powerCardDefinition.id,
+    view: "card",
+    location: model.location.id,
+    layers: model.layers.join(","),
+    scale: model.scale,
+    range: model.range,
+    palette: model.palette,
+    theme: model.theme,
+  });
+  const destination =
+    `/?${destinationParams.toString()}#${powerCardDefinition.hash}`;
   const destinationHref = escapeHtml(destination);
   const redirectScript = JSON.stringify(destination).replaceAll("<", "\\u003c");
 
@@ -1306,6 +1500,18 @@ function formatSignedUsd(value) {
   const amount = Number(value);
   const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
   return `${sign}$${Math.abs(amount).toFixed(2)}`;
+}
+
+function formatPowerPrice(value) {
+  const amount = Number(value);
+  const sign = amount < 0 ? "−" : "";
+  return `${sign}$${Math.abs(amount).toFixed(2)} per MWh`;
+}
+
+function formatPowerBasis(value) {
+  const amount = Number(value);
+  const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
+  return `${sign}$${Math.abs(amount).toFixed(2)} per MWh`;
 }
 
 function formatIndexChange(value) {

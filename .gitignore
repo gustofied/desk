@@ -11,3 +11,5 @@ assets/social/gpu-market-depth/published/*
 !assets/social/gpu-market-depth/published/v14/
 !assets/social/gpu-market-depth/published/v14/**
 cards/gpu-market-depth/published/
+assets/social/power-basis/published/
+cards/power-basis/published/

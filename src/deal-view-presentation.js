@@ -123,6 +123,8 @@ export function mountDealView(
 export const renderDealView = mountDealView;
 
 function dealViewMarkup(model, { variant, instanceId }) {
+  if (variant === "static") return staticDealViewMarkup(model);
+
   const interactive = variant === "full";
   const tabs = interactive
     ? interactiveTabsMarkup(model, instanceId)
@@ -169,6 +171,44 @@ function dealViewMarkup(model, { variant, instanceId }) {
             <span>${padCount(model.events)} events</span>
             <span>Next / ${escapeHtml(model.nextAction)}</span>
           </footer>
+        </div>
+      </div>
+    </article>`;
+}
+
+function staticDealViewMarkup(model) {
+  const activeStageIndex = Math.max(
+    0,
+    model.stages.findIndex((stage) => stage.id === model.activeStage),
+  );
+  const activeStage = model.stages[activeStageIndex];
+  const progress = model.stages
+    .map(
+      (_, index) =>
+        `<span data-state="${
+          index < activeStageIndex
+            ? "complete"
+            : index === activeStageIndex
+              ? "active"
+              : "pending"
+        }"></span>`,
+    )
+    .join("");
+
+  return `
+    <article class="deal-view deal-view--static" aria-label="${escapeHtml(model.ariaLabel)}"
+      data-deal-view="">
+      <div class="deal-view__shell">
+        <div class="deal-view__surface">
+          <header class="deal-view__head">
+            <div class="deal-view__identity">
+              <span>${escapeHtml(model.label)}</span>
+              <strong>${escapeHtml(model.quote.formatted)}</strong>
+              <small>${escapeHtml(model.title)}</small>
+            </div>
+            <span class="deal-view__catalog-stage">${escapeHtml(activeStage?.label || "")}</span>
+          </header>
+          <div class="deal-view__catalog-progress" aria-hidden="true">${progress}</div>
         </div>
       </div>
     </article>`;

@@ -37,7 +37,7 @@
         const requestedTheme = params.get("theme");
         const requestedPalette = params.get("palette");
         const requestedCard = params.get("card");
-        const requestedView = ["gpu-index", "gpu-price-snapshot", "gpu-market-depth", "deal-view"].includes(requestedCard)
+        const requestedView = ["gpu-index", "gpu-price-snapshot", "gpu-market-depth", "power-basis", "deal-view"].includes(requestedCard)
           ? params.get("view")
           : null;
         const requestedLayout = params.get("layout");
@@ -88,10 +88,11 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=77">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=53">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=81">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=55">
     <link rel="stylesheet" href="./styles/monitor-data.css?v=11">
-    <link rel="stylesheet" href="./styles/deal-view.css?v=6">
+    <link rel="stylesheet" href="./styles/power-basis.css?v=1">
+    <link rel="stylesheet" href="./styles/deal-view.css?v=10">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=21">
   </head>
@@ -181,6 +182,9 @@
             <button id="gpu-card-tab-depth" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-card-preset="gpu-market-depth">
               <span>Depth</span>
             </button>
+            <button id="gpu-card-tab-power" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-card-preset="power-basis">
+              <span>Power</span>
+            </button>
           </div>
           <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog views" data-index-gallery-toggle>All</button>
         </header>
@@ -210,29 +214,12 @@
                   </header>
 
                   <div class="gpu-benchmark__composer" data-card-composer>
-                    <fieldset class="deal-craft" aria-label="Deal terms" data-deal-craft hidden inert>
-                      <label class="deal-craft__field">
-                        <span>GPU</span>
-                        <select aria-label="GPU model" data-deal-craft-gpu>
-                          <option value="H100">H100</option>
-                          <option value="H200">H200</option>
-                          <option value="B200">B200</option>
-                          <option value="B300">B300</option>
-                        </select>
-                      </label>
-                      <label class="deal-craft__field">
-                        <span>GPUs</span>
-                        <input type="number" min="8" max="4096" step="1" inputmode="numeric" aria-label="GPU quantity" data-deal-craft-quantity>
-                      </label>
-                      <label class="deal-craft__field">
-                        <span>Quote</span>
-                        <span class="deal-craft__value"><i aria-hidden="true">$</i><input type="number" min="0.1" max="100" step="0.01" inputmode="decimal" aria-label="Quote per GPU hour in US dollars" data-deal-craft-quote><i aria-hidden="true">/ HR</i></span>
-                      </label>
-                      <label class="deal-craft__field">
-                        <span>RFS</span>
-                        <input type="month" min="2026-01" max="2035-12" aria-label="Ready for service month" data-deal-craft-rfs>
-                      </label>
-                    </fieldset>
+                    <button
+                      class="gpu-benchmark__craft-home"
+                      type="button"
+                      aria-label="Choose another view type"
+                      data-craft-home
+                    >Views</button>
                     <button
                       class="gpu-benchmark__compare-toggle"
                       type="button"
@@ -290,20 +277,37 @@
                       hidden
                       inert
                     >
+                      <fieldset class="deal-craft" aria-label="Deal terms" data-deal-craft hidden inert>
+                        <div class="deal-craft__field deal-craft__field--model">
+                          <span>Model</span>
+                          <div class="deal-craft__models" role="radiogroup" aria-label="GPU model" data-deal-craft-models></div>
+                        </div>
+                        <label class="deal-craft__field">
+                          <span>Capacity</span>
+                          <input type="number" min="8" max="4096" step="1" inputmode="numeric" aria-label="GPU capacity" data-deal-craft-quantity>
+                        </label>
+                        <label class="deal-craft__field">
+                          <span>Rate</span>
+                          <span class="deal-craft__value"><i aria-hidden="true">$</i><input type="number" min="0.1" max="100" step="0.01" inputmode="decimal" aria-label="Rate per GPU hour in US dollars" data-deal-craft-quote><i aria-hidden="true">/ HR</i></span>
+                        </label>
+                        <label class="deal-craft__field">
+                          <span>Start</span>
+                          <input type="month" min="2026-01" max="2035-12" aria-label="Ready for service month" data-deal-craft-rfs>
+                        </label>
+                      </fieldset>
                       <div class="gpu-benchmark__data-row" data-card-primary-row>
                         <span class="gpu-benchmark__compare-label" data-card-primary-label>Main</span>
                         <div
                           class="gpu-benchmark__primary"
                           role="radiogroup"
                           aria-label="Main data"
-                          aria-describedby="gpu-index-craft-main-help"
                           data-card-primary-layers
                         ></div>
                         <div class="gpu-benchmark__scale-control" data-card-scale-control>
                           <span class="gpu-benchmark__compare-label">Chart</span>
                           <div class="gpu-benchmark__scales" role="group" aria-label="Chart mode" data-card-scales>
                             <button type="button" aria-pressed="true" data-card-scale="price">Price</button>
-                            <button type="button" aria-pressed="false" data-card-scale="index">Return</button>
+                            <button type="button" aria-pressed="false" data-card-scale="index">Change</button>
                             <button type="button" aria-pressed="false" data-card-scale="spread">Spread</button>
                           </div>
                         </div>
@@ -319,7 +323,14 @@
 
                   <div class="gpu-benchmark__chart" data-gpu-chart>
                     <div class="gpu-benchmark__craft-empty" data-craft-empty hidden>
-                      <p id="gpu-index-craft-main-help">Choose a main series</p>
+                      <div class="gpu-benchmark__craft-start">
+                        <div
+                          class="gpu-benchmark__craft-types"
+                          role="group"
+                          aria-label="View type"
+                          data-craft-type-list
+                        ></div>
+                      </div>
                     </div>
                     <svg data-gpu-chart-svg role="img" aria-label="GPU price history">
                       <desc data-gpu-chart-description>The line shows the selected GPU's observed price. The surrounding band shows the middle range of quotes.</desc>
@@ -567,6 +578,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=138"></script>
+    <script type="module" src="./desk.js?v=148"></script>
   </body>
 </html>

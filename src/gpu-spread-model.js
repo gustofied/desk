@@ -2,9 +2,9 @@ const GPU_PRICE_UNIT = "usd-hour";
 const SPREAD_UNIT = "percentage-points";
 
 /**
- * Derives the signed cumulative-return spread between two GPU price series.
+ * Derives the signed price-change spread between two GPU price series.
  *
- * Both returns are rebased at the first timestamp present in both series. A
+ * Both changes are measured from the first timestamp present in both series. A
  * zoom window is applied only after the full overlapping series is derived so
  * zooming never changes the comparison baseline.
  */

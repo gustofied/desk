@@ -19,6 +19,8 @@ export function setPrimaryLayer(cardId, cardState, layerId) {
   const card = getCardDefinition(cardId);
   const layer = getLayerDefinition(card, layerId);
   const current = normalizeCardVisualization(card.id, cardState);
+  const primaryParam = card.primaryParam || "gpu";
+  const currentPrimary = current[primaryParam] || current.gpu;
   if (!layer || layer.primary === false) return current;
 
   if (
@@ -29,17 +31,17 @@ export function setPrimaryLayer(cardId, cardState, layerId) {
   ) {
     const comparisonId = current.layers.includes(layer.id)
       ? current.layers.find((currentLayerId) => currentLayerId !== layer.id)
-      : current.gpu;
+      : currentPrimary;
     return normalizeCardVisualization(card.id, {
       ...current,
-      gpu: layer.id,
+      [primaryParam]: layer.id,
       layers: comparisonId ? [layer.id, comparisonId] : [layer.id],
     });
   }
 
   return normalizeCardVisualization(card.id, {
     ...current,
-    gpu: layer.id,
+    [primaryParam]: layer.id,
     layers:
       card.allowComparisons === false || layer.allowComparisons === false
         ? [layer.id]
@@ -51,9 +53,11 @@ export function toggleCompositionLayer(cardId, cardState, layerId) {
   const card = getCardDefinition(cardId);
   const layer = getLayerDefinition(card, layerId);
   const current = normalizeCardVisualization(card.id, cardState);
+  const primaryParam = card.primaryParam || "gpu";
+  const currentPrimary = current[primaryParam] || current.gpu;
   if (
     !layer ||
-    layer.id === current.gpu ||
+    layer.id === currentPrimary ||
     card.allowComparisons === false ||
     layer.allowComparisons === false
   ) {
@@ -69,7 +73,7 @@ export function toggleCompositionLayer(cardId, cardState, layerId) {
   ) {
     return normalizeCardVisualization(card.id, {
       ...current,
-      layers: [current.gpu, layer.id],
+      layers: [currentPrimary, layer.id],
     });
   }
   if (adding) layers.add(layer.id);
