@@ -285,11 +285,6 @@ if (root) {
     focusCardMonitor: root.querySelector("[data-focus-card-monitor]"),
     familyButtons: Array.from(root.querySelectorAll("[data-gpu-family]")),
     cardPresetButtons: Array.from(root.querySelectorAll("[data-card-preset]")),
-    familyValues: new Map(
-      Array.from(root.querySelectorAll("[data-gpu-family-value]")).map(
-        (node) => [node.dataset.gpuFamilyValue, node],
-      ),
-    ),
     rangeButtons: Array.from(root.querySelectorAll("[data-gpu-range]")),
     rangeGroup: root.querySelector("[data-gpu-range-group]"),
     depthView: root.querySelector("[data-depth-view]"),
@@ -3479,7 +3474,6 @@ if (root) {
         throw new Error(`Missing ${state.selected} data`);
       }
       setShareReady(true);
-      updateFamilyQuoteNodes();
       syncMobileSummary();
       render(true);
     } catch (error) {
@@ -3992,7 +3986,6 @@ if (root) {
         : `${titleMode} ${label}${rangeSuffix}${state.craftDirty ? " edited" : ""}`;
     }
     syncMobileSummary();
-    updateFamilyQuoteNodes();
     syncModeActions(false);
     syncComposerControls();
     syncMonitorDataVisibility();
@@ -4395,37 +4388,6 @@ if (root) {
       nodes.rangeButtons
         .find((button) => button.dataset.gpuRange === "all")
         ?.focus({ preventScroll: true });
-    }
-  }
-
-  function updateFamilyQuoteNodes() {
-    for (const family of railFamilies) {
-      const latest = state.seriesByLayer.get(family)?.at(-1);
-      const selectedIndex =
-        family === state.selected && state.scale === "index"
-          ? createLayerSeries(family, { scale: "index" })?.rows.at(-1)
-          : null;
-      const value = selectedIndex
-        ? formatCardHeadline(selectedIndex.plotValue, "index")
-        : latest
-          ? formatUsd(latest.value)
-          : "pending";
-      const node = nodes.familyValues.get(family);
-      if (node) {
-        node.textContent = value;
-        node.hidden = cardDefinition.renderer !== "line";
-      }
-      const button = nodes.familyButtons.find(
-        (candidate) => candidate.dataset.gpuFamily === family,
-      );
-      button?.setAttribute(
-        "aria-label",
-        selectedIndex
-          ? `${family} ${value} over ${ranges[state.range].label}`
-          : latest
-            ? `${family} ${value} per GPU hour`
-            : `${family}, price pending`,
-      );
     }
   }
 

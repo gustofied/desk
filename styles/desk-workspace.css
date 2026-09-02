@@ -57,6 +57,8 @@
   letter-spacing: 0.08em;
   text-align: center;
   text-transform: uppercase;
+  user-select: none;
+  -webkit-user-select: none;
   cursor: pointer;
   background: color-mix(in srgb, var(--desk-accent-pale) 20%, transparent);
   border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 8%, transparent);
@@ -70,13 +72,6 @@
     border-color 200ms var(--desk-ease-out),
     opacity 200ms var(--desk-ease-out),
     transform 200ms var(--desk-ease-out);
-}
-
-.compute-card-skin--market .desk-card-rail .desk-card-tabs button strong {
-  display: none;
-  color: inherit;
-  font: inherit;
-  letter-spacing: 0;
 }
 
 .compute-card-skin--market .desk-card-rail .desk-card-tabs button[aria-selected="true"] {
@@ -679,9 +674,6 @@
     padding-inline: 4px;
   }
 
-  .compute-card-skin--market .desk-card-rail .desk-card-tabs button[aria-selected="true"] strong {
-    display: none;
-  }
 }
 
 @media (max-width: 640px) {
@@ -731,10 +723,6 @@
     min-height: 40px;
     padding-inline: 4px;
     font-size: 10px;
-  }
-
-  .compute-card-skin--market .desk-card-rail .desk-card-tabs button strong {
-    display: none;
   }
 
   .compute-card-skin--market .desk-card-rail .desk-card-gallery-tab {
