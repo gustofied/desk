@@ -377,7 +377,7 @@ export const CARD_REGISTRY = Object.freeze([
     dataAdapter: "deal",
     dataTable: Object.freeze({
       id: "deal-041",
-      label: "Deal workflow",
+      label: "Deal",
     }),
     sharePath: `/cards/${DEAL_VIEW_SLUG}`,
     defaults: Object.freeze({

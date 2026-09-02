@@ -273,6 +273,11 @@
   aspect-ratio: auto;
 }
 
+.gpu-index[data-card-renderer="deal"][data-workspace-surface="craft"] .gpu-benchmark__compare-panel {
+  position: relative;
+  inset: auto;
+}
+
 .compute-card-skin--market.gpu-index[data-card-renderer="deal"] .gpu-index-share__window,
 .compute-card-skin--market.gpu-index[data-card-renderer="deal"] .desk-card-focus-action.compute-share-card-frame {
   padding: 0;

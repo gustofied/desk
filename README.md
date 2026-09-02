@@ -7,9 +7,11 @@ views, monitor and share. Built for anyone building or running a compute desk.
 
 [Open Desk](https://desk.adamsioud.com)
 
-![Desk Overview catalog showing compute market views](assets/showcase/desk-catalog-gallery.jpg)
+[Run the one-minute demo](DEMO.md)
 
-The idea behind Desk is that you can compose what you want to see: compute market data, power data, your deals, or anything else relevant to your work. It is a  workspace with the basic pieces to build your own compute desk.  A simple bloomberg-esque terminal, just for compute, just sleeker.
+![Desk catalog showing compute market views](assets/showcase/desk-catalog-gallery.jpg)
+
+The idea behind Desk is that you can compose what you want to see: compute market data, power data, your deals, or anything else relevant to your work. It is a workspace with the basic pieces to build your own compute desk. A simple Bloomberg-esque terminal, just for compute, just sleeker.
 
 See [The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar) for
 my wider work on compute markets.
@@ -28,12 +30,12 @@ my wider work on compute markets.
 - Current accelerator price comparison
 - H100 market depth as a current capacity curve or depth history
 - PJM West real-time, day-ahead, and spread history
-- Deal 041 as a compact private market workflow
+- Deal 041 as a compact private market view
 - Token Price Index as a comparison layer
 - Price, percentage-change, and two-GPU spread comparisons
 - Four palettes with light and dark themes
 
-The included data is a deterministic product showcase. It is designed to
+The included data is a product showcase. It is designed to
 exercise the complete workspace and sharing system.
 
 ## Run locally
@@ -46,6 +48,8 @@ npm run dev
 
 Open <http://localhost:4173>.
 
+Use the local URL rather than opening `index.html` directly.
+
 ## Working with Desk
 
 - Switch Catalogs from the Catalog segment and reorder views by dragging them.
@@ -53,7 +57,7 @@ Open <http://localhost:4173>.
   needs changing.
 - Save a Craft composition to the active Catalog. Saved views remain in the
   current browser.
-- Use **Command G** to find views and controls, change the display, or copy an
+- Use **Command G** (`⌘G`) to find views and controls, change the display, or copy an
   exact view link.
 - Shared links keep the selected composition. Their social artwork matches the
   sender, while a returning visitor's saved Desk appearance takes priority.
@@ -92,7 +96,7 @@ The SQL targets `datafusion-cli` 53 or newer so the published JSON arrays can
 be read directly as external tables. Embedded DataFusion clients need an HTTPS
 object store registered by their host application.
 
-The private Deal workflow remains view-only and has no public data export.
+The private Deal remains view-only and has no public data export.
 
 ## Desk CLI
 

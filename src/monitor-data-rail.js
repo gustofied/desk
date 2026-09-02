@@ -24,7 +24,6 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
   nodes.toggle?.addEventListener("click", () => {
     open = !open;
     syncOpenState();
-    if (open) revealWorkspace();
   });
   nodes.mode?.addEventListener("click", () => {
     mode = mode === "command" ? "sql" : "command";
@@ -122,15 +121,6 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     );
     syncCopyLabel();
     nodes.command?.closest("pre")?.scrollTo({ top: 0, left: 0 });
-  }
-
-  function revealWorkspace() {
-    window.requestAnimationFrame(() => {
-      nodes.commandShell?.scrollIntoView({
-        block: "center",
-        behavior: reducedMotion ? "auto" : "smooth",
-      });
-    });
   }
 
   function syncCopyLabel() {
