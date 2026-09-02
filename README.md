@@ -7,8 +7,6 @@ views, monitor and share. Built for anyone building or running a compute desk.
 
 [Open Desk](https://desk.adamsioud.com)
 
-[Run the one-minute demo](DEMO.md)
-
 ![Desk catalog showing compute market views](assets/showcase/desk-catalog-gallery.jpg)
 
 The idea behind Desk is that you can compose what you want to see: compute market data, power data, your deals, or anything else relevant to your work. It is a workspace with the basic pieces to build your own compute desk. A simple Bloomberg-esque terminal, just for compute, just sleeker.
