@@ -1,15 +1,20 @@
 # Desk
 
-Market data for compute desks.
+The workspace for compute desks.
 
 [Open Desk](https://desk.adamsioud.com)
 
 ![Desk Catalog showing deal, price, snapshot, and market depth views](assets/showcase/desk-catalog-gallery.jpg)
 
-Desk is a browser workspace for compute market views. Catalog organizes views,
-Monitor opens one for inspection, and Craft composes and saves a view. Share
-links preserve the view's data, range, and chart mode. Their artwork uses the
-sender's appearance; returning visitors keep their saved Desk appearance.
+Desk is a standalone browser workspace for compute market views. Catalog
+organizes views, Monitor opens one for inspection, and Craft composes and saves
+a view. Share links preserve the view's data, range, and chart mode. Their
+artwork uses the sender's appearance; returning visitors keep their saved Desk
+appearance.
+
+[The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar) carries
+the broader market infrastructure across data, fleet operations, evaluation,
+and trade.
 
 ## Workspace
 
