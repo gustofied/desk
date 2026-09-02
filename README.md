@@ -9,6 +9,8 @@ views, monitor and share. Built for anyone building or running a compute desk.
 
 ![Desk Overview catalog showing compute market views](assets/showcase/desk-catalog-gallery.jpg)
 
+The idea behind Desk is that you can compose what you want to see: compute market data, power data, your deals, or anything else relevant to your work. It is a  workspace with the basic pieces to build your own compute desk.  A simple bloomberg-esque terminal, just for compute, just sleeker.
+
 See [The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar) for
 my wider work on compute markets.
 
