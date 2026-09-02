@@ -2,19 +2,15 @@
 
 The workspace for compute desks.
 
+Desk is the workspace where you explore compute market data, create market
+views, monitor and share. Built for anyone building or running a compute desk.
+
 [Open Desk](https://desk.adamsioud.com)
 
 ![Desk Catalog showing deal, price, snapshot, and market depth views](assets/showcase/desk-catalog-gallery.jpg)
 
-Desk is a standalone browser workspace for compute market views. Catalog
-organizes views, Monitor opens one for inspection, and Craft composes and saves
-a view. Share links preserve the view's data, range, and chart mode. Their
-artwork uses the sender's appearance; returning visitors keep their saved Desk
-appearance.
-
-[The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar) carries
-the broader market infrastructure across data, fleet operations, evaluation,
-and trade.
+For the broader market infrastructure, see
+[The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar).
 
 ## Workspace
 
