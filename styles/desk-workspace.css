@@ -90,10 +90,6 @@
   transform: translateY(1px);
 }
 
-.compute-card-skin--market .desk-card-rail .desk-card-tabs button[aria-selected="true"] strong {
-  display: inline;
-}
-
 .compute-card-skin--market .desk-card-rail :is(.desk-card-tabs button, .desk-card-gallery-tab):disabled {
   cursor: wait;
   opacity: 0.42;
