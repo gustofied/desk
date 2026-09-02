@@ -44,7 +44,7 @@
 .compute-card-skin--market .desk-card-rail :is(.desk-card-tabs button, .desk-card-gallery-tab) {
   position: relative;
   display: flex;
-  gap: 8px;
+  gap: 4px;
   align-items: center;
   justify-content: center;
   width: 64px;
