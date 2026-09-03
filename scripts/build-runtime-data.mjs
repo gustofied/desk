@@ -505,6 +505,15 @@ function buildDealRuntime(source, sourceFile) {
   validateDealSource(source, sourceFile);
   const asOf = timestampSeconds(source.as_of, `${sourceFile} as_of`);
   timestampSeconds(source.rfs, `${sourceFile} rfs`);
+  const quoteHistory = source.quote_history.map((point, index) => [
+    timestampSeconds(
+      point.observed_at,
+      `${sourceFile} quote_history[${index}].observed_at`,
+    ),
+    round(finiteNumber(point.seller_ask_usd_gpu_hour ?? point.value)),
+    round(finiteNumber(point.buyer_bid_usd_gpu_hour)),
+  ]);
+  assertStrictlyIncreasing(quoteHistory, `${sourceFile} quote_history`);
   const runtime = {
     version: 1,
     cardId: dealCard.id,
@@ -524,6 +533,7 @@ function buildDealRuntime(source, sourceFile) {
       unit: "GPU-hour",
       prepayPercent: source.terms.prepay_percent,
     },
+    quoteHistory,
     currentStage: source.current_stage,
     parties: source.parties,
     events: source.events,
@@ -556,6 +566,26 @@ function validateDealSource(source, sourceFile) {
     !Number.isFinite(Number(source?.capacity?.gpu_count)) ||
     !Number.isFinite(Number(source?.capacity?.node_count)) ||
     !Number.isFinite(Number(source?.terms?.quote_usd_gpu_hour)) ||
+    !Array.isArray(source?.quote_history) ||
+    source.quote_history.length < 2 ||
+    source.quote_history.some(
+      (point) =>
+        !Number.isFinite(Date.parse(point?.observed_at)) ||
+        !Number.isFinite(
+          Number(point?.seller_ask_usd_gpu_hour ?? point?.value),
+        ) ||
+        !Number.isFinite(Number(point?.buyer_bid_usd_gpu_hour)) ||
+        Number(point?.seller_ask_usd_gpu_hour ?? point?.value) < 0 ||
+        Number(point?.buyer_bid_usd_gpu_hour) < 0 ||
+        Number(point?.buyer_bid_usd_gpu_hour) >
+          Number(point?.seller_ask_usd_gpu_hour ?? point?.value),
+    ) ||
+    Number(
+      source.quote_history.at(-1)?.seller_ask_usd_gpu_hour ??
+        source.quote_history.at(-1)?.value,
+    ) !== Number(source.terms.quote_usd_gpu_hour) ||
+    Number(source.quote_history.at(-1)?.buyer_bid_usd_gpu_hour) !==
+      Number(source.terms.quote_usd_gpu_hour) ||
     !Array.isArray(source?.stages) ||
     source.stages.length !== stageIds.size ||
     source.stages.some((stage) => !stageIds.has(stage?.id)) ||

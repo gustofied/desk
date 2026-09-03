@@ -19,6 +19,48 @@
     "quote_usd_gpu_hour": 3.65,
     "prepay_percent": 20
   },
+  "quote_history": [
+    {
+      "observed_at": "2026-08-22T16:00:00.000Z",
+      "buyer_bid_usd_gpu_hour": 3.10,
+      "seller_ask_usd_gpu_hour": 4.25
+    },
+    {
+      "observed_at": "2026-08-23T16:00:00.000Z",
+      "buyer_bid_usd_gpu_hour": 3.20,
+      "seller_ask_usd_gpu_hour": 4.25
+    },
+    {
+      "observed_at": "2026-08-24T16:00:00.000Z",
+      "buyer_bid_usd_gpu_hour": 3.20,
+      "seller_ask_usd_gpu_hour": 4.05
+    },
+    {
+      "observed_at": "2026-08-25T16:00:00.000Z",
+      "buyer_bid_usd_gpu_hour": 3.35,
+      "seller_ask_usd_gpu_hour": 4.05
+    },
+    {
+      "observed_at": "2026-08-26T16:00:00.000Z",
+      "buyer_bid_usd_gpu_hour": 3.35,
+      "seller_ask_usd_gpu_hour": 3.90
+    },
+    {
+      "observed_at": "2026-08-27T16:00:00.000Z",
+      "buyer_bid_usd_gpu_hour": 3.50,
+      "seller_ask_usd_gpu_hour": 3.90
+    },
+    {
+      "observed_at": "2026-08-28T16:00:00.000Z",
+      "buyer_bid_usd_gpu_hour": 3.60,
+      "seller_ask_usd_gpu_hour": 3.75
+    },
+    {
+      "observed_at": "2026-08-29T16:00:00.000Z",
+      "buyer_bid_usd_gpu_hour": 3.65,
+      "seller_ask_usd_gpu_hour": 3.65
+    }
+  ],
   "current_stage": "diligence",
   "parties": 4,
   "events": 18,

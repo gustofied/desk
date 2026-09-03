@@ -1,6 +1,6 @@
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 3;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2]);
+const STORAGE_VERSION = 4;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
@@ -18,6 +18,7 @@ const STARTER_CATALOGS = Object.freeze([
       "preset-gpu-market-depth-h100-history",
       "preset-power-basis-pjm-west",
       "preset-power-basis-pjm-west-spread",
+      "preset-quote-view-quote-041",
       "preset-deal-view-deal-041",
     ]),
   }),
@@ -36,6 +37,7 @@ const STARTER_CATALOGS = Object.freeze([
     id: PRIVATE_CATALOG_ID,
     name: "Private",
     keys: Object.freeze([
+      "preset-quote-view-quote-041",
       "preset-deal-view-deal-041",
       "preset-gpu-index-b200",
       "preset-gpu-price-snapshot-prices",
@@ -417,7 +419,7 @@ function migrateLegacyState(value) {
     version: STORAGE_VERSION,
   });
   const now = new Date().toISOString();
-  const collections = [...legacyState.collections];
+  let collections = [...legacyState.collections];
   const additions = sourceVersion === 2
     ? STARTER_CATALOGS.filter((catalog) => catalog.id !== PRIVATE_CATALOG_ID)
     : STARTER_CATALOGS;
@@ -437,6 +439,20 @@ function migrateLegacyState(value) {
       updatedAt: now,
     });
   }
+  const quoteKey = "preset-quote-view-quote-041";
+  collections = collections.map((collection) => {
+    if (
+      ![OVERVIEW_CATALOG_ID, PRIVATE_CATALOG_ID].includes(collection.id) ||
+      collection.keys.includes(quoteKey)
+    ) {
+      return collection;
+    }
+    return {
+      ...collection,
+      keys: normalizeKeys([...collection.keys, quoteKey]),
+      updatedAt: now,
+    };
+  });
   return {
     ...legacyState,
     collections,

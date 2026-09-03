@@ -34,6 +34,7 @@ import { mountDealView } from "./deal-view-presentation.js";
 import { createCommandPalette } from "./command-palette.js";
 import { createMonitorDataModel } from "./monitor-data-model.js";
 import { createMonitorDataRail } from "./monitor-data-rail.js";
+import { createDealJourneyRail } from "./deal-journey-rail.js";
 import {
   deleteCatalogItem,
   loadSavedCatalog,
@@ -93,6 +94,8 @@ if (root) {
   const isDepthCard = cardDefinition.renderer === "cumulative-depth";
   const isPowerCard = cardDefinition.renderer === "power-basis";
   const isDealCard = cardDefinition.renderer === "deal";
+  const isQuoteCard = cardDefinition.viewKind === "quote";
+  const isTransactionCard = isDealCard && !isQuoteCard;
   root.dataset.cardId = cardId;
   root.dataset.cardRenderer = cardDefinition.renderer || "line";
   root
@@ -382,6 +385,12 @@ if (root) {
     copyText: copyTextToClipboard,
     reducedMotion,
   });
+  const dealJourneyRail = createDealJourneyRail({
+    root: root.querySelector("[data-deal-journey]"),
+    reducedMotion,
+    onStageChange: selectDealJourneyStage,
+  });
+  let dealWorkspaceView = null;
   const catalogCards = new Map();
   const catalogReflowAnimations = new Map();
   let catalogPointerDrag = null;
@@ -867,6 +876,11 @@ if (root) {
     updateLocation();
     const label = stageOption.valueLabels?.[stageId] || stageId;
     announceCard(`${label} opened`);
+  }
+
+  function selectDealJourneyStage(stageId) {
+    selectDealStage(stageId);
+    dealWorkspaceView?.setStage(stageId);
   }
 
   function configureSaveControls() {
@@ -1562,7 +1576,11 @@ if (root) {
     if (isPowerCard) {
       return getLayerDefinition(cardDefinition, state.selected)?.label || "Power prices";
     }
-    if (isDealCard) {
+    if (isQuoteCard) {
+      const id = state.runtimePayload?.id || "041";
+      return `Quote ${id} ${state.options.gpu}`;
+    }
+    if (isTransactionCard) {
       const id = state.runtimePayload?.id || "041";
       return `Deal ${id} ${state.options.gpu}`;
     }
@@ -2008,9 +2026,29 @@ if (root) {
         run: () => openCardPreset("gpu-market-depth", "card", true),
       },
       {
-        id: "catalog.deal-041",
+        id: "catalog.quote-041",
         group: "Catalog",
         order: 4,
+        title: "Open Quote 041",
+        subtitle: "B200 bid and ask",
+        hint: "Quote",
+        keywords: [
+          "quote",
+          "rfq",
+          "bid",
+          "ask",
+          "negotiation",
+          "private",
+          "b200",
+        ],
+        disabled: () => !state.shareReady,
+        active: () => isQuoteCard && state.mode === "monitor",
+        run: () => openCardPreset("quote-view", "monitor", true),
+      },
+      {
+        id: "catalog.deal-041",
+        group: "Catalog",
+        order: 5,
         title: "Open Deal 041",
         subtitle: "Reserved B200 capacity",
         hint: "Deal",
@@ -2023,13 +2061,13 @@ if (root) {
           "b200",
         ],
         disabled: () => !state.shareReady,
-        active: () => isDealCard && state.mode === "monitor",
+        active: () => isTransactionCard && state.mode === "monitor",
         run: () => openCardPreset("deal-view", "monitor", true),
       },
       {
         id: "catalog.power-basis",
         group: "Catalog",
-        order: 5,
+        order: 6,
         title: "Open PJM West",
         subtitle: "Real time and day ahead power",
         hint: "Power",
@@ -2428,6 +2466,9 @@ if (root) {
 
   function describeCatalogState(cardState, definition = cardDefinition) {
     if (definition.renderer === "deal") {
+      if (definition.viewKind === "quote") {
+        return `Agreed ${formatUsd(cardState.quote)}`;
+      }
       const stageOption = definition.stateOptions?.find(
         (option) => option.id === "stage",
       );
@@ -2773,9 +2814,9 @@ if (root) {
 
   function catalogEntryKindLabel(entry) {
     if (entry.kind === "saved") return "Saved view";
-    return getCardDefinition(entry.cardId).renderer === "deal"
-      ? "Deal view"
-      : "Market view";
+    const definition = getCardDefinition(entry.cardId);
+    if (definition.viewKind === "quote") return "Quote view";
+    return definition.renderer === "deal" ? "Deal view" : "Market view";
   }
 
   function configureCatalogCardReordering(cardNodes) {
@@ -4013,14 +4054,19 @@ if (root) {
     syncMobileSummary();
     syncModeActions(false);
     syncComposerControls();
-    syncMonitorDataVisibility();
+    syncMonitorRailVisibility();
   }
 
   function syncMobileSummary() {
     if (isDealCard) {
       const payload = state.runtimePayload;
+      let model = null;
+      try {
+        model = payload ? createDealModel(currentCardState(), payload) : null;
+      } catch {}
       if (nodes.mobileSummaryLabel) {
-        nodes.mobileSummaryLabel.textContent = payload?.label || "Deal 041";
+        nodes.mobileSummaryLabel.textContent =
+          model?.label || (isQuoteCard ? "Quote 041" : "Deal 041");
       }
       if (nodes.mobileSummaryValue) {
         const quantity = Number(state.options.quantity || payload?.quantity || 256);
@@ -4028,9 +4074,7 @@ if (root) {
         nodes.mobileSummaryValue.textContent = `${quantity} × ${model}`;
       }
       if (nodes.mobileSummaryRange) {
-        const stage = String(state.options.stage || "diligence");
-        nodes.mobileSummaryRange.textContent =
-          stage.charAt(0).toUpperCase() + stage.slice(1);
+        nodes.mobileSummaryRange.textContent = model?.statusLabel || "";
       }
       return;
     }
@@ -4851,9 +4895,10 @@ if (root) {
     if (isDealCard && state.runtimePayload) {
       const observed = new Date(state.runtimePayload.asOf * 1000);
       if (nodes.shareStatus) {
-        nodes.shareStatus.textContent =
-          `${state.runtimePayload.label || "Deal 041"} ` +
-          `${state.options.stage || state.runtimePayload.currentStage}`;
+        nodes.shareStatus.textContent = isQuoteCard
+          ? `Quote ${state.runtimePayload.id || "041"} agreed ${formatUsd(state.options.quote)}`
+          : `${state.runtimePayload.label || "Deal 041"} ` +
+            `${state.options.stage || state.runtimePayload.currentStage}`;
       }
       if (nodes.shareObserved) {
         nodes.shareObserved.textContent = formatUtcDateTime(observed);
@@ -4990,13 +5035,14 @@ if (root) {
     syncControls();
   }
 
-  function syncMonitorDataVisibility() {
-    monitorDataRail.setVisible(
+  function syncMonitorRailVisibility() {
+    const visible =
       state.shareReady &&
-        state.mode === "monitor" &&
-        state.panel === "detail" &&
-        state.layout === "focus",
-    );
+      state.mode === "monitor" &&
+      state.panel === "detail" &&
+      state.layout === "focus";
+    monitorDataRail.setVisible(visible && !isDealCard);
+    dealJourneyRail.setVisible(visible && isTransactionCard);
   }
 
   function syncMonitorDataModel(context = {}) {
@@ -5016,7 +5062,7 @@ if (root) {
       }
       monitorDataRail.setModel(null);
     }
-    syncMonitorDataVisibility();
+    syncMonitorRailVisibility();
   }
 
   function render(drawAnimation) {
@@ -5079,6 +5125,7 @@ if (root) {
       payload || state.runtimePayloads.get(cardDefinition.id);
     const marketPayload = state.runtimePayloads.get("gpu-index");
     return createDealViewModel(sourcePayload, {
+      kind: cardDefinition.viewKind,
       stage: cardState.stage,
       marketPayload,
       overrides: dealModelOverrides(cardState),
@@ -5100,8 +5147,8 @@ if (root) {
     try {
       model = createDealModel(currentCardState(), state.runtimePayload);
     } catch (error) {
-      console.error("Deal view could not render", error);
-      showFailure("Deal view is temporarily unavailable.");
+      console.error("Private view could not render", error);
+      showFailure("This private view is temporarily unavailable.");
       return;
     }
 
@@ -5117,17 +5164,22 @@ if (root) {
     }
     if (nodes.dealWorkspace) {
       nodes.dealWorkspace.hidden = false;
-      mountDealView(nodes.dealWorkspace, model, {
+      dealWorkspaceView = mountDealView(nodes.dealWorkspace, model, {
         variant: "full",
         palette,
         reducedMotion,
+        interactive: state.mode === "monitor",
         onStageChange: selectDealStage,
       });
+    } else {
+      dealWorkspaceView = null;
     }
     if (nodes.chartState) nodes.chartState.hidden = true;
     if (nodes.tooltip) nodes.tooltip.hidden = true;
+    dealJourneyRail.setModel(isTransactionCard ? model : null);
     syncMonitorDataModel({ dealModel: model });
-    root.dataset.dealStage = model.activeStage;
+    if (isTransactionCard) root.dataset.dealStage = model.activeStage;
+    else delete root.dataset.dealStage;
     state.catalogDirty = true;
     if (state.layout === "all") renderWorkspaceGallery();
     syncMobileSummary();
@@ -5349,6 +5401,7 @@ if (root) {
         );
         if (!payload || !cardNodes.dealHost) continue;
         const model = createDealViewModel(payload, {
+          kind: entryCard.viewKind,
           stage: cardState.stage,
           marketPayload: state.runtimePayloads.get("gpu-index"),
           overrides: dealModelOverrides(cardState),
@@ -6404,6 +6457,9 @@ if (root) {
   function showFailure(message) {
     monitorDataRail.setModel(null);
     monitorDataRail.setVisible(false);
+    dealJourneyRail.setModel(null);
+    dealJourneyRail.setVisible(false);
+    dealWorkspaceView = null;
     nodes.chartState.textContent = message;
     nodes.chartState.hidden = false;
     nodes.tooltip.hidden = true;

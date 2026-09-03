@@ -16,6 +16,16 @@ export const DEAL_041_PAYLOAD = Object.freeze({
     unit: "GPU-hour",
     prepayPercent: 20,
   }),
+  quoteHistory: Object.freeze([
+    Object.freeze([1787414400, 4.25, 3.10]),
+    Object.freeze([1787500800, 4.25, 3.20]),
+    Object.freeze([1787587200, 4.05, 3.20]),
+    Object.freeze([1787673600, 4.05, 3.35]),
+    Object.freeze([1787760000, 3.90, 3.35]),
+    Object.freeze([1787846400, 3.90, 3.50]),
+    Object.freeze([1787932800, 3.75, 3.60]),
+    Object.freeze([1788019200, 3.65, 3.65]),
+  ]),
   stages: Object.freeze([
     Object.freeze({
       id: "spec",
@@ -54,9 +64,11 @@ export const DEAL_041_PAYLOAD = Object.freeze({
  */
 export function createDealViewModel(
   dealPayload,
-  { stage, marketPayload = null, overrides = {} } = {},
+  { stage, kind = "deal", marketPayload = null, overrides = {} } = {},
 ) {
   assertDealPayload(dealPayload);
+
+  const viewKind = kind === "quote" ? "quote" : "deal";
 
   const id = cleanText(dealPayload.id ?? dealPayload.dealId, "Deal id");
   const asset = cleanText(
@@ -77,6 +89,10 @@ export function createDealViewModel(
     ...dealPayload.quote,
     value: overrides.quote ?? dealPayload.quote?.value ?? dealPayload.quote?.amount,
   });
+  const quoteHistory = normalizeQuoteHistory(
+    dealPayload.quoteHistory ?? dealPayload.quote_history,
+    quote.value,
+  );
   const stages = applyDealTermsToStages(
     normalizeStages(dealPayload.stages),
     quote,
@@ -87,6 +103,13 @@ export function createDealViewModel(
   const activeStage = stages.some((candidate) => candidate.id === requestedStage)
     ? requestedStage
     : stages[0].id;
+  const activeStageIndex = stages.findIndex(
+    (candidate) => candidate.id === activeStage,
+  );
+  const activeStageModel = stages[activeStageIndex];
+  const latestRevision = quoteHistory.at(-1);
+  const quoteStatus =
+    latestRevision?.buyerBid === latestRevision?.sellerAsk ? "Agreed" : "Open";
   const market = createMarketContext(
     marketPayload ?? dealPayload.marketPayload ?? dealPayload.market,
     asset,
@@ -97,6 +120,7 @@ export function createDealViewModel(
       stages.map((stageModel) => [
         stageModel.id,
         createAriaLabel({
+          kind: viewKind,
           id,
           type: dealPayload.type ?? "Capacity",
           quantity,
@@ -111,8 +135,11 @@ export function createDealViewModel(
 
   return Object.freeze({
     version: 1,
+    viewKind,
     id,
-    label: `Deal ${id}`,
+    label: `${viewKind === "quote" ? "Quote" : "Deal"} ${id}`,
+    statusLabel:
+      viewKind === "quote" ? quoteStatus : activeStageModel.label,
     type: cleanText(dealPayload.type ?? "Capacity", "Deal type"),
     asset,
     quantity,
@@ -121,11 +148,11 @@ export function createDealViewModel(
     subtitle: `${nodes} ${nodes === 1 ? "node" : "nodes"}`,
     rfs: formatRfs(overrides.rfs ?? dealPayload.rfs),
     quote,
+    quoteHistory,
     activeStage,
     stages,
-    activeStageIndex: stages.findIndex(
-      (candidate) => candidate.id === activeStage,
-    ),
+    activeStageIndex,
+    activeStageModel,
     parties: nonNegativeInteger(dealPayload.parties, "Deal parties"),
     events: nonNegativeInteger(dealPayload.events, "Deal events"),
     nextAction: cleanText(dealPayload.nextAction, "Next action"),
@@ -174,6 +201,69 @@ function normalizeQuote(value) {
     unit: cleanText(value.unit ?? "GPU-hour", "Quote unit"),
     prepayPercent: prepay,
   });
+}
+
+function normalizeQuoteHistory(value, currentQuote) {
+  if (!Array.isArray(value)) return Object.freeze([]);
+
+  const points = value
+    .map((point) => {
+      const timestamp = quoteHistoryTimestamp(
+        Array.isArray(point)
+          ? point[0]
+          : point?.timestamp ?? point?.observedAt ?? point?.observed_at,
+      );
+      const sellerAsk = Number(
+        Array.isArray(point)
+          ? point[1]
+          : point?.sellerAsk ??
+              point?.seller_ask_usd_gpu_hour ??
+              point?.value ??
+              point?.quote,
+      );
+      const buyerBidValue = Array.isArray(point)
+        ? point[2]
+        : point?.buyerBid ?? point?.buyer_bid_usd_gpu_hour;
+      const buyerBid = buyerBidValue === undefined || buyerBidValue === null
+        ? null
+        : Number(buyerBidValue);
+      if (
+        !Number.isFinite(timestamp) ||
+        !Number.isFinite(sellerAsk) ||
+        sellerAsk < 0 ||
+        (buyerBid !== null &&
+          (!Number.isFinite(buyerBid) || buyerBid < 0 || buyerBid > sellerAsk))
+      ) {
+        return null;
+      }
+      return Object.freeze({ timestamp, sellerAsk, buyerBid });
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.timestamp - right.timestamp);
+
+  if (
+    points.length &&
+    (points.at(-1).sellerAsk !== currentQuote ||
+      (points.at(-1).buyerBid !== null &&
+        points.at(-1).buyerBid !== currentQuote))
+  ) {
+    const latest = points.at(-1);
+    points[points.length - 1] = Object.freeze({
+      ...latest,
+      sellerAsk: currentQuote,
+      buyerBid: latest.buyerBid === null ? null : currentQuote,
+    });
+  }
+  return Object.freeze(points);
+}
+
+function quoteHistoryTimestamp(value) {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    return numeric > 10_000_000_000 ? Math.round(numeric / 1000) : numeric;
+  }
+  const parsed = Date.parse(String(value ?? ""));
+  return Number.isFinite(parsed) ? Math.round(parsed / 1000) : NaN;
 }
 
 function normalizeStages(value) {
@@ -317,10 +407,16 @@ function formatRfs(value) {
     .toUpperCase();
 }
 
-function createAriaLabel({ id, type, quantity, asset, quote, activeStage, market }) {
+function createAriaLabel({ kind, id, type, quantity, asset, quote, activeStage, market }) {
   const context = market
     ? ` ${asset} benchmark ${market.benchmarkFormatted}, basis ${market.basisFormatted}.`
     : "";
+  if (kind === "quote") {
+    return (
+      `Quote ${id}, ${quantity} ${asset}, agreed at ${quote.formatted} ` +
+      `per GPU hour.${context}`
+    );
+  }
   return (
     `Deal ${id}, ${type}, ${quantity} ${asset}, quote ${quote.formatted} ` +
     `per GPU hour, ${titleCase(activeStage)} stage.${context}`

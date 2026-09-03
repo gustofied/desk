@@ -34,7 +34,7 @@
         const requestedTheme = params.get("theme");
         const requestedPalette = params.get("palette");
         const requestedCard = params.get("card");
-        const requestedView = ["gpu-index", "gpu-price-snapshot", "gpu-market-depth", "power-basis", "deal-view"].includes(requestedCard)
+        const requestedView = ["gpu-index", "gpu-price-snapshot", "gpu-market-depth", "power-basis", "quote-view", "deal-view"].includes(requestedCard)
           ? params.get("view")
           : null;
         const requestedLayout = params.get("layout");
@@ -89,7 +89,7 @@
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=60">
     <link rel="stylesheet" href="./styles/monitor-data.css?v=11">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
-    <link rel="stylesheet" href="./styles/deal-view.css?v=16">
+    <link rel="stylesheet" href="./styles/deal-view.css?v=34">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=21">
   </head>
@@ -274,7 +274,7 @@
                       hidden
                       inert
                     >
-                      <fieldset class="deal-craft" aria-label="Deal terms" data-deal-craft hidden inert>
+                      <fieldset class="deal-craft" aria-label="Private capacity terms" data-deal-craft hidden inert>
                         <div class="deal-craft__field deal-craft__field--model">
                           <span>Model</span>
                           <div class="deal-craft__models" role="radiogroup" aria-label="GPU model" data-deal-craft-models></div>
@@ -417,6 +417,41 @@
                 </footer>
               </div>
               <p class="desk-data-rail__sr-only" aria-live="polite" data-monitor-data-status></p>
+            </section>
+
+            <section
+              class="desk-data-rail deal-journey-rail"
+              aria-label="Deal journey"
+              data-deal-journey
+              hidden
+              inert
+            >
+              <button
+                class="desk-data-rail__toggle"
+                id="deal-journey-toggle"
+                type="button"
+                aria-expanded="false"
+                aria-controls="deal-journey-body"
+                data-deal-journey-toggle
+              >
+                <strong>Deal journey</strong>
+                <span data-deal-journey-current>Diligence</span>
+                <small data-deal-journey-events>18 events</small>
+              </button>
+              <div
+                class="desk-data-rail__body deal-journey-rail__body"
+                id="deal-journey-body"
+                data-deal-journey-body
+                hidden
+                inert
+              >
+                <ol
+                  class="deal-journey-rail__list"
+                  aria-label="Deal stages"
+                  data-deal-journey-stages
+                ></ol>
+              </div>
+              <p class="desk-data-rail__sr-only" aria-live="polite" data-deal-journey-status></p>
             </section>
           </div>
 
@@ -575,6 +610,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=155"></script>
+    <script type="module" src="./desk.js?v=172"></script>
   </body>
 </html>

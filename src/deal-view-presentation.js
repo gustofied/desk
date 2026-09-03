@@ -1,11 +1,13 @@
+import { horizontalHitZones, positionSvgTooltip } from "./chart-pointer.js";
+
 const VALID_VARIANTS = Object.freeze(["static", "focus", "full"]);
-let dealViewInstance = 0;
 
 /**
  * Mounts a semantic Deal view into `host`.
  *
- * `static` and `focus` contain no controls, so they are safe inside a Catalog
- * tile button. `full` exposes accessible stage tabs for Monitor and Craft.
+ * Every variant is presentation-only, so it is safe inside a Catalog tile
+ * button. Stage changes continue to flow through the mount API for callers
+ * that control the active Deal state elsewhere.
  */
 export function mountDealView(
   host,
@@ -14,6 +16,7 @@ export function mountDealView(
     variant = "static",
     palette,
     reducedMotion = false,
+    interactive = false,
     onStageChange = null,
   } = {},
 ) {
@@ -23,8 +26,6 @@ export function mountDealView(
     ? variant
     : "static";
   const colors = normalizePalette(palette);
-  const interactive = normalizedVariant === "full";
-  const instanceId = `deal-view-${++dealViewInstance}`;
 
   ensureDealViewStyles(host.ownerDocument || document);
 
@@ -32,6 +33,7 @@ export function mountDealView(
   mount.className = "deal-view-mount";
   mount.dataset.dealViewMount = "";
   mount.dataset.variant = normalizedVariant;
+  mount.dataset.kind = model.viewKind;
   mount.dataset.stage = model.activeStage;
   mount.style.setProperty("--deal-paper", colors.paper);
   mount.style.setProperty("--deal-line", colors.line);
@@ -41,19 +43,22 @@ export function mountDealView(
   if (reducedMotion) mount.dataset.reducedMotion = "true";
   mount.innerHTML = dealViewMarkup(model, {
     variant: normalizedVariant,
-    instanceId,
+    interactive: normalizedVariant === "full" && interactive,
   });
 
   host.replaceChildren(mount);
+  const historyInteraction = normalizedVariant === "full" && interactive
+    ? configureDealHistoryInteraction(mount, model)
+    : null;
 
   let activeStage = model.activeStage;
-  const tabs = interactive
-    ? Array.from(mount.querySelectorAll("[data-deal-view-tab]"))
-    : [];
-  const panels = Array.from(mount.querySelectorAll("[data-deal-view-panel]"));
 
-  const activateStage = (stageId, { focus = false, notify = false } = {}) => {
-    if (!model.stages.some((stage) => stage.id === stageId)) return;
+  const activateStage = (stageId, { notify = false } = {}) => {
+    const stageIndex = model.stages.findIndex(
+      (candidate) => candidate.id === stageId,
+    );
+    const stage = model.stages[stageIndex];
+    if (!stage) return;
     activeStage = stageId;
     mount.dataset.stage = stageId;
     mount
@@ -62,44 +67,39 @@ export function mountDealView(
         "aria-label",
         model.ariaLabels?.[stageId] || model.ariaLabel,
       );
-    tabs.forEach((tab) => {
-      const selected = tab.dataset.dealViewTab === stageId;
-      tab.setAttribute("aria-selected", String(selected));
-      tab.tabIndex = selected ? 0 : -1;
-      if (selected && focus) tab.focus();
-    });
-    panels.forEach((panel) => {
-      const selected = panel.dataset.dealViewPanel === stageId;
-      panel.classList.toggle("is-active", selected);
-      panel.setAttribute("aria-hidden", String(!selected));
-    });
-    mount.querySelectorAll("[data-deal-view-stage-mark]").forEach((mark) => {
-      mark.dataset.active = String(mark.dataset.dealViewStageMark === stageId);
-    });
+    if (model.viewKind === "deal") {
+      const status = mount.querySelector("[data-deal-status]");
+      if (status) status.textContent = stage.label;
+
+      const lifecycle = mount.querySelector("[data-deal-lifecycle]");
+      lifecycle?.setAttribute(
+        "aria-label",
+        dealLifecycleDescription(model, stage.label),
+      );
+      const points = Array.from(
+        mount.querySelectorAll("[data-deal-lifecycle-index]"),
+      );
+      points.forEach((point, index) => {
+        point.dataset.state = index < stageIndex
+          ? "complete"
+          : index === stageIndex
+            ? "active"
+            : "pending";
+        point.querySelector("circle")?.setAttribute(
+          "r",
+          index === stageIndex ? "10" : "7",
+        );
+      });
+      const activePoint = points[stageIndex];
+      const progress = mount.querySelector("[data-deal-lifecycle-progress]");
+      if (activePoint && progress) {
+        progress.setAttribute("x2", activePoint.dataset.x);
+      }
+    }
     if (notify && typeof onStageChange === "function") {
       onStageChange(stageId);
     }
   };
-
-  tabs.forEach((tab, index) => {
-    tab.addEventListener("click", () => {
-      activateStage(tab.dataset.dealViewTab, { notify: true });
-    });
-    tab.addEventListener("keydown", (event) => {
-      let nextIndex = index;
-      if (event.key === "ArrowRight") nextIndex = (index + 1) % tabs.length;
-      else if (event.key === "ArrowLeft") {
-        nextIndex = (index - 1 + tabs.length) % tabs.length;
-      } else if (event.key === "Home") nextIndex = 0;
-      else if (event.key === "End") nextIndex = tabs.length - 1;
-      else return;
-      event.preventDefault();
-      activateStage(tabs[nextIndex].dataset.dealViewTab, {
-        focus: true,
-        notify: true,
-      });
-    });
-  });
 
   activateStage(activeStage);
   return Object.freeze({
@@ -110,11 +110,11 @@ export function mountDealView(
     },
     setStage(stageId, options = {}) {
       activateStage(stageId, {
-        focus: Boolean(options.focus),
         notify: Boolean(options.notify),
       });
     },
     destroy() {
+      historyInteraction?.destroy();
       if (mount.parentNode === host) host.replaceChildren();
     },
   });
@@ -122,172 +122,368 @@ export function mountDealView(
 
 export const renderDealView = mountDealView;
 
-function dealViewMarkup(model, { variant, instanceId }) {
-  if (variant !== "full") return staticDealViewMarkup(model);
+function dealViewMarkup(model, { variant, interactive }) {
+  return variant === "full"
+    ? fullDealViewMarkup(model, interactive)
+    : staticDealViewMarkup(model, variant);
+}
 
-  const interactive = variant === "full";
-  const tabs = interactive
-    ? interactiveTabsMarkup(model, instanceId)
-    : passiveStagesMarkup(model);
-  const panels = interactive
-    ? model.stages.map((stage) => stagePanelMarkup(stage, model, instanceId)).join("")
-    : stagePanelMarkup(
-        model.stages.find((stage) => stage.id === model.activeStage),
-        model,
-        instanceId,
-        true,
-      );
-  const market = marketMarkup(model);
-
+function fullDealViewMarkup(model, interactive) {
   return `
-    <article class="deal-view deal-view--${variant}" aria-label="${escapeHtml(model.ariaLabel)}"
+    <article class="deal-view deal-view--${model.viewKind} deal-view--full" aria-label="${escapeHtml(model.ariaLabel)}"
       data-deal-view="">
       <div class="deal-view__shell">
-        <svg class="deal-view__trace" viewBox="0 0 100 100" preserveAspectRatio="none"
-          aria-hidden="true" focusable="false">
-          <rect x="0" y="0" width="100" height="100" rx="0.5" pathLength="100"></rect>
-        </svg>
         <div class="deal-view__surface">
-          <header class="deal-view__head">
-            <div class="deal-view__identity">
-              <span>${escapeHtml(model.label)} / ${escapeHtml(model.type)}</span>
-              <strong>${escapeHtml(model.title)}</strong>
-              <small>${escapeHtml(model.subtitle)}</small>
-            </div>
-            <div class="deal-view__quote">
-              <span>${escapeHtml(model.quote.formatted)}</span>
-              <small>GPU / HR</small>
-            </div>
-            <div class="deal-view__rfs">
-              <small>RFS</small>
-              <b>${escapeHtml(model.rfs)}</b>
-            </div>
-          </header>
-          ${market}
-          ${tabs}
-          <div class="deal-view__panels">${panels}</div>
-          <footer class="deal-view__meta">
-            <span>${padCount(model.parties)} parties</span>
-            <span>${padCount(model.events)} events</span>
-            <span>Next / ${escapeHtml(model.nextAction)}</span>
-          </footer>
+          ${dealSummaryMarkup(model)}
+          ${dealGraphicMarkup(model, { interactive })}
         </div>
       </div>
     </article>`;
 }
 
-function staticDealViewMarkup(model) {
-  const activeStageIndex = Math.max(
-    0,
-    model.stages.findIndex((stage) => stage.id === model.activeStage),
-  );
-  const activeStage = model.stages[activeStageIndex];
-  const progress = model.stages
-    .map(
-      (_, index) =>
-        `<span data-state="${
-          index < activeStageIndex
+function staticDealViewMarkup(model, variant) {
+  const variantClasses = variant === "focus"
+    ? "deal-view--static deal-view--focus"
+    : "deal-view--static";
+
+  return `
+    <article class="deal-view deal-view--${model.viewKind} ${variantClasses}" aria-label="${escapeHtml(model.ariaLabel)}"
+      data-deal-view="">
+      <div class="deal-view__shell">
+        <div class="deal-view__surface">
+          ${dealSummaryMarkup(model)}
+          ${dealGraphicMarkup(model)}
+        </div>
+      </div>
+    </article>`;
+}
+
+function dealSummaryMarkup(model) {
+  return `
+    <header class="deal-view__head deal-view__summary">
+      <span class="deal-view__label">${escapeHtml(model.label)}</span>
+      <span class="deal-view__status" data-deal-status>${escapeHtml(model.statusLabel)}</span>
+      <strong class="deal-view__quote">${escapeHtml(model.quote.formatted)}</strong>
+    </header>`;
+}
+
+function dealGraphicMarkup(model, options = {}) {
+  return model.viewKind === "quote"
+    ? dealNegotiationMarkup(model, options)
+    : dealLifecycleMarkup(model);
+}
+
+function dealLifecycleMarkup(model) {
+  const stages = Array.isArray(model.stages) ? model.stages : [];
+  if (!stages.length) {
+    return '<div class="deal-view__lifecycle deal-view__lifecycle--empty" aria-hidden="true"></div>';
+  }
+  const start = 96;
+  const end = 1104;
+  const y = 264;
+  const step = stages.length > 1 ? (end - start) / (stages.length - 1) : 0;
+  const activeX = start + step * model.activeStageIndex;
+  const description = dealLifecycleDescription(model);
+
+  return `
+    <figure class="deal-view__lifecycle" role="img" aria-label="${escapeHtml(description)}" data-deal-lifecycle>
+      <svg viewBox="0 0 1200 420" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        <line class="deal-view__lifecycle-base" x1="${start}" y1="${y}" x2="${end}" y2="${y}"></line>
+        <line class="deal-view__lifecycle-progress" x1="${start}" y1="${y}" x2="${activeX}" y2="${y}" data-deal-lifecycle-progress></line>
+        ${stages.map((stage, index) => {
+          const state = index < model.activeStageIndex
             ? "complete"
-            : index === activeStageIndex
+            : index === model.activeStageIndex
               ? "active"
-              : "pending"
-        }"></span>`,
-    )
-    .join("");
-
-  return `
-    <article class="deal-view deal-view--static" aria-label="${escapeHtml(model.ariaLabel)}"
-      data-deal-view="">
-      <div class="deal-view__shell">
-        <div class="deal-view__surface">
-          <header class="deal-view__head">
-            <div class="deal-view__identity">
-              <span>${escapeHtml(model.label)}</span>
-              <strong>${escapeHtml(model.quote.formatted)}</strong>
-              <small>${escapeHtml(model.title)}</small>
-            </div>
-            <span class="deal-view__catalog-stage">${escapeHtml(activeStage?.label || "")}</span>
-          </header>
-          <div class="deal-view__catalog-progress" aria-hidden="true">${progress}</div>
-        </div>
-      </div>
-    </article>`;
+              : "pending";
+          const x = start + step * index;
+          return `
+            <g class="deal-view__lifecycle-point" data-state="${state}" data-x="${x}" data-deal-lifecycle-index="${index}">
+              <circle cx="${x}" cy="${y}" r="${state === "active" ? 10 : 7}"></circle>
+            </g>`;
+        }).join("")}
+      </svg>
+    </figure>`;
 }
 
-function interactiveTabsMarkup(model, instanceId) {
-  return `
-    <div class="deal-view__tabs" role="tablist" aria-label="Deal stages">
-      ${model.stages
-        .map((stage) => {
-          const selected = stage.id === model.activeStage;
-          return `<button id="${instanceId}-tab-${stage.id}" type="button" role="tab"
-            aria-selected="${selected}" aria-controls="${instanceId}-panel-${stage.id}"
-            tabindex="${selected ? "0" : "-1"}" data-deal-view-tab="${stage.id}">
-            ${escapeHtml(stage.label)}
-          </button>`;
-        })
-        .join("")}
-    </div>`;
+function dealLifecycleDescription(model, stageLabel = model.statusLabel) {
+  return (
+    `${model.label}, ${stageLabel} stage. ` +
+    `${model.quantity} ${model.asset} at ${model.quote.formatted} per GPU hour, ` +
+    `ready ${model.rfs}.`
+  );
 }
 
-function passiveStagesMarkup(model) {
+function dealNegotiationMarkup(model, { interactive = false } = {}) {
+  const history = Array.isArray(model.quoteHistory) ? model.quoteHistory : [];
+  if (history.length < 2) {
+    return '<div class="deal-view__history deal-view__history--empty" aria-hidden="true"></div>';
+  }
+
+  const geometry = negotiationGeometry(history);
+  if (!geometry) {
+    return '<div class="deal-view__history deal-view__history--empty" aria-hidden="true"></div>';
+  }
+
+  const firstBid = formatUsd(history[0].buyerBid);
+  const firstAsk = formatUsd(history[0].sellerAsk);
+  const latest = formatUsd(history.at(-1).sellerAsk);
+  const description = `Buyer bid ${firstBid} and seller ask ${firstAsk} converged at ${latest} across ${history.length} revisions.`;
   return `
-    <div class="deal-view__stages" aria-label="Current stage: ${escapeHtml(
-      model.stages.find((stage) => stage.id === model.activeStage)?.label || "",
-    )}">
-      ${model.stages
-        .map((stage) => {
-          const active = stage.id === model.activeStage;
-          return `<span data-deal-view-stage-mark="${stage.id}" data-active="${active}">
-            ${escapeHtml(stage.label)}
-          </span>`;
-        })
-        .join("")}
-    </div>`;
+    <figure class="deal-view__history" role="${interactive ? "group" : "img"}"
+      aria-label="${escapeHtml(description)}" ${interactive ? 'data-deal-history-interactive="true"' : ""}>
+      <svg viewBox="0 0 1200 420" preserveAspectRatio="none" aria-hidden="true" focusable="false">
+        <path class="deal-view__negotiation-line deal-view__negotiation-line--bid" d="${geometry.bid}"></path>
+        <path class="deal-view__negotiation-line deal-view__negotiation-line--ask" d="${geometry.ask}"></path>
+        <g class="deal-view__flow-signals">
+          ${geometry.connectors.map((connector) => `
+            <g class="deal-view__flow-signal deal-view__flow-signal--${connector.role}">
+              <line x1="${connector.x}" y1="420" x2="${connector.x}" y2="${connector.y}"></line>
+              <circle cx="${connector.x}" cy="${connector.y}" r="${connector.role === "desk" ? 8 : 6}"></circle>
+            </g>`).join("")}
+        </g>
+        ${interactive ? dealHistoryInteractionMarkup(history, geometry) : ""}
+      </svg>
+      ${interactive ? `
+        <span class="deal-view__keyboard-target" role="slider" tabindex="0"
+          aria-label="Quote revision" aria-orientation="horizontal"
+          aria-valuemin="1" aria-valuemax="${history.length}"
+          aria-valuenow="${history.length}" data-deal-history-keyboard></span>
+        <output class="deal-view__callout" data-deal-history-callout hidden aria-hidden="true"></output>
+        <span class="deal-view__live" data-deal-history-live aria-live="polite"></span>` : ""}
+    </figure>`;
 }
 
-function stagePanelMarkup(stage, model, instanceId, onlyPanel = false) {
-  const active = stage.id === model.activeStage;
-  const id = `${instanceId}-panel-${stage.id}`;
-  const labelledBy = `${instanceId}-tab-${stage.id}`;
-  const relationship = onlyPanel
-    ? `aria-label="${escapeHtml(stage.label)}"`
-    : `id="${id}" role="tabpanel" aria-labelledby="${labelledBy}"`;
+function dealHistoryInteractionMarkup(history, geometry) {
+  const halfWidth = 600;
+  const coordinate = (value) => Number(Number(value).toFixed(2));
+  const zones = horizontalHitZones(
+    history,
+    (_row, index) => (index / Math.max(1, history.length - 1)) * halfWidth,
+    halfWidth,
+  );
+  const hitZones = zones.flatMap((zone) => [
+    `<rect class="deal-view__history-hit" x="${coordinate(zone.x)}" y="0"
+      width="${coordinate(zone.width)}" height="420" data-deal-history-index="${zone.index}"
+      data-deal-history-side="bid"></rect>`,
+    `<rect class="deal-view__history-hit" x="${coordinate(1200 - zone.x - zone.width)}" y="0"
+      width="${coordinate(zone.width)}" height="420" data-deal-history-index="${zone.index}"
+      data-deal-history-side="ask"></rect>`,
+  ]).join("");
+
   return `
-    <section class="deal-view__panel${active ? " is-active" : ""}" ${relationship}
-      aria-hidden="${!active}" data-deal-view-panel="${stage.id}">
-      <p>
-        <span class="deal-view__copy-full">${escapeHtml(stage.copy)}</span>
-        <span class="deal-view__copy-compact">${escapeHtml(stage.compactCopy)}</span>
-      </p>
-      <footer>
-        <span>${escapeHtml(stage.owner)}</span>
-        <strong>${escapeHtml(stage.status)}</strong>
-      </footer>
-    </section>`;
+    <g class="deal-view__history-hits" aria-hidden="true">${hitZones}</g>
+    <g class="deal-view__history-selection" data-deal-history-selection hidden aria-hidden="true">
+      <circle class="deal-view__history-point deal-view__history-point--bid" r="7"
+        data-deal-history-bid></circle>
+      <circle class="deal-view__history-point deal-view__history-point--ask" r="7"
+        data-deal-history-ask></circle>
+    </g>`;
 }
 
-function marketMarkup(model) {
-  if (!model.market) return "";
+function configureDealHistoryInteraction(mount, model) {
+  const history = model.quoteHistory;
+  const geometry = negotiationGeometry(history);
+  const figure = mount.querySelector("[data-deal-history-interactive]");
+  const svg = figure?.querySelector("svg");
+  const keyboard = figure?.querySelector("[data-deal-history-keyboard]");
+  const callout = figure?.querySelector("[data-deal-history-callout]");
+  const live = figure?.querySelector("[data-deal-history-live]");
+  const selection = figure?.querySelector("[data-deal-history-selection]");
+  const bidPoint = figure?.querySelector("[data-deal-history-bid]");
+  const askPoint = figure?.querySelector("[data-deal-history-ask]");
+  const hitZones = Array.from(
+    figure?.querySelectorAll("[data-deal-history-index]") || [],
+  );
+  if (
+    !geometry ||
+    !figure ||
+    !svg ||
+    !keyboard ||
+    !callout ||
+    !live ||
+    !selection ||
+    !bidPoint ||
+    !askPoint ||
+    !hitZones.length
+  ) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  const listenerOptions = { signal: controller.signal };
+  let activeIndex = history.length - 1;
+  let activeSide = "ask";
+
+  const show = (index, side = activeSide, announce = false) => {
+    const observation = geometry.observations[index];
+    if (!observation) return;
+    activeIndex = index;
+    activeSide = side === "bid" ? "bid" : "ask";
+    bidPoint.setAttribute("cx", observation.bid.x);
+    bidPoint.setAttribute("cy", observation.bid.y);
+    askPoint.setAttribute("cx", observation.ask.x);
+    askPoint.setAttribute("cy", observation.ask.y);
+    selection.hidden = false;
+    keyboard.setAttribute("aria-valuenow", String(index + 1));
+    keyboard.setAttribute("aria-valuetext", dealRevisionAria(observation.row));
+    callout.innerHTML = dealRevisionCallout(observation.row, index);
+    callout.hidden = false;
+    const anchor = activeSide === "bid" ? observation.bid : observation.ask;
+    positionSvgTooltip({
+      tooltipNode: callout,
+      chartNode: figure,
+      svgNode: svg,
+      svgX: anchor.x,
+      svgY: anchor.y,
+    });
+    if (announce) live.textContent = dealRevisionAria(observation.row);
+  };
+
+  const hide = () => {
+    selection.hidden = true;
+    callout.hidden = true;
+  };
+
+  hitZones.forEach((zone) => {
+    zone.addEventListener("pointerenter", () => {
+      show(Number(zone.dataset.dealHistoryIndex), zone.dataset.dealHistorySide);
+    }, listenerOptions);
+    zone.addEventListener("pointerdown", () => {
+      show(Number(zone.dataset.dealHistoryIndex), zone.dataset.dealHistorySide);
+      keyboard.focus({ preventScroll: true });
+    }, listenerOptions);
+  });
+  figure.addEventListener("pointerleave", () => {
+    if (figure.ownerDocument.activeElement !== keyboard) hide();
+  }, listenerOptions);
+  keyboard.addEventListener("focus", () => show(activeIndex, activeSide, true), listenerOptions);
+  keyboard.addEventListener("blur", hide, listenerOptions);
+  keyboard.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      hide();
+      return;
+    }
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === "Home") activeIndex = 0;
+    if (event.key === "End") activeIndex = history.length - 1;
+    if (event.key === "ArrowLeft") activeIndex = Math.max(0, activeIndex - 1);
+    if (event.key === "ArrowRight") activeIndex = Math.min(history.length - 1, activeIndex + 1);
+    show(activeIndex, activeIndex < history.length - 1 ? "bid" : "ask", true);
+  }, listenerOptions);
+
+  return Object.freeze({
+    destroy() {
+      controller.abort();
+      hide();
+    },
+  });
+}
+
+function dealRevisionCallout(row, index) {
+  const spread = Math.max(0, row.sellerAsk - row.buyerBid);
   return `
-    <aside class="deal-view__market" aria-label="${escapeHtml(
-      `${model.asset} market context. Benchmark ${model.market.benchmarkFormatted}. ` +
-        `Basis ${model.market.basisFormatted}.`,
-    )}">
-      <span><small>${escapeHtml(model.asset)} ref</small><b>${escapeHtml(
-        model.market.benchmarkFormatted,
-      )}</b></span>
-      <span><small>Basis</small><b>${escapeHtml(
-        model.market.basisFormatted,
-      )}</b></span>
-    </aside>`;
+    <span class="deal-view__callout-head">
+      <time>${escapeHtml(formatDealDate(row.timestamp))}</time>
+      <small>REV ${String(index + 1).padStart(2, "0")}</small>
+    </span>
+    <span><b>Bid</b><strong>${formatUsd(row.buyerBid)}</strong></span>
+    <span><b>Ask</b><strong>${formatUsd(row.sellerAsk)}</strong></span>
+    <span><b>Gap</b><strong>${formatUsd(spread)}</strong></span>`;
+}
+
+function dealRevisionAria(row) {
+  const spread = Math.max(0, row.sellerAsk - row.buyerBid);
+  if (spread === 0) {
+    return `${formatDealAriaDate(row.timestamp)}. Agreed at ${formatUsd(row.sellerAsk)} per GPU hour.`;
+  }
+  return `${formatDealAriaDate(row.timestamp)}. Bid ${formatUsd(row.buyerBid)}. Ask ${formatUsd(row.sellerAsk)}. Gap ${formatUsd(spread)}.`;
+}
+
+function formatDealDate(timestamp) {
+  const date = new Date(Number(timestamp) * 1000);
+  const month = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+  return `${String(date.getUTCDate()).padStart(2, "0")} ${month[date.getUTCMonth()]}`;
+}
+
+function formatDealAriaDate(timestamp) {
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Number(timestamp) * 1000));
+}
+
+function negotiationGeometry(history) {
+  const width = 1200;
+  const center = width / 2;
+  const top = 48;
+  const bottom = 344;
+  const bids = history.map((point) => Number(point.buyerBid));
+  const asks = history.map((point) => Number(point.sellerAsk));
+  if (
+    bids.some((value) => !Number.isFinite(value)) ||
+    asks.some((value) => !Number.isFinite(value))
+  ) {
+    return null;
+  }
+  const match = asks.at(-1);
+  const extent = Math.max(
+    match - Math.min(...bids),
+    Math.max(...asks) - match,
+    0.05,
+  ) * 1.18;
+  const y = (distance) =>
+    bottom - (Math.max(0, distance) / extent) * (bottom - top);
+  const coordinate = (value) => Number(value.toFixed(2));
+  const progress = (index) => index / Math.max(1, history.length - 1);
+  const bidPoints = bids.map((value, index) => ({
+    x: center * progress(index),
+    y: y(match - value),
+  }));
+  const askPoints = asks.map((value, index) => ({
+    x: width - center * progress(index),
+    y: y(value - match),
+  }));
+  const stepPath = (points) => {
+    let path = `M ${coordinate(points[0].x)} ${coordinate(points[0].y)}`;
+    for (let index = 1; index < points.length; index += 1) {
+      path += ` H ${coordinate(points[index].x)} V ${coordinate(points[index].y)}`;
+    }
+    return path;
+  };
+
+  return Object.freeze({
+    bid: stepPath(bidPoints),
+    ask: stepPath(askPoints),
+    observations: Object.freeze(history.map((row, index) => Object.freeze({
+      row,
+      bid: Object.freeze({
+        x: coordinate(bidPoints[index].x),
+        y: coordinate(bidPoints[index].y),
+      }),
+      ask: Object.freeze({
+        x: coordinate(askPoints[index].x),
+        y: coordinate(askPoints[index].y),
+      }),
+    }))),
+    connectors: Object.freeze([
+      Object.freeze({ role: "buyer", x: 330, y: coordinate(bidPoints[3]?.y ?? bottom) }),
+      Object.freeze({ role: "desk", x: 600, y: coordinate(bottom) }),
+      Object.freeze({ role: "seller", x: 870, y: coordinate(askPoints[3]?.y ?? bottom) }),
+    ]),
+  });
 }
 
 const dealViewStyles = `
   .deal-view-mount {
     --deal-rule: color-mix(in srgb, var(--deal-line) 22%, transparent);
     --deal-rule-strong: color-mix(in srgb, var(--deal-line) 52%, transparent);
-    --deal-wash: color-mix(in srgb, var(--deal-area) 48%, var(--deal-paper));
+    --deal-buyer-tone: color-mix(in srgb, var(--deal-line) 44%, var(--deal-paper));
+    --deal-desk-tone: color-mix(in srgb, var(--deal-line) 94%, var(--deal-paper));
+    --deal-seller-tone: color-mix(in srgb, var(--deal-line) 68%, var(--deal-paper));
     box-sizing: border-box;
     width: 100%;
     color: var(--deal-text);
@@ -307,320 +503,244 @@ const dealViewStyles = `
     background: var(--deal-paper);
     box-shadow: 0 18px 40px color-mix(in srgb, var(--deal-line) 14%, transparent);
   }
-  .deal-view-mount .deal-view__trace {
-    position: absolute;
-    inset: -1px;
-    z-index: 2;
-    width: calc(100% + 2px);
-    height: calc(100% + 2px);
-    overflow: visible;
-    pointer-events: none;
-  }
-  .deal-view__trace rect {
-    fill: none;
-    stroke: var(--deal-line);
-    stroke-width: 2px;
-    stroke-dasharray: 8 92;
-    stroke-linecap: square;
-    vector-effect: non-scaling-stroke;
-    animation: deal-view-trace 6s cubic-bezier(0.32, 0.72, 0, 1) infinite;
-  }
   .deal-view__surface {
     position: relative;
     z-index: 1;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
     overflow: hidden;
     border-radius: 3px;
     background: var(--deal-paper);
   }
   .deal-view__head {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: center;
-    gap: 24px;
-    min-height: 80px;
-    padding: 16px;
-    border-bottom: 1px solid var(--deal-rule);
-  }
-  .deal-view__identity {
-    display: grid;
+    grid-template-areas:
+      "label status"
+      "quote quote";
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 0;
     min-width: 0;
-    gap: 4px;
+    padding: 16px 16px 0;
   }
-  .deal-view__identity > span,
-  .deal-view__identity > small,
-  .deal-view__quote small,
-  .deal-view__rfs,
-  .deal-view__market,
-  .deal-view__tabs,
-  .deal-view__stages,
-  .deal-view__panel footer,
-  .deal-view__meta {
+  .deal-view__label {
     font-family: "Geist Mono", ui-monospace, monospace;
     font-variant-numeric: tabular-nums;
   }
-  .deal-view__identity > span,
-  .deal-view__identity > small,
-  .deal-view__quote small,
-  .deal-view__rfs small {
+  .deal-view__label {
+    grid-area: label;
     overflow: hidden;
-    color: var(--deal-secondary);
+    color: var(--deal-line);
+    font-family: Geist, ui-sans-serif, system-ui, sans-serif;
     font-size: 12px;
     font-weight: 600;
     line-height: 16px;
+    letter-spacing: -0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .deal-view__status {
+    grid-area: status;
+    align-self: center;
+    overflow: hidden;
+    color: var(--deal-secondary);
+    font: 600 10px/16px "Geist Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
     letter-spacing: 0.04em;
     text-overflow: ellipsis;
     text-transform: uppercase;
     white-space: nowrap;
+    opacity: 0.72;
   }
-  .deal-view__identity strong {
+  .deal-view__quote {
+    grid-area: quote;
     overflow: hidden;
-    color: var(--deal-text);
-    font-size: 20px;
+    color: var(--deal-line);
+    font-size: 32px;
     font-weight: 600;
-    line-height: 24px;
-    letter-spacing: -0.02em;
+    line-height: 40px;
+    letter-spacing: -0.04em;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .deal-view__quote,
-  .deal-view__rfs {
+  .deal-view__history {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+  .deal-view__history--empty {
+    visibility: hidden;
+  }
+  .deal-view__lifecycle {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    overflow: hidden;
+  }
+  .deal-view__lifecycle--empty { visibility: hidden; }
+  .deal-view__lifecycle svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  .deal-view__lifecycle-base,
+  .deal-view__lifecycle-progress {
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+  }
+  .deal-view__lifecycle-base {
+    stroke: var(--deal-rule-strong);
+    stroke-width: 6px;
+    opacity: 0.48;
+  }
+  .deal-view__lifecycle-progress {
+    stroke: var(--deal-line);
+    stroke-width: 7px;
+  }
+  .deal-view__lifecycle-point circle {
+    fill: var(--deal-paper);
+    stroke: var(--deal-rule-strong);
+    stroke-width: 4px;
+    vector-effect: non-scaling-stroke;
+  }
+  .deal-view__lifecycle-point[data-state="complete"] circle {
+    fill: var(--deal-line);
+    stroke: var(--deal-line);
+  }
+  .deal-view__lifecycle-point[data-state="active"] circle {
+    fill: var(--deal-paper);
+    stroke: var(--deal-line);
+    stroke-width: 6px;
+  }
+  .deal-view__history svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+  }
+  .deal-view__history-hit {
+    fill: transparent;
+    cursor: crosshair;
+    pointer-events: all;
+  }
+  .deal-view__history-selection {
+    pointer-events: none;
+  }
+  .deal-view__history-point {
+    fill: var(--deal-paper);
+    stroke-width: 3px;
+    vector-effect: non-scaling-stroke;
+  }
+  .deal-view__history-point--bid { stroke: var(--deal-buyer-tone); }
+  .deal-view__history-point--ask { stroke: var(--deal-seller-tone); }
+  .deal-view__keyboard-target {
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    outline: none;
+  }
+  .deal-view__keyboard-target:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--deal-rule-strong);
+  }
+  .deal-view__callout {
+    position: absolute;
+    z-index: 3;
     display: grid;
     gap: 4px;
-    text-align: right;
-  }
-  .deal-view__quote span {
-    color: var(--deal-line);
-    font-size: 24px;
-    font-weight: 600;
-    line-height: 24px;
-    letter-spacing: -0.03em;
-  }
-  .deal-view__rfs b {
-    color: var(--deal-line);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 16px;
-  }
-  .deal-view__market {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border-bottom: 1px solid var(--deal-rule);
-  }
-  .deal-view__market > span {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-    min-width: 0;
-    padding: 8px 16px;
-  }
-  .deal-view__market > span + span { border-left: 1px solid var(--deal-rule); }
-  .deal-view__market small {
-    overflow: hidden;
-    color: var(--deal-secondary);
-    font-size: 12px;
-    line-height: 16px;
-    text-overflow: ellipsis;
-    text-transform: uppercase;
-    white-space: nowrap;
-  }
-  .deal-view__market b {
-    color: var(--deal-text);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 16px;
-  }
-  .deal-view__tabs,
-  .deal-view__stages {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    border-bottom: 1px solid var(--deal-rule);
-  }
-  .deal-view__tabs button,
-  .deal-view__stages > span {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    min-height: 40px;
-    padding: 0 12px;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    color: var(--deal-secondary);
-    font: inherit;
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-  }
-  .deal-view__tabs button + button,
-  .deal-view__stages > span + span { border-left: 1px solid var(--deal-rule); }
-  .deal-view__tabs button { cursor: pointer; }
-  .deal-view__tabs button::after,
-  .deal-view__stages > span::after {
-    position: absolute;
-    right: 12px;
-    bottom: -1px;
-    left: 12px;
-    height: 2px;
-    background: var(--deal-line);
-    content: "";
-    opacity: 0;
-    transform: scaleX(0.4);
-    transition:
-      opacity 180ms cubic-bezier(0.32, 0.72, 0, 1),
-      transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
-  }
-  .deal-view__tabs button:hover { color: var(--deal-text); }
-  .deal-view__tabs button:active { transform: scale(0.98); }
-  .deal-view__tabs button:focus-visible {
-    outline: 2px solid var(--deal-line);
-    outline-offset: -4px;
-  }
-  .deal-view__tabs button[aria-selected="true"],
-  .deal-view__stages > span[data-active="true"] { color: var(--deal-line); }
-  .deal-view__tabs button[aria-selected="true"]::after,
-  .deal-view__stages > span[data-active="true"]::after {
-    opacity: 1;
-    transform: scaleX(1);
-  }
-  .deal-view__panels {
-    display: grid;
-    min-height: 144px;
-  }
-  .deal-view__panel {
-    grid-area: 1 / 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: 24px;
-    padding: 24px 16px 16px;
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
-    transform: translateY(4px);
-    transition:
-      opacity 180ms cubic-bezier(0.32, 0.72, 0, 1),
-      transform 180ms cubic-bezier(0.32, 0.72, 0, 1),
-      visibility 0s 180ms;
-  }
-  .deal-view__panel.is-active {
-    visibility: visible;
-    opacity: 1;
-    pointer-events: auto;
-    transform: translateY(0);
-    transition-delay: 0s;
-  }
-  .deal-view__panel p {
-    max-width: 52ch;
-    margin: 0;
-    color: var(--deal-text);
-    font-size: 16px;
-    font-weight: 500;
-    line-height: 24px;
-    letter-spacing: -0.01em;
-  }
-  .deal-view__copy-compact { display: none; }
-  .deal-view__panel footer,
-  .deal-view__meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    color: var(--deal-secondary);
-    font-size: 12px;
-    line-height: 16px;
-  }
-  .deal-view__panel footer strong {
-    color: var(--deal-line);
-    font-weight: 600;
-  }
-  .deal-view__meta {
-    min-height: 40px;
-    padding: 8px 16px;
-    border-top: 1px solid var(--deal-rule);
-    background: var(--deal-wash);
-  }
-  .deal-view__meta span:last-child {
-    margin-left: auto;
-    color: var(--deal-line);
-  }
-  .deal-view--static .deal-view__shell { box-shadow: none; }
-  .deal-view--static .deal-view__head {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 12px;
-    min-height: 64px;
     padding: 12px;
+    color: var(--deal-secondary);
+    font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    pointer-events: none;
+    background: var(--deal-paper);
+    border: 1px solid var(--deal-rule-strong);
+    border-radius: 4px;
   }
-  .deal-view--static .deal-view__identity > span,
-  .deal-view--static .deal-view__identity > small { display: none; }
-  .deal-view--static .deal-view__identity strong { font-size: 16px; line-height: 20px; }
-  .deal-view--static .deal-view__quote span { font-size: 20px; line-height: 20px; }
-  .deal-view--static .deal-view__rfs { display: none; }
-  .deal-view--static .deal-view__market > span { padding: 8px 12px; }
-  .deal-view--static .deal-view__market {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .deal-view__callout[hidden] { display: none; }
+  .deal-view__callout > span {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 16px;
+    justify-content: space-between;
   }
-  .deal-view--static .deal-view__stages > span {
-    min-height: 32px;
-    padding: 0 8px;
+  .deal-view__callout-head {
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--deal-rule);
   }
-  .deal-view--static .deal-view__panels { min-height: 104px; }
-  .deal-view--static .deal-view__panel {
-    gap: 12px;
-    padding: 16px 12px 12px;
+  .deal-view__callout :is(time, small, b, strong) {
+    color: inherit;
+    font: inherit;
+    text-transform: uppercase;
   }
-  .deal-view--static .deal-view__copy-full { display: none; }
-  .deal-view--static .deal-view__copy-compact { display: inline; }
-  .deal-view--static .deal-view__panel p { font-size: 16px; line-height: 20px; }
-  .deal-view--static .deal-view__panel footer span { display: none; }
-  .deal-view--static .deal-view__meta {
-    min-height: 32px;
-    padding: 8px 12px;
+  .deal-view__callout small,
+  .deal-view__callout b {
+    opacity: 0.58;
   }
-  .deal-view--static .deal-view__meta span:first-child { display: none; }
-  .deal-view--static .deal-view__meta span:last-child { max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .deal-view__callout strong { color: var(--deal-line); }
+  .deal-view__live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    white-space: nowrap;
+    clip: rect(0 0 0 0);
+    border: 0;
+  }
+  .deal-view__negotiation-line {
+    fill: none;
+    stroke: var(--deal-line);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 3.5px;
+    vector-effect: non-scaling-stroke;
+  }
+  .deal-view__negotiation-line--bid,
+  .deal-view__negotiation-line--ask {
+    opacity: 1;
+  }
+  .deal-view__negotiation-line--bid { stroke: var(--deal-buyer-tone); }
+  .deal-view__negotiation-line--ask { stroke: var(--deal-seller-tone); }
+  .deal-view__flow-signal { --deal-signal-tone: var(--deal-line); }
+  .deal-view__flow-signal--buyer { --deal-signal-tone: var(--deal-buyer-tone); }
+  .deal-view__flow-signal--desk { --deal-signal-tone: var(--deal-desk-tone); }
+  .deal-view__flow-signal--seller { --deal-signal-tone: var(--deal-seller-tone); }
+  .deal-view__flow-signal line {
+    stroke: var(--deal-signal-tone);
+    stroke-width: 3.5px;
+    opacity: 0.34;
+    vector-effect: non-scaling-stroke;
+  }
+  .deal-view__flow-signal circle {
+    fill: var(--deal-paper);
+    stroke: var(--deal-signal-tone);
+    stroke-width: 2px;
+    opacity: 0.82;
+    vector-effect: non-scaling-stroke;
+  }
+  .deal-view__flow-signal--desk line {
+    opacity: 0.44;
+  }
+  .deal-view__flow-signal--desk circle {
+    fill: var(--deal-desk-tone);
+    stroke: var(--deal-paper);
+    stroke-width: 2.5px;
+    opacity: 1;
+  }
+  .deal-view--static .deal-view__shell,
   .deal-view--focus .deal-view__shell { box-shadow: none; }
-  @keyframes deal-view-trace { to { stroke-dashoffset: -100; } }
   @media (max-width: 620px) {
     .deal-view__head {
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 12px;
-      padding: 12px;
+      padding: 12px 12px 0;
     }
-    .deal-view__identity > small { display: none; }
-    .deal-view__identity strong { font-size: 16px; line-height: 20px; }
-    .deal-view__quote span { font-size: 20px; line-height: 20px; }
-    .deal-view__rfs { display: none; }
-    .deal-view__market > span { padding: 8px 12px; }
-    .deal-view__tabs button, .deal-view__stages > span {
-      min-height: 36px;
-      padding: 0 8px;
-      letter-spacing: 0;
-    }
-    .deal-view__panels { min-height: 120px; }
-    .deal-view__panel { gap: 16px; padding: 16px 12px 12px; }
-    .deal-view__copy-full { display: none; }
-    .deal-view__copy-compact { display: inline; }
-    .deal-view__meta { padding: 8px 12px; }
-    .deal-view__meta span:first-child { display: none; }
+    .deal-view__quote { font-size: 24px; line-height: 32px; }
   }
-  @media (prefers-reduced-motion: reduce) {
-    .deal-view__trace rect { animation: none; opacity: 0; }
-    .deal-view__tabs button::after,
-    .deal-view__stages > span::after,
-    .deal-view__panel { transition: none; }
-  }
-  .deal-view-mount[data-reduced-motion="true"] .deal-view__trace rect {
-    animation: none;
-    opacity: 0;
-  }
-  .deal-view-mount[data-reduced-motion="true"] .deal-view__tabs button::after,
-  .deal-view-mount[data-reduced-motion="true"] .deal-view__stages > span::after,
-  .deal-view-mount[data-reduced-motion="true"] .deal-view__panel { transition: none; }
 `;
 
 function ensureDealViewStyles(targetDocument) {
@@ -658,8 +778,8 @@ function normalizePalette(value = {}) {
   };
 }
 
-function padCount(value) {
-  return String(value).padStart(2, "0");
+function formatUsd(value) {
+  return `$${Number(value).toFixed(2)}`;
 }
 
 function escapeHtml(value) {

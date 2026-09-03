@@ -15,9 +15,66 @@ const POWER_BASIS_ID = "power-basis";
 const POWER_BASIS_SLUG = "power-basis";
 const POWER_BASIS_DATA_FILE = "data/power-basis.json";
 const POWER_BASIS_TABLE_FILE = "data/v1/power-prices.json";
+const QUOTE_VIEW_ID = "quote-view";
+const QUOTE_VIEW_SLUG = "quote-041";
 const DEAL_VIEW_ID = "deal-view";
 const DEAL_VIEW_SLUG = "deal-041";
 const DEAL_VIEW_DATA_FILE = "data/deal-041.json";
+
+const PRIVATE_CAPACITY_LAYERS = Object.freeze([
+  Object.freeze({
+    id: "B200",
+    label: "B200",
+    unit: "usd-hour",
+    views: Object.freeze(["price"]),
+  }),
+]);
+
+const PRIVATE_CAPACITY_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: "gpu",
+    label: "Model",
+    values: Object.freeze(["H100", "H200", "B200", "B300"]),
+    default: "B200",
+  }),
+  Object.freeze({
+    id: "quantity",
+    label: "Capacity",
+    type: "integer",
+    min: 8,
+    max: 4096,
+    default: 256,
+  }),
+  Object.freeze({
+    id: "quote",
+    label: "Rate",
+    type: "decimal",
+    min: 0.1,
+    max: 100,
+    precision: 2,
+    default: 3.65,
+  }),
+  Object.freeze({
+    id: "rfs",
+    label: "Start",
+    type: "month",
+    min: "2026-01",
+    max: "2035-12",
+    default: "2026-10",
+  }),
+]);
+
+const DEAL_STAGE_OPTION = Object.freeze({
+  id: "stage",
+  label: "Stage",
+  values: Object.freeze(["spec", "diligence", "execute"]),
+  valueLabels: Object.freeze({
+    spec: "Spec",
+    diligence: "Diligence",
+    execute: "Execute",
+  }),
+  default: "diligence",
+});
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
 export const PUBLISHED_CARD_VERSION = "v17";
@@ -364,11 +421,58 @@ export const CARD_REGISTRY = Object.freeze([
     ]),
   }),
   Object.freeze({
+    id: QUOTE_VIEW_ID,
+    slug: QUOTE_VIEW_SLUG,
+    hash: "gpu-benchmark-card",
+    renderer: "deal",
+    stateKind: "deal",
+    viewKind: "quote",
+    sourceCardId: DEAL_VIEW_ID,
+    publishable: false,
+    title: "Quote 041",
+    craftLabel: "Quote",
+    description: "Buyer bid and seller ask across a private negotiation.",
+    dataFile: DEAL_VIEW_DATA_FILE,
+    dataUrl: `./${DEAL_VIEW_DATA_FILE}`,
+    dataAdapter: "deal",
+    dataTable: Object.freeze({
+      id: "quote-041",
+      label: "Quote",
+    }),
+    sharePath: `/cards/${QUOTE_VIEW_SLUG}`,
+    defaults: Object.freeze({
+      layer: "B200",
+      layers: Object.freeze(["B200"]),
+      range: "7d",
+      scale: "price",
+      gpu: "B200",
+      quantity: 256,
+      quote: 3.65,
+      rfs: "2026-10",
+      palette: DEFAULT_PALETTE,
+      theme: DEFAULT_THEME,
+    }),
+    ranges: Object.freeze(["7d"]),
+    allowComparisons: false,
+    layers: PRIVATE_CAPACITY_LAYERS,
+    stateOptions: PRIVATE_CAPACITY_OPTIONS,
+    catalogPresets: Object.freeze([
+      Object.freeze({
+        id: "quote-041",
+        label: "Quote 041",
+      }),
+    ]),
+    visualizations: Object.freeze([
+      Object.freeze({ id: "price", label: "Negotiation", unit: "usd-hour" }),
+    ]),
+  }),
+  Object.freeze({
     id: DEAL_VIEW_ID,
     slug: DEAL_VIEW_SLUG,
     hash: "gpu-benchmark-card",
     renderer: "deal",
     stateKind: "deal",
+    viewKind: "deal",
     publishable: false,
     title: "Deal 041",
     craftLabel: "Deal",
@@ -397,57 +501,10 @@ export const CARD_REGISTRY = Object.freeze([
     }),
     ranges: Object.freeze(["7d"]),
     allowComparisons: false,
-    layers: Object.freeze([
-      Object.freeze({
-        id: "B200",
-        label: "B200",
-        unit: "usd-hour",
-        views: Object.freeze(["price"]),
-      }),
-    ]),
+    layers: PRIVATE_CAPACITY_LAYERS,
     stateOptions: Object.freeze([
-      Object.freeze({
-        id: "gpu",
-        label: "Model",
-        values: Object.freeze(["H100", "H200", "B200", "B300"]),
-        default: "B200",
-      }),
-      Object.freeze({
-        id: "quantity",
-        label: "Capacity",
-        type: "integer",
-        min: 8,
-        max: 4096,
-        default: 256,
-      }),
-      Object.freeze({
-        id: "quote",
-        label: "Rate",
-        type: "decimal",
-        min: 0.1,
-        max: 100,
-        precision: 2,
-        default: 3.65,
-      }),
-      Object.freeze({
-        id: "rfs",
-        label: "Start",
-        type: "month",
-        min: "2026-01",
-        max: "2035-12",
-        default: "2026-10",
-      }),
-      Object.freeze({
-        id: "stage",
-        label: "Stage",
-        values: Object.freeze(["spec", "diligence", "execute"]),
-        valueLabels: Object.freeze({
-          spec: "Spec",
-          diligence: "Diligence",
-          execute: "Execute",
-        }),
-        default: "diligence",
-      }),
+      ...PRIVATE_CAPACITY_OPTIONS,
+      DEAL_STAGE_OPTION,
     ]),
     catalogPresets: Object.freeze([
       Object.freeze({
