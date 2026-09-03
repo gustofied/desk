@@ -63,6 +63,7 @@ import {
   toggleCatalogCollectionKey,
 } from "./catalog-collections.js";
 import { shareRangeLabel } from "./share-range-label.js";
+import { viewArtifactHeaderLayout } from "./view-artifact-header.js";
 import {
   horizontalHitZones,
   positionSvgTooltip,
@@ -5287,6 +5288,7 @@ if (root) {
     paintGpuPriceBarChart(nodes.shareArtifactSvg, model, {
       colors: palette,
       title: state.catalogName || "Latest prices",
+      compact: true,
       reducedMotion,
       interactive: false,
     });
@@ -5603,6 +5605,7 @@ if (root) {
 
   function renderShareArtifact(series) {
     drawShareArtifact(nodes.shareArtifactSvg, series, state.selected, {
+      compact: true,
       scale: state.scale,
       title: state.catalogName || undefined,
     });
@@ -5643,67 +5646,20 @@ if (root) {
       options.title || primary.layer.shortLabel || primary.layer.label,
     ).slice(0, MAX_CATALOG_NAME_LENGTH);
     const hasComparisons = series.some((candidate) => !isPrimary(candidate));
-    const typography = compact
-      ? {
-          family:
-            primaryTitle.length > 24
-              ? 36
-              : primaryTitle.length > 16 || series.length > 1
-                ? 36
-                : 52,
-          range: 36,
-          price: 104,
-        }
-      : {
-          family: 34,
-          range: 32,
-          price: 82,
-        };
+    const header = viewArtifactHeaderLayout(primaryTitle, { compact });
     svg
       .append("rect")
       .attr("width", 1200)
       .attr("height", 675)
       .attr("fill", palette.paper);
 
-    appendShareText(svg, {
-      x: 40,
-      y: 54,
-      text: primaryTitle,
-      fill: palette.line,
-      size: typography.family,
-      weight: 600,
-      family: "Geist, Avenir Next, sans-serif",
-      spacing: 0.25,
-    });
-    appendShareText(svg, {
-      x: 1160,
-      y: 54,
-      text: shareRangeLabel(primary.rows, range),
-      fill: palette.line,
-      size: typography.range,
-      anchor: "end",
-      weight: 600,
-      family: "Geist Mono, monospace",
-      spacing: 1,
-    });
-    appendShareText(svg, {
-      x: 40,
-      y: compact ? 160 : 138,
-      text: formatCardHeadline(latest.plotValue, scale),
-      fill: palette.line,
-      size: typography.price,
-      weight: 500,
-      family: "Geist, Avenir Next, sans-serif",
-      spacing: -2,
-    });
-
     const chart = compact
-      ? { x: 0, y: 204, width: 1200, height: 445 }
+      ? { x: 0, y: header.plotTop, width: 1200, height: 649 - header.plotTop }
       : {
           x: 0,
-          y: 158,
+          y: header.plotTop,
           width: 1200,
-          height: 491,
+          height: 649 - header.plotTop,
         };
     let start = d3.min(allRows, (row) => row.date);
     let end = d3.max(allRows, (row) => row.date);
@@ -5801,6 +5757,52 @@ if (root) {
     if (hasComparisons && !compact) {
       appendShareEndpointLabels(svg, series, palette, chart, x, y, isPrimary);
     }
+    const headerLayer = svg
+      .append("g")
+      .attr("data-view-artifact-header", "")
+      .style("pointer-events", "none");
+    headerLayer
+      .append("rect")
+      .attr("width", 1200)
+      .attr("height", header.washHeight)
+      .attr("fill", palette.paper)
+      .attr("fill-opacity", header.washOpacity);
+    appendShareText(headerLayer, {
+      x: header.titleX,
+      y: header.titleY,
+      text: primaryTitle,
+      fill: palette.line,
+      size: header.titleSize,
+      weight: 600,
+      family: "Geist, Avenir Next, sans-serif",
+      spacing: 0.25,
+    }).attr("fill-opacity", 0.88);
+    appendShareText(headerLayer, {
+      x: header.contextX,
+      y: header.contextY,
+      text: shareRangeLabel(primary.rows, range),
+      fill: palette.line,
+      size: header.contextSize,
+      anchor: "end",
+      weight: 600,
+      family: "Geist Mono, monospace",
+      spacing: 1,
+    }).attr("fill-opacity", 0.68);
+    appendShareText(headerLayer, {
+      x: header.headlineX,
+      y: header.headlineY,
+      text: formatCardHeadline(latest.plotValue, scale),
+      fill: palette.line,
+      size: header.headlineSize,
+      weight: 500,
+      family: "Geist, Avenir Next, sans-serif",
+      spacing: -2,
+    })
+      .attr("stroke", palette.paper)
+      .attr("stroke-width", 10)
+      .attr("stroke-opacity", 0.78)
+      .attr("stroke-linejoin", "round")
+      .style("paint-order", "stroke fill");
   }
 
   function renderChart(series, drawAnimation) {

@@ -299,7 +299,7 @@ export const CARD_REGISTRY = Object.freeze([
       Object.freeze({ id: "h100-us", label: "H100 depth" }),
       Object.freeze({
         id: "h100-history",
-        label: "H100 depth history",
+        label: "H100 depth",
         state: Object.freeze({ scale: "history", target: "128" }),
       }),
     ]),

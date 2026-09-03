@@ -123,7 +123,7 @@ export function mountDealView(
 export const renderDealView = mountDealView;
 
 function dealViewMarkup(model, { variant, instanceId }) {
-  if (variant === "static") return staticDealViewMarkup(model);
+  if (variant !== "full") return staticDealViewMarkup(model);
 
   const interactive = variant === "full";
   const tabs = interactive

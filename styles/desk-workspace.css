@@ -65,7 +65,7 @@
   border-bottom-color: color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
   border-radius: 2px 2px 0 0;
   opacity: 0.62;
-  transform: translateY(4px);
+  transform: none;
   transition:
     color 200ms var(--desk-ease-out),
     background-color 200ms var(--desk-ease-out),
@@ -106,7 +106,7 @@
     background: color-mix(in srgb, var(--desk-accent-pale) 32%, transparent);
     border-color: color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
     opacity: 0.84;
-    transform: translateY(2px);
+    transform: none;
   }
 }
 

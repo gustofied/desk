@@ -1,3 +1,5 @@
+import { viewArtifactHeaderMarkup } from "./view-artifact-header.js";
+
 const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 630;
 const COMPACT_SVG_HEIGHT = 675;
@@ -128,15 +130,16 @@ export function gpuPriceBarMarkup(
     colors,
     title = "Latest prices",
     compact = false,
+    artifact = compact,
   } = {},
 ) {
   assertModel(model);
   const palette = normalizeColors(colors);
   const bars = model.bars;
   const canvasHeight = compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
-  const railY = compact ? 350 : 326;
-  const priceY = compact ? 276 : 250;
-  const labelY = compact ? 430 : 402;
+  const railY = compact ? 310 : 326;
+  const priceY = compact ? 236 : 250;
+  const labelY = compact ? 390 : 402;
   const plotLeft = 40;
   const plotRight = 1160;
   const columnWidth = (plotRight - plotLeft) / bars.length;
@@ -145,7 +148,7 @@ export function gpuPriceBarMarkup(
   const endpointStroke = compact ? 3 : 2;
   const dateLabel = formatObservedDate(model.asOf);
   const labelSize = compact ? 30 : 20;
-  const priceSize = 72;
+  const priceSize = compact ? 80 : 72;
   const points = bars.map((bar, index) => ({
     x: plotLeft + columnWidth * (index + 0.5),
     y: railY,
@@ -188,9 +191,19 @@ export function gpuPriceBarMarkup(
     <desc>${escapeXml(ariaLabel)}</desc>
     <rect width="${SVG_WIDTH}" height="${canvasHeight}" fill="${palette.paper}"/>
     <line data-price-ladder-rail="" x1="0" x2="${SVG_WIDTH}" y1="${railY}" y2="${railY}"
-      stroke="${palette.line}" stroke-width="${railWidth}" stroke-opacity="0.28"
+      stroke="${palette.line}" stroke-width="${railWidth}" stroke-opacity="0.2"
       stroke-linecap="round" pathLength="1" stroke-dasharray="1" stroke-dashoffset="0"/>
-    ${rowMarkup}`;
+    ${rowMarkup}
+    ${
+      artifact
+        ? viewArtifactHeaderMarkup({
+            title,
+            context: "NOW",
+            colors: palette,
+            compact,
+          })
+        : ""
+    }`;
 
   return {
     inner,

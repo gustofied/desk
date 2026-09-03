@@ -1,3 +1,8 @@
+import {
+  viewArtifactHeaderLayout,
+  viewArtifactHeaderMarkup,
+} from "./view-artifact-header.js";
+
 const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 630;
 const COMPACT_SVG_HEIGHT = 675;
@@ -201,13 +206,21 @@ export function gpuMarketDepthMarkup(
       );
 
   const artifactHeader = artifact
-    ? artifactHeaderMarkup(model, palette, title, "now", [], compact)
+    ? viewArtifactHeaderMarkup({
+        title,
+        context: "NOW",
+        headline: model.current.clearingPrice === null
+          ? `>${formatPrice(model.priceDomain[1])}`
+          : formatPrice(model.current.clearingPrice),
+        colors: palette,
+        compact,
+        overlap: true,
+      })
     : "";
 
   const inner = `
     <desc>${escapeXml(ariaLabel)}</desc>
     <rect width="${SVG_WIDTH}" height="${layout.height}" fill="${palette.paper}"/>
-    ${artifactHeader}
     <path data-depth-current-area="" d="${currentArea}" fill="${palette.area}"
       fill-opacity="0.055" pointer-events="none" aria-hidden="true"/>
     ${shelfBands}
@@ -220,7 +233,8 @@ export function gpuMarketDepthMarkup(
       stroke="${palette.secondary}" stroke-width="1.25" stroke-opacity="0.2"
       stroke-dasharray="2 7" vector-effect="non-scaling-stroke"/>
     ${clearingGuide}
-    ${bucketHitAreas}`;
+    ${bucketHitAreas}
+    ${artifactHeader}`;
 
   return { inner, ariaLabel };
 }
@@ -311,13 +325,21 @@ function gpuMarketDepthHistoryMarkup(
     ? ""
     : historyReadoutMarkup(palette, layout, compact);
   const artifactHeader = artifact
-    ? artifactHeaderMarkup(model, palette, title, "history", history, compact)
+    ? viewArtifactHeaderMarkup({
+        title,
+        context: `${Math.max(1, history.length)}D`,
+        headline: model.current.clearingPrice === null
+          ? `>${formatPrice(model.priceDomain[1])}`
+          : formatPrice(model.current.clearingPrice),
+        colors: palette,
+        compact,
+        overlap: true,
+      })
     : "";
 
   const inner = `
     <desc>${escapeXml(ariaLabel)}</desc>
     <rect width="${SVG_WIDTH}" height="${layout.height}" fill="${palette.paper}"/>
-    ${artifactHeader}
     <g data-depth-history-heatmap="" shape-rendering="crispEdges">${cells}</g>
     <path data-depth-history-benchmark="" d="${benchmarkPath}" fill="none"
       stroke="${palette.secondary}" stroke-width="${compact ? 2 : 1.5}"
@@ -328,7 +350,8 @@ function gpuMarketDepthHistoryMarkup(
       stroke-linecap="round" stroke-linejoin="round"
       vector-effect="non-scaling-stroke"/>
     ${hitColumns}
-    ${readout}`;
+    ${readout}
+    ${artifactHeader}`;
 
   return { inner, ariaLabel };
 }
@@ -978,56 +1001,6 @@ function availabilityAreaPath(buckets, left, x, y) {
   return path;
 }
 
-function artifactHeaderMarkup(
-  model,
-  palette,
-  title,
-  view,
-  history = [],
-  compact = false,
-) {
-  const clearingPrice = model.current.clearingPrice;
-  const clearingDisplay = clearingPrice === null
-    ? `>${formatPrice(model.priceDomain[1])}`
-    : formatPrice(clearingPrice);
-  const basisDisplay = clearingPrice === null
-    ? "NO FILL"
-    : `${formatBasis(clearingPrice - snapshotBenchmarkPrice(model.current))} BASIS`;
-  const viewLabel = view === "history"
-    ? `${Math.max(1, history.length)}D`
-    : "NOW";
-  const safeTitle = String(title || model.title || "H100 depth").slice(0, 48);
-  const titleSize = compact
-    ? safeTitle.length > 24
-      ? 36
-      : safeTitle.length > 16
-        ? 40
-        : 52
-    : safeTitle.length > 24
-      ? 28
-      : 34;
-  const viewSize = compact ? 36 : 32;
-  const valueSize = compact ? 104 : 82;
-  const valueY = compact ? 160 : 138;
-  const metaSize = compact ? 20 : 16;
-  const targetY = compact ? 126 : 104;
-  const basisY = compact ? 162 : 134;
-  return `
-    <text x="40" y="54" fill="${palette.line}" font-family="Geist, Avenir Next, sans-serif"
-      font-size="${titleSize}" font-weight="600" letter-spacing="0.25">${escapeXml(safeTitle)}</text>
-    <text x="1160" y="54" fill="${palette.line}" font-family="Geist Mono, monospace"
-      font-size="${viewSize}" font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(viewLabel)}</text>
-    <text x="40" y="${valueY}" fill="${palette.line}" font-family="Geist, Avenir Next, sans-serif"
-      font-size="${valueSize}" font-weight="500" letter-spacing="-2"
-      style="font-variant-numeric:tabular-nums">${escapeXml(clearingDisplay)}</text>
-    <text x="1160" y="${targetY}" fill="${palette.secondary}" font-family="Geist Mono, monospace"
-      font-size="${metaSize}" font-weight="600" text-anchor="end" letter-spacing="0.8"
-      fill-opacity="0.68">${escapeXml(`${formatInteger(model.targetNodes)} NODES`)}</text>
-    <text x="1160" y="${basisY}" fill="${palette.secondary}" font-family="Geist Mono, monospace"
-      font-size="${metaSize}" font-weight="500" text-anchor="end" letter-spacing="0.45"
-      fill-opacity="0.68">${escapeXml(basisDisplay)}</text>`;
-}
-
 function marketDepthAriaLabel(model, title) {
   const target = model.current.targetReached
     ? `${formatInteger(model.targetNodes)} nodes clear at ` +
@@ -1045,11 +1018,12 @@ function marketDepthAriaLabel(model, title) {
 
 function chartLayout(compact, artifact = compact) {
   const height = compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
+  const header = viewArtifactHeaderLayout("", { compact });
   return {
     height,
     plotLeft: 0,
     plotRight: SVG_WIDTH,
-    plotTop: artifact ? (compact ? 204 : 158) : 8,
+    plotTop: artifact ? header.plotTop : 8,
     plotBottom: artifact ? height : height - 8,
   };
 }

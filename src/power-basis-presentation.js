@@ -1,4 +1,8 @@
 import { area as d3Area, curveMonotoneX, line as d3Line } from "d3";
+import {
+  viewArtifactHeaderLayout,
+  viewArtifactHeaderMarkup,
+} from "./view-artifact-header.js";
 
 const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 600;
@@ -110,7 +114,12 @@ function powerBasisMarkup(
   const height = compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
   const showArtifactHeader = Boolean(artifact);
   const showReadout = !showArtifactHeader && !minimal;
-  const plotTop = showArtifactHeader ? (compact ? 204 : 158) : showReadout ? 48 : 8;
+  const headerLayout = viewArtifactHeaderLayout(title, { compact });
+  const plotTop = showArtifactHeader
+    ? headerLayout.plotTop
+    : showReadout
+      ? 48
+      : 8;
   const plotBottom = showArtifactHeader ? height : height - 8;
   const plot = {
     left: 0,
@@ -149,13 +158,15 @@ function powerBasisMarkup(
   const safeTitle = String(title || normalized.location.label).slice(0, 48);
   const latest = normalized.latest;
   const artifactHeader = showArtifactHeader
-    ? artifactHeaderMarkup({
+    ? viewArtifactHeaderMarkup({
         title: safeTitle,
-        range: normalized.range,
-        latest,
-        mode: chartMode,
-        palette,
+        context: formatRange(normalized.range),
+        headline: chartMode === "basis"
+          ? formatBasis(latest.basis)
+          : formatPrice(latest.realTime),
+        colors: palette,
         compact,
+        overlap: true,
       })
     : "";
   const baseline = chartMode === "basis"
@@ -193,7 +204,6 @@ function powerBasisMarkup(
   const inner = `
     <desc>${escapeXml(ariaLabel)}</desc>
     <rect width="${SVG_WIDTH}" height="${height}" fill="${palette.paper}"/>
-    ${artifactHeader}
     ${baseline}
     <path class="power-basis__spread-area" data-power-basis-area=""
       d="${spreadArea(normalized.rows)}" fill="${palette.area}"
@@ -208,44 +218,10 @@ function powerBasisMarkup(
       stroke-dasharray="1" stroke-dashoffset="0"
       pointer-events="none" aria-hidden="true"/>
     ${columns}
-    ${readout}`;
+    ${readout}
+    ${artifactHeader}`;
 
   return { inner, ariaLabel, height };
-}
-
-function artifactHeaderMarkup({
-  title,
-  range,
-  latest,
-  mode,
-  palette,
-  compact,
-}) {
-  const titleSize = compact
-    ? title.length > 24
-      ? 36
-      : title.length > 16
-        ? 40
-        : 52
-    : title.length > 24
-      ? 28
-      : 34;
-  const valueSize = compact ? 104 : 82;
-  const valueY = compact ? 160 : 138;
-  const headline = mode === "basis"
-    ? formatBasis(latest.basis)
-    : formatPrice(latest.realTime);
-  return `
-    <text x="40" y="54" fill="${palette.line}"
-      font-family="Geist, Avenir Next, sans-serif" font-size="${titleSize}"
-      font-weight="600" letter-spacing="0.25">${escapeXml(title)}</text>
-    <text x="1160" y="54" fill="${palette.line}"
-      font-family="Geist Mono, monospace" font-size="${compact ? 36 : 30}"
-      font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(formatRange(range))}</text>
-    <text x="40" y="${valueY}" fill="${palette.line}"
-      font-family="Geist, Avenir Next, sans-serif" font-size="${valueSize}"
-      font-weight="500" letter-spacing="-2"
-      style="font-variant-numeric:tabular-nums">${escapeXml(headline)}</text>`;
 }
 
 function readoutMarkup(row, mode, palette, plot, activeX, y) {

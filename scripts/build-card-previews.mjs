@@ -37,6 +37,10 @@ import { renderGpuMarketDepthSvg } from "../src/gpu-market-depth-presentation.js
 import { createGpuSpreadSeries } from "../src/gpu-spread-model.js";
 import { createPowerBasisModel } from "../src/power-basis-model.js";
 import { renderPowerBasisSvg } from "../src/power-basis-presentation.js";
+import {
+  viewArtifactHeaderLayout,
+  viewArtifactHeaderMarkup,
+} from "../src/view-artifact-header.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 await mkdir(join(root, ".cache", "fontconfig"), { recursive: true });
@@ -276,6 +280,7 @@ async function generatePublishedBarPreviews() {
     const svg = renderGpuPriceBarSvg(model, {
       colors: model.colors,
       title: barCardDefinition.title,
+      artifact: true,
     });
     const previewImage = await encodePreview(svg);
     const previewRevision = imageRevision(previewImage);
@@ -738,11 +743,12 @@ function renderPublishedCardImage(model) {
     return renderPublishedSpreadImage(model);
   }
   const hasComparisons = model.comparisonTitle.length > 0;
+  const header = viewArtifactHeaderLayout(model.primaryTitle);
   const chart = {
     x: 0,
-    y: 158,
+    y: header.plotTop,
     width: 1200,
-    height: 446,
+    height: 604 - header.plotTop,
     areaBottom: 630,
   };
   const allRows = model.series.flatMap((candidate) => candidate.rows);
@@ -781,34 +787,43 @@ function renderPublishedCardImage(model) {
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${model.colors.paper}"/>
-      <text x="40" y="54" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">${escapeXml(model.primaryTitle)}</text>
-      <text x="1160" y="54" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(model.rangeLabel)}</text>
-      <text x="40" y="138" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
       ${areaMarkup}
       ${baselineMarkup}
       ${layerMarkup}
       ${endpointLabels}
+      ${viewArtifactHeaderMarkup({
+        title: model.primaryTitle,
+        context: model.rangeLabel,
+        headline: model.headline,
+        colors: model.colors,
+        overlap: true,
+      })}
     </svg>`;
 }
 
 function renderPublishedSpreadImage(model) {
+  const header = viewArtifactHeaderLayout(model.primaryTitle);
   const chart = {
     x: 0,
-    y: 158,
+    y: header.plotTop,
     width: 1200,
-    height: 446,
+    height: 604 - header.plotTop,
   };
   const { line, area, zeroY } = spreadChartPaths(model.primary.rows, chart);
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${model.colors.paper}"/>
-      <text x="40" y="54" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">${escapeXml(model.primaryTitle)}</text>
-      <text x="1160" y="54" fill="${model.colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">${escapeXml(model.rangeLabel)}</text>
-      <text x="40" y="138" fill="${model.colors.line}" font-family="Geist, Avenir Next, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${escapeXml(model.headline)}</text>
       <path d="${area}" fill="${model.colors.area}" fill-opacity="0.12"/>
       <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${zeroY}" y2="${zeroY}" stroke="${model.colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>
       <path d="${line}" fill="none" stroke="${model.colors.line}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+      ${viewArtifactHeaderMarkup({
+        title: model.primaryTitle,
+        context: model.rangeLabel,
+        headline: model.headline,
+        colors: model.colors,
+        overlap: true,
+      })}
     </svg>`;
 }
 
@@ -1203,7 +1218,13 @@ function renderDefaultComparisonImage() {
   const primary = series.find((item) => item.layerId === "H200");
   const latest = primary?.rows.at(-1);
   const allRows = series.flatMap((item) => item.rows);
-  const chart = { x: 0, y: 158, width: 1200, height: 446 };
+  const header = viewArtifactHeaderLayout("H200");
+  const chart = {
+    x: 0,
+    y: header.plotTop,
+    width: 1200,
+    height: 604 - header.plotTop,
+  };
   const { line, area, baselineY, x, y } = layeredChartPaths(
     allRows,
     primary?.rows || [],
@@ -1226,13 +1247,17 @@ function renderDefaultComparisonImage() {
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${colors.paper}"/>
-      <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="34" font-weight="600" letter-spacing="0.25">H200</text>
-      <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="32" font-weight="600" text-anchor="end" letter-spacing="1">7D</text>
-      <text x="40" y="138" fill="${colors.line}" font-family="Geist, sans-serif" font-size="82" font-weight="500" letter-spacing="-2">${formatIndexChange(latest?.plotValue)}</text>
       <path d="${area}" fill="${colors.secondary}" fill-opacity="0.09"/>
       <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>
       ${layerMarkup}
       ${endpointLabels}
+      ${viewArtifactHeaderMarkup({
+        title: "H200",
+        context: "7D",
+        headline: formatIndexChange(latest?.plotValue),
+        colors,
+        overlap: true,
+      })}
     </svg>`;
 }
 
