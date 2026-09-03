@@ -21,6 +21,8 @@ const DEAL_VIEW_DATA_FILE = "data/deal-041.json";
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
 export const PUBLISHED_CARD_VERSION = "v17";
+export const DEFAULT_PALETTE = "sand";
+export const DEFAULT_THEME = "dark";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),
@@ -154,8 +156,8 @@ export const CARD_REGISTRY = Object.freeze([
       layers: Object.freeze(["H200"]),
       range: "7d",
       scale: "price",
-      palette: "azure",
-      theme: "light",
+      palette: DEFAULT_PALETTE,
+      theme: DEFAULT_THEME,
     }),
     ranges: Object.freeze(["1d", "7d", "all"]),
     allowComparisons: true,
@@ -240,8 +242,8 @@ export const CARD_REGISTRY = Object.freeze([
       layers: Object.freeze(GPU_PRICE_LAYERS.map((layer) => layer.id)),
       range: "1d",
       scale: "price",
-      palette: "azure",
-      theme: "light",
+      palette: DEFAULT_PALETTE,
+      theme: DEFAULT_THEME,
       order: "price-desc",
     }),
     ranges: Object.freeze(["1d"]),
@@ -280,8 +282,8 @@ export const CARD_REGISTRY = Object.freeze([
       range: "now",
       scale: "depth",
       target: "128",
-      palette: "azure",
-      theme: "light",
+      palette: DEFAULT_PALETTE,
+      theme: DEFAULT_THEME,
     }),
     ranges: Object.freeze(["now"]),
     allowComparisons: false,
@@ -334,8 +336,8 @@ export const CARD_REGISTRY = Object.freeze([
       layers: Object.freeze(["PJM-WEST"]),
       range: "1d",
       scale: "price",
-      palette: "azure",
-      theme: "light",
+      palette: DEFAULT_PALETTE,
+      theme: DEFAULT_THEME,
     }),
     ranges: Object.freeze(["1d", "7d", "all"]),
     allowComparisons: false,
@@ -390,8 +392,8 @@ export const CARD_REGISTRY = Object.freeze([
       quote: 3.65,
       rfs: "2026-10",
       stage: "diligence",
-      palette: "azure",
-      theme: "light",
+      palette: DEFAULT_PALETTE,
+      theme: DEFAULT_THEME,
     }),
     ranges: Object.freeze(["7d"]),
     allowComparisons: false,

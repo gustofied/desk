@@ -6,15 +6,15 @@
     <meta name="application-name" content="Desk">
     <meta name="apple-mobile-web-app-title" content="Desk">
     <meta name="description" content="The workspace for compute desks. Explore, compose, monitor, and share compute market views.">
-    <meta name="theme-color" content="#ffffff">
+    <meta name="theme-color" content="#181818">
     <link rel="canonical" href="https://desk.adamsioud.com/">
     <meta property="og:title" content="Desk">
     <meta property="og:description" content="Explore, compose, monitor, and share compute market views.">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Desk">
     <meta property="og:url" content="https://desk.adamsioud.com/">
-    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=10">
-    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=10">
+    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=11">
+    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=11">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -22,7 +22,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Desk">
     <meta name="twitter:description" content="Explore, compose, monitor, and share compute market views.">
-    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=10">
+    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=11">
     <meta name="twitter:image:alt" content="A Desk comparison chart showing H100, H200, and the Token Price Index.">
     <title>Desk</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
@@ -30,9 +30,6 @@
     <script>
       (() => {
         const palettes = ["azure", "linen", "sage", "sand"];
-        const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
         const params = new URL(window.location.href).searchParams;
         const requestedTheme = params.get("theme");
         const requestedPalette = params.get("palette");
@@ -46,10 +43,10 @@
           mobileViewport.matches && requestedView === "card";
         let theme = requestedTheme === "light" || requestedTheme === "dark"
           ? requestedTheme
-          : systemTheme;
+          : "dark";
         let palette = palettes.includes(requestedPalette)
           ? requestedPalette
-          : "azure";
+          : "sand";
         try {
           const savedTheme = window.localStorage.getItem("desk-theme");
           const savedPalette = window.localStorage.getItem("desk-palette");
@@ -60,8 +57,8 @@
           if (hasSavedAppearance) {
             theme = savedTheme === "light" || savedTheme === "dark"
               ? savedTheme
-              : systemTheme;
-            palette = palettes.includes(savedPalette) ? savedPalette : "azure";
+              : "dark";
+            palette = palettes.includes(savedPalette) ? savedPalette : "sand";
           }
         } catch {}
         document.documentElement.dataset.theme = theme;
@@ -99,18 +96,18 @@
   <body>
     <div class="desk-top-controls">
       <nav class="desk-display-controls" id="desk-display-toolbar" role="toolbar" aria-label="Desk appearance" aria-hidden="true" inert>
-        <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Azure palette" aria-pressed="true" data-palette-value="azure">
+        <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Azure palette" aria-pressed="false" data-palette-value="azure">
           <i aria-hidden="true"></i>
         </button>
         <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Linen palette" aria-pressed="false" data-palette-value="linen">
           <i aria-hidden="true"></i>
         </button>
         <button class="desk-display-option desk-theme-option" type="button" aria-pressed="false" data-theme-value="light">Light</button>
-        <button class="desk-display-option desk-theme-option" type="button" aria-pressed="false" data-theme-value="dark">Dark</button>
+        <button class="desk-display-option desk-theme-option" type="button" aria-pressed="true" data-theme-value="dark">Dark</button>
         <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Sage Green palette" aria-pressed="false" data-palette-value="sage">
           <i aria-hidden="true"></i>
         </button>
-        <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Warm Sand palette" aria-pressed="false" data-palette-value="sand">
+        <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Warm Sand palette" aria-pressed="true" data-palette-value="sand">
           <i aria-hidden="true"></i>
         </button>
       </nav>
@@ -192,8 +189,8 @@
           class="desk-card-focus"
           id="desk-card-focus"
           tabindex="-1"
-          data-card-theme="light"
-          data-card-palette="azure"
+          data-card-theme="dark"
+          data-card-palette="sand"
           data-card-layout-panel="focus"
         >
           <div class="gpu-index-detail-stage" data-index-panel="detail">
@@ -578,6 +575,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=152"></script>
+    <script type="module" src="./desk.js?v=154"></script>
   </body>
 </html>

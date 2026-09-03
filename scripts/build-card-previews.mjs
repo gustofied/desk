@@ -1197,7 +1197,7 @@ function renderLegacyCardImage(family, range, rows, latest, accent, theme) {
 }
 
 function renderDefaultComparisonImage() {
-  const colors = themeColors(palettes.sage, "dark");
+  const colors = themeColors(palettes.sand, "dark");
   const startDate = new Date(latestDate.getTime() - RANGES["7d"].milliseconds);
   const layerIds = ["H100", "H200", "TOKEN"];
   const series = layerIds.map((layerId) => {

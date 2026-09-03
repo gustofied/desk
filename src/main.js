@@ -10,6 +10,7 @@ import {
 } from "./craft-composition.js";
 import {
   cardStateParamIds,
+  DEFAULT_PALETTE,
   getCardDefinition,
   getLayerDefinition,
   normalizeCardState,
@@ -2533,7 +2534,7 @@ if (root) {
 
   function currentPalette() {
     const palette = document.documentElement.dataset.palette;
-    return palettes.includes(palette) ? palette : "azure";
+    return palettes.includes(palette) ? palette : DEFAULT_PALETTE;
   }
 
   function currentCardPalette() {
