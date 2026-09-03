@@ -138,8 +138,9 @@ export function gpuPriceBarMarkup(
   const bars = model.bars;
   const canvasHeight = compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
   const railY = canvasHeight / 2;
-  const priceY = railY - (compact ? 74 : 76);
-  const labelY = railY + (compact ? 80 : 76);
+  const copyOpticalOffset = 32;
+  const priceY = railY - (compact ? 74 : 76) + copyOpticalOffset;
+  const labelY = railY + (compact ? 80 : 76) + copyOpticalOffset;
   const plotLeft = 40;
   const plotRight = 1160;
   const columnWidth = (plotRight - plotLeft) / bars.length;
