@@ -802,6 +802,35 @@ button.compute-share-card-frame:focus-visible {
   stroke-width: 1px;
 }
 
+.gpu-index .gpu-benchmark__tooltip {
+  color: var(--index-ink);
+  background: color-mix(in srgb, var(--desk-accent-pale) 72%, var(--index-paper));
+  border-color: color-mix(in srgb, var(--desk-accent-deep) 38%, transparent);
+  box-shadow: 0 10px 26px var(--market-card-shadow);
+}
+
+.gpu-index .gpu-benchmark__tooltip time,
+.gpu-index .gpu-benchmark__tooltip-row {
+  color: var(--index-ink-soft);
+}
+
+.editorial .gpu-index .gpu-benchmark__tooltip-row strong {
+  color: var(--index-ink);
+}
+
+.gpu-index .gpu-benchmark__tooltip-row small {
+  color: var(--index-muted);
+}
+
+.gpu-index .gpu-benchmark__tooltip-row[data-selected="true"] b,
+.gpu-index .gpu-benchmark__tooltip-row[data-selected="true"] strong {
+  color: var(--desk-accent-deep);
+}
+
+.gpu-index .gpu-benchmark__crosshair {
+  stroke: var(--desk-accent-deep);
+}
+
 .gpu-benchmark__tooltip-row {
   grid-template-columns: 20px 52px minmax(48px, auto) minmax(52px, auto);
 }
