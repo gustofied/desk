@@ -28,6 +28,7 @@ import {
   chartYDomain,
   comparisonStrokeOpacity,
   INDEX_BASELINE,
+  SPREAD_BASELINE,
   spreadLineLabels,
 } from "../src/chart-domain.js";
 import { createGpuPriceBarModel } from "../src/gpu-price-bar-model.js";
@@ -100,6 +101,8 @@ const seriesByLayer = new Map(
     (runtimeData.series?.[layer.id] || []).map((point) => ({
       date: new Date(Number(point[0]) * 1000),
       value: Number(point[1]),
+      lower: Number(point[2]),
+      upper: Number(point[3]),
     })),
   ]),
 );
@@ -617,6 +620,14 @@ function previewModel(state) {
           normalized.scale === "index"
             ? (row.value / baseValue) * 100
             : row.value,
+        plotLower:
+          normalized.scale === "index"
+            ? (row.lower / baseValue) * 100
+            : row.lower,
+        plotUpper:
+          normalized.scale === "index"
+            ? (row.upper / baseValue) * 100
+            : row.upper,
       })),
     };
   });
@@ -749,14 +760,18 @@ function renderPublishedCardImage(model) {
     y: header.plotTop,
     width: 1200,
     height: 604 - header.plotTop,
-    areaBottom: 630,
   };
   const allRows = model.series.flatMap((candidate) => candidate.rows);
-  const { line, area, baselineY, x, y } = layeredChartPaths(
+  const showQuoteBand =
+    model.series.length === 1 &&
+    model.scale === "price" &&
+    model.primary.layer.unit === "usd-hour";
+  const { line, quoteBand, referenceArea, baselineY, x, y } = layeredChartPaths(
     allRows,
     model.primary.rows,
     chart,
     model.scale,
+    { includeQuoteBand: showQuoteBand },
   );
   const layerMarkup = [...model.series]
     .sort((left, right) => Number(left.primary) - Number(right.primary))
@@ -772,13 +787,16 @@ function renderPublishedCardImage(model) {
       return `<path d="${line(candidate.rows)}" fill="none" stroke="${color}" stroke-opacity="${strokeOpacity}" stroke-width="${strokeWidth}" stroke-dasharray="${dash}" stroke-linecap="round" stroke-linejoin="round"/>`;
     })
     .join("");
-  const areaMarkup =
-    model.scale === "index" || model.series.length === 1
-      ? `<path d="${area}" fill="${model.colors.secondary}" fill-opacity="${model.scale === "index" ? "0.09" : "0.055"}"/>`
-      : "";
+  const areaMarkup = model.series.length !== 1
+    ? ""
+    : model.scale === "index"
+      ? `<path d="${referenceArea}" fill="${model.colors.area}" fill-opacity="0.10" aria-hidden="true"/>`
+      : showQuoteBand
+        ? `<path d="${quoteBand}" fill="${model.colors.area}" fill-opacity="0.075" aria-hidden="true"/>`
+        : "";
   const baselineMarkup =
     model.scale === "index"
-      ? `<line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${model.colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>`
+      ? `<line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${model.colors.line}" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="2 8"/>`
       : "";
   const endpointLabels = hasComparisons
     ? endpointLabelMarkup(model.series, model.colors, chart, x, y)
@@ -814,8 +832,8 @@ function renderPublishedSpreadImage(model) {
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${model.colors.paper}"/>
-      <path d="${area}" fill="${model.colors.area}" fill-opacity="0.12"/>
-      <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${zeroY}" y2="${zeroY}" stroke="${model.colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>
+      <path d="${area}" fill="${model.colors.area}" fill-opacity="0.10" aria-hidden="true"/>
+      <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${zeroY}" y2="${zeroY}" stroke="${model.colors.line}" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="2 8"/>
       <path d="${line}" fill="none" stroke="${model.colors.line}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
       ${viewArtifactHeaderMarkup({
         title: model.primaryTitle,
@@ -1181,9 +1199,8 @@ function renderLegacyCardImage(family, range, rows, latest, accent, theme) {
     y: 158,
     width: 1200,
     height: 446,
-    areaBottom: 630,
   };
-  const { line, area } = chartPaths(rows, chart);
+  const { line, quoteBand } = chartPaths(rows, chart);
 
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
@@ -1191,7 +1208,7 @@ function renderLegacyCardImage(family, range, rows, latest, accent, theme) {
       <text x="40" y="54" fill="${colors.line}" font-family="Geist, sans-serif" font-size="24" font-weight="600" letter-spacing="0.25">${family}</text>
       <text x="1160" y="54" fill="${colors.line}" font-family="Geist Mono, monospace" font-size="24" font-weight="600" text-anchor="end" letter-spacing="1">${range.label}</text>
       <text x="40" y="138" fill="${colors.line}" font-family="Geist, sans-serif" font-size="64" font-weight="500" letter-spacing="-2">${formatUsd(latest.value)}</text>
-      <path d="${area}" fill="${colors.secondary}" fill-opacity="0.055"/>
+      <path d="${quoteBand}" fill="${colors.area}" fill-opacity="0.075" aria-hidden="true"/>
       <path d="${line}" fill="none" stroke="${colors.line}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>`;
 }
@@ -1225,7 +1242,7 @@ function renderDefaultComparisonImage() {
     width: 1200,
     height: 604 - header.plotTop,
   };
-  const { line, area, baselineY, x, y } = layeredChartPaths(
+  const { line, baselineY, x, y } = layeredChartPaths(
     allRows,
     primary?.rows || [],
     chart,
@@ -1247,8 +1264,7 @@ function renderDefaultComparisonImage() {
   return `
     <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
       <rect width="1200" height="630" fill="${colors.paper}"/>
-      <path d="${area}" fill="${colors.secondary}" fill-opacity="0.09"/>
-      <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${colors.line}" stroke-opacity="0.12" stroke-width="1" stroke-dasharray="2 8"/>
+      <line x1="${chart.x}" x2="${chart.x + chart.width}" y1="${baselineY}" y2="${baselineY}" stroke="${colors.line}" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="2 8"/>
       ${layerMarkup}
       ${endpointLabels}
       ${viewArtifactHeaderMarkup({
@@ -1297,7 +1313,13 @@ function endpointLabelMarkup(series, colors, chart, x, y) {
     .join("");
 }
 
-function layeredChartPaths(allRows, primaryRows, chart, scale) {
+function layeredChartPaths(
+  allRows,
+  primaryRows,
+  chart,
+  scale,
+  { includeQuoteBand = false } = {},
+) {
   let start = d3.min(allRows, (row) => row.date);
   let end = d3.max(allRows, (row) => row.date);
   if (+start === +end) {
@@ -1308,34 +1330,43 @@ function layeredChartPaths(allRows, primaryRows, chart, scale) {
     .scaleTime()
     .domain([start, end])
     .range([chart.x, chart.x + chart.width]);
+  const yValues = [
+    ...allRows.map((row) => row.plotValue),
+    ...(includeQuoteBand
+      ? primaryRows.flatMap((row) => [row.plotLower, row.plotUpper])
+      : []),
+  ].filter(Number.isFinite);
   const y = d3
     .scaleLinear()
-    .domain(
-      chartYDomain(
-        allRows.map((row) => row.plotValue),
-        { scale },
-      ),
-    )
+    .domain(chartYDomain(yValues, { scale }))
     .range([chart.y + chart.height, chart.y]);
   const line = d3
     .line()
     .x((row) => x(row.date))
     .y((row) => y(row.plotValue))
     .curve(d3.curveMonotoneX);
-  const area = d3
+  const quoteBand = d3
+    .area()
+    .defined(
+      (row) => Number.isFinite(row.plotLower) && Number.isFinite(row.plotUpper),
+    )
+    .x((row) => x(row.date))
+    .y0((row) => y(Math.min(row.plotLower, row.plotUpper)))
+    .y1((row) => y(Math.max(row.plotLower, row.plotUpper)))
+    .curve(d3.curveMonotoneX)(primaryRows);
+  const baseline = scale === "index" ? INDEX_BASELINE : SPREAD_BASELINE;
+  const referenceArea = d3
     .area()
     .x((row) => x(row.date))
-    .y0(
-      scale === "index"
-        ? y(INDEX_BASELINE)
-        : chart.areaBottom ?? chart.y + chart.height,
-    )
+    .y0(y(baseline))
     .y1((row) => y(row.plotValue))
     .curve(d3.curveMonotoneX)(primaryRows);
   return {
     line,
-    area,
-    baselineY: scale === "index" ? y(INDEX_BASELINE) : null,
+    quoteBand,
+    referenceArea,
+    baselineY:
+      scale === "index" || scale === "spread" ? y(baseline) : null,
     x,
     y,
   };
@@ -1352,15 +1383,14 @@ function spreadChartPaths(rows, chart) {
     .scaleTime()
     .domain([start, end])
     .range([chart.x, chart.x + chart.width]);
-  const values = rows.map((row) => Number(row.plotValue)).filter(Number.isFinite);
-  const minimum = Math.min(0, ...values);
-  const maximum = Math.max(0, ...values);
-  const magnitude = Math.max(Math.abs(minimum), Math.abs(maximum), 1);
-  const spread = Math.max(maximum - minimum, magnitude * 0.02, 0.5);
-  const padding = spread * 0.08;
   const y = d3
     .scaleLinear()
-    .domain([minimum - padding, maximum + padding])
+    .domain(
+      chartYDomain(
+        rows.map((row) => row.plotValue),
+        { scale: "spread" },
+      ),
+    )
     .range([chart.y + chart.height, chart.y]);
   const curve = d3.curveMonotoneX;
   return {
@@ -1390,9 +1420,12 @@ function chartPaths(rows, chart) {
     .scaleTime()
     .domain([start, end])
     .range([chart.x, chart.x + chart.width]);
+  const yValues = rows
+    .flatMap((row) => [row.value, row.lower, row.upper])
+    .filter(Number.isFinite);
   const y = d3
     .scaleLinear()
-    .domain(chartYDomain(rows.map((row) => row.value), { scale: "price" }))
+    .domain(chartYDomain(yValues, { scale: "price" }))
     .range([chart.y + chart.height, chart.y]);
   return {
     line: d3
@@ -1400,11 +1433,14 @@ function chartPaths(rows, chart) {
       .x((row) => x(row.date))
       .y((row) => y(row.value))
       .curve(d3.curveMonotoneX)(rows),
-    area: d3
+    quoteBand: d3
       .area()
+      .defined(
+        (row) => Number.isFinite(row.lower) && Number.isFinite(row.upper),
+      )
       .x((row) => x(row.date))
-      .y0(chart.areaBottom ?? chart.y + chart.height)
-      .y1((row) => y(row.value))
+      .y0((row) => y(Math.min(row.lower, row.upper)))
+      .y1((row) => y(Math.max(row.lower, row.upper)))
       .curve(d3.curveMonotoneX)(rows),
   };
 }

@@ -795,7 +795,7 @@ function configureShelfNavigation(svgNode, focusedPrice, ariaLabel) {
     bucket.toggleAttribute("data-active", active);
     bucket
       .querySelector("[data-depth-bucket-highlight]")
-      ?.setAttribute("opacity", active ? "0.055" : "0");
+      ?.setAttribute("opacity", active ? "0.02" : "0");
     bucket
       .querySelector("[data-depth-bucket-band]")
       ?.setAttribute("stroke-opacity", active ? "0.32" : "0");
@@ -1023,7 +1023,7 @@ function chartLayout(compact, artifact = compact) {
     height,
     plotLeft: 0,
     plotRight: SVG_WIDTH,
-    plotTop: artifact ? header.plotTop : 8,
+    plotTop: artifact ? header.plotTop : 0,
     plotBottom: artifact ? height : height - 8,
   };
 }
@@ -1054,7 +1054,7 @@ function paddedPriceDomain(priceDomain, priceLevels = []) {
   const padding = Math.max(0, medianGap / 2);
   return [
     Number(priceDomain[0]) - padding,
-    Number(priceDomain[1]) + padding,
+    Number(priceDomain[1]),
   ];
 }
 

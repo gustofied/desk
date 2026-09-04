@@ -4356,12 +4356,12 @@ if (root) {
             ? `${cardDefinition.title}. Color intensity shows available capacity by price through time. The solid path shows the executable price for the selected target.`
             : `${cardDefinition.title}. Shelf length shows where capacity becomes available. The benchmark and target meet at the executable price.`
           : isBarCard
-          ? `${labels} latest hourly benchmark prices. Each wider band shows the middle range of quotes.`
+          ? `${labels} latest hourly benchmark prices. Each wider band shows the quoted price range.`
           : state.scale === "spread"
           ? `${spreadLabel}. The line shows the difference in price change, in percentage points. Positive values mean ${orderedLabels[0]} has risen more; negative values mean ${orderedLabels[1]} has risen more.`
           : state.scale === "index"
           ? `${labels} percentage change from the start of the selected range.`
-          : `${labels} hourly prices. The band shows the middle range of quotes for ${state.selected}.`;
+          : `${labels} hourly prices. The band shows the quoted price range for ${state.selected}.`;
     }
   }
 
@@ -5666,6 +5666,17 @@ if (root) {
     const scale = options.scale || state.scale;
     const range = options.range || state.range;
     const allRows = series.flatMap((candidate) => candidate.rows);
+    const yValues = scale === "price" && series.length === 1
+      ? series.flatMap((candidate) =>
+          isPrimary(candidate) && candidate.layer.unit === "usd-hour"
+            ? candidate.rows.flatMap((row) => [
+                row.plotLower,
+                row.plotValue,
+                row.plotUpper,
+              ])
+            : candidate.rows.map((row) => row.plotValue),
+        )
+      : allRows.map((row) => row.plotValue);
     const primaryTitle = String(
       options.title || primary.layer.shortLabel || primary.layer.label,
     ).slice(0, MAX_CATALOG_NAME_LENGTH);
@@ -5697,12 +5708,7 @@ if (root) {
       .range([chart.x, chart.x + chart.width]);
     const y = d3
       .scaleLinear()
-      .domain(
-        chartYDomain(
-          allRows.map((row) => row.plotValue),
-          { scale },
-        ),
-      )
+      .domain(chartYDomain(yValues, { scale }))
       .range([chart.y + chart.height, chart.y]);
 
     const line = d3
@@ -5710,28 +5716,46 @@ if (root) {
       .x((row) => x(row.date))
       .y((row) => y(row.plotValue))
       .curve(d3.curveMonotoneX);
-    const valueArea = d3
+    const quoteBand = d3
+      .area()
+      .x((row) => x(row.date))
+      .y0((row) => y(Math.min(row.plotLower, row.plotUpper)))
+      .y1((row) => y(Math.max(row.plotLower, row.plotUpper)))
+      .curve(d3.curveMonotoneX);
+    const referenceArea = d3
       .area()
       .x((row) => x(row.date))
       .y0(
         scale === "index"
           ? y(INDEX_BASELINE)
-          : scale === "spread"
-            ? y(SPREAD_BASELINE)
-            : 675,
+          : y(SPREAD_BASELINE),
       )
       .y1((row) => y(row.plotValue))
       .curve(d3.curveMonotoneX);
-    if (scale === "index" || scale === "spread" || series.length === 1) {
+    if (
+      scale === "price" &&
+      series.length === 1 &&
+      primary.layer.unit === "usd-hour"
+    ) {
       svg
         .append("path")
         .datum(primary.rows)
-        .attr("d", valueArea)
+        .attr("d", quoteBand)
         .attr("fill", palette.area)
-        .attr(
-          "fill-opacity",
-          scale === "spread" ? 0.12 : scale === "index" ? 0.09 : 0.055,
-        );
+        .attr("fill-opacity", 0.075)
+        .attr("aria-hidden", "true");
+    }
+    if (
+      series.length === 1 &&
+      (scale === "index" || scale === "spread")
+    ) {
+      svg
+        .append("path")
+        .datum(primary.rows)
+        .attr("d", referenceArea)
+        .attr("fill", palette.area)
+        .attr("fill-opacity", 0.1)
+        .attr("aria-hidden", "true");
     }
     if (scale === "index" || scale === "spread") {
       const baseline = scale === "spread" ? SPREAD_BASELINE : INDEX_BASELINE;
@@ -5742,7 +5766,7 @@ if (root) {
         .attr("y1", y(baseline))
         .attr("y2", y(baseline))
         .attr("stroke", palette.line)
-        .attr("stroke-opacity", 0.12)
+        .attr("stroke-opacity", 0.18)
         .attr("stroke-width", 1)
         .attr("stroke-dasharray", "2 8");
     }
@@ -5882,7 +5906,7 @@ if (root) {
     const plotRoot = svg
       .append("g")
       .attr("class", "gpu-benchmark__plot-root")
-      .attr("opacity", drawAnimation && !reducedMotion ? 0.42 : 1)
+      .attr("opacity", drawAnimation && !reducedMotion ? 0 : 1)
       .attr(
         "transform",
         drawAnimation && !reducedMotion
@@ -5895,7 +5919,7 @@ if (root) {
     if (drawAnimation && !reducedMotion) {
       previousRoot
         .transition()
-        .duration(160)
+        .duration(220)
         .ease(d3.easeCubicOut)
         .attr("opacity", 0)
         .attr("transform", "translate(0,-2)")
@@ -5916,11 +5940,16 @@ if (root) {
       .y0((row) => y(Math.min(row.plotLower, row.plotUpper)))
       .y1((row) => y(Math.max(row.plotLower, row.plotUpper)))
       .curve(d3.curveMonotoneX);
-    if (state.scale === "price" && primary.layer.unit === "usd-hour") {
+    if (
+      state.scale === "price" &&
+      series.length === 1 &&
+      primary.layer.unit === "usd-hour"
+    ) {
       plot
         .append("path")
         .datum(selectedRows)
         .attr("class", "gpu-benchmark__band")
+        .attr("aria-hidden", "true")
         .attr("d", area);
     }
 
@@ -5928,18 +5957,20 @@ if (root) {
       const baseline = state.scale === "spread"
         ? SPREAD_BASELINE
         : INDEX_BASELINE;
-      const relativeArea = d3
-        .area()
-        .x((row) => x(row.date))
-        .y0(y(baseline))
-        .y1((row) => y(row.plotValue))
-        .curve(d3.curveMonotoneX);
-      plot
-        .append("path")
-        .datum(selectedRows)
-        .attr("class", "gpu-benchmark__value-area")
-        .attr("aria-hidden", "true")
-        .attr("d", relativeArea);
+      if (series.length === 1) {
+        const relativeArea = d3
+          .area()
+          .x((row) => x(row.date))
+          .y0(y(baseline))
+          .y1((row) => y(row.plotValue))
+          .curve(d3.curveMonotoneX);
+        plot
+          .append("path")
+          .datum(selectedRows)
+          .attr("class", "gpu-benchmark__value-area")
+          .attr("aria-hidden", "true")
+          .attr("d", relativeArea);
+      }
       plot
         .append("line")
         .attr("class", "gpu-benchmark__reference-line")
@@ -6249,8 +6280,17 @@ if (root) {
             ? spreadObservationText(tooltipRows[0])
             : `${formatDateTime(selectedRow.date)}. ${tooltipRows
               .map(
-                (row) =>
-                  `${row.layer.label} ${formatPlotValue(row.plotValue, state.scale)}`,
+                (row) => {
+                  const range =
+                    state.scale === "price" &&
+                    row.primary &&
+                    row.layer.unit === "usd-hour" &&
+                    Number.isFinite(row.plotLower) &&
+                    Number.isFinite(row.plotUpper)
+                      ? `, quoted range ${formatPlotValue(row.plotLower, state.scale)} to ${formatPlotValue(row.plotUpper, state.scale)}`
+                      : "";
+                  return `${row.layer.label} ${formatPlotValue(row.plotValue, state.scale)}${range}`;
+                },
               )
               .join(". ")}.`,
         );

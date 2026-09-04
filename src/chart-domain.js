@@ -21,21 +21,8 @@ export function chartYDomain(values, { scale = "price" } = {}) {
   const minimumSpread = isRelativeScale ? 0.5 : 0.08;
   const spread = Math.max(maximum - minimum, magnitude * 0.02, minimumSpread);
   const padding = spread * (isRelativeScale ? 0.08 : 0.12);
-  let lower = minimum - padding;
-  let upper = maximum + padding;
-
-  const baseline = scale === "index"
-    ? INDEX_BASELINE
-    : scale === "spread"
-      ? SPREAD_BASELINE
-      : null;
-  if (baseline !== null) {
-    if (observedMinimum >= baseline && observedMaximum > baseline) {
-      lower = baseline;
-    } else if (observedMaximum <= baseline && observedMinimum < baseline) {
-      upper = baseline;
-    }
-  }
+  const lower = minimum - padding;
+  const upper = maximum + padding;
 
   return [scale === "price" ? Math.max(0, lower) : lower, upper];
 }

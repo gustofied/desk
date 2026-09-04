@@ -764,17 +764,13 @@ button.compute-share-card-frame:focus-visible {
 
 .gpu-benchmark__value-area {
   fill: var(--desk-comparison-line);
-  opacity: 0.09;
+  opacity: 0.1;
   pointer-events: none;
-}
-
-.gpu-index[data-card-scale="spread"] .gpu-benchmark__value-area {
-  opacity: 0.12;
 }
 
 .gpu-benchmark__reference-line {
   fill: none;
-  opacity: 0.12;
+  opacity: 0.18;
   pointer-events: none;
   stroke-dasharray: 2 8;
   stroke-width: 1px;
@@ -817,8 +813,9 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__band {
-  fill: var(--desk-accent);
-  opacity: 0.12;
+  fill: var(--desk-comparison-line);
+  opacity: 0.075;
+  pointer-events: none;
 }
 
 .compute-card-skin--market .gpu-index-detail::after {
