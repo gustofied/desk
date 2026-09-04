@@ -37,86 +37,92 @@
 }
 
 .deal-view-host--catalog .deal-view--static .deal-view__head {
-  padding: 8px 10px 0;
-  padding: 2.5cqi 4cqi 0;
+  padding: 2.8cqi 4cqi 0;
   border: 0;
 }
 
 .deal-view-host--catalog .deal-view--static .deal-view__label {
-  font-size: 12px;
-  line-height: 16px;
   font-size: 5cqi;
   line-height: 5.333cqi;
   letter-spacing: 0.004em;
-  opacity: 0.88;
+  opacity: 0.9;
 }
 
 .deal-view-host--catalog .deal-view--static .deal-view__status {
-  font-size: 4cqi;
+  max-width: 43cqi;
+  font-size: 3.5cqi;
   line-height: 5.333cqi;
+  opacity: 0.56;
 }
 
 .deal-view-host--catalog .deal-view--static .deal-view__quote {
-  font-size: 24px;
-  line-height: 28px;
   font-size: 8.667cqi;
   font-weight: 500;
   line-height: 9.333cqi;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.025em;
 }
 
-.deal-view-host--catalog .deal-view--static :is(.deal-view__history, .deal-view__lifecycle) {
-  margin-top: -4px;
+.deal-view-host--catalog .deal-view--static .deal-view__spec {
+  gap: 2px 8px;
+  font-size: 3.35cqi;
+  line-height: 4.667cqi;
 }
 
-.deal-view-host--catalog .deal-view__negotiation-line {
-  stroke-width: 6px;
+.deal-view-host--catalog .deal-view--static .deal-view__ticket {
+  gap: 8px;
+  padding: 0 4cqi 3.5cqi;
+  font-size: 3.35cqi;
+  line-height: 4cqi;
 }
 
+.deal-view-host--catalog .deal-view__negotiation-line,
 .deal-view-host--catalog .deal-view__flow-signal line {
   stroke-width: 6px;
 }
 
-.deal-view-host--focus .deal-view--static .deal-view__head {
+.deal-view-host--focus .deal-view--static .deal-view__head,
+.deal-view-host--workspace .deal-view__summary {
   padding: 28px 32px 0;
   border: 0;
 }
 
-.deal-view-host--focus .deal-view--static .deal-view__label {
-  font-size: 32px;
-  line-height: 40px;
+.deal-view-host--focus .deal-view--static .deal-view__label,
+.deal-view-host--workspace .deal-view__label {
+  font-size: 28px;
+  line-height: 36px;
 }
 
-.deal-view-host--focus .deal-view--static .deal-view__status {
-  font-size: 14px;
+.deal-view-host--focus .deal-view--static .deal-view__status,
+.deal-view-host--workspace .deal-view__status {
+  font-size: 12px;
   line-height: 20px;
 }
 
-.deal-view-host--focus .deal-view--static .deal-view__quote {
-  font-size: 60px;
-  line-height: 64px;
+.deal-view-host--focus .deal-view--static .deal-view__quote,
+.deal-view-host--workspace .deal-view__quote {
+  font-size: 56px;
+  line-height: 60px;
 }
 
-.deal-view-host--focus .deal-view--static :is(.deal-view__history, .deal-view__lifecycle) {
-  margin-top: -8px;
+.deal-view-host--focus .deal-view--static .deal-view__spec,
+.deal-view-host--workspace .deal-view__spec {
+  column-gap: 20px;
+  font-size: 12px;
+  line-height: 18px;
 }
 
-/* Catalog and shared Deal artifacts keep their standalone presentation. */
+.deal-view-host--focus .deal-view--static .deal-view__ticket,
+.deal-view-host--workspace .deal-view__ticket {
+  gap: 16px;
+  padding: 0 32px 28px;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* Shared and catalog Deal artifacts retain their own surface. */
 .gpu-index[data-card-renderer="deal"] .gpu-index-share__window,
 .gpu-index[data-card-renderer="deal"] .desk-card-focus-action.compute-share-card-frame {
   background: transparent;
-}
-
-.deal-view-host--workspace .deal-view__shell {
-  height: 100%;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
-}
-
-.deal-view-host--workspace .deal-view__surface {
-  height: 100%;
-  border-radius: 0;
 }
 
 .deal-view-host--workspace,
@@ -125,100 +131,128 @@
   height: 100%;
 }
 
-.deal-view-host--workspace .deal-view__summary {
-  padding: 28px 32px 0;
+.deal-view-host--workspace .deal-view__shell,
+.deal-view-host--workspace .deal-view__surface {
+  height: 100%;
+  border-radius: 0;
+}
+
+.deal-view-host--workspace .deal-view__shell {
   border: 0;
-}
-
-.deal-view-host--workspace .deal-view__label {
-  font-size: 32px;
-  line-height: 40px;
-}
-
-.deal-view-host--workspace .deal-view__status {
-  font-size: 14px;
-  line-height: 20px;
-}
-
-.deal-view-host--workspace .deal-view__quote {
-  font-size: 60px;
-  line-height: 64px;
-}
-
-.deal-view-host--workspace :is(.deal-view__history, .deal-view__lifecycle) {
-  margin-top: -8px;
+  box-shadow: none;
 }
 
 .deal-journey-rail .desk-data-rail__toggle {
+  grid-template-columns: minmax(0, 1fr) auto;
   color: var(--index-ink-soft);
 }
 
 .deal-journey-rail__body {
+  overflow: hidden;
   border-top: 1px solid var(--desk-data-rule);
-  animation: desk-data-rail-enter 240ms cubic-bezier(0.32, 0.72, 0, 1);
+  animation: desk-data-rail-enter 180ms cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-.deal-journey-rail__list {
+.deal-journey-rail__details {
   display: grid;
-  padding: 0;
-  margin: 0;
-  list-style: none;
-}
-
-.deal-journey-rail__item {
-  position: relative;
+  grid-template-columns: minmax(280px, 0.8fr) minmax(360px, 1.2fr);
   min-width: 0;
 }
 
-.deal-journey-rail__item + .deal-journey-rail__item {
+.deal-journey-rail__terms,
+.deal-journey-rail__activity {
+  min-width: 0;
+  padding: 18px 20px 20px;
+}
+
+.deal-journey-rail__activity {
+  border-left: 1px solid var(--desk-data-rule);
+}
+
+.deal-journey-rail__section-head {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.deal-journey-rail__section-title {
+  padding: 0;
+  margin: 0 0 12px;
+  color: var(--index-ink-soft);
+  font: 600 10px/16px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.deal-journey-rail__terms-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 24px;
+  padding: 0;
+  margin: 0;
+}
+
+.deal-journey-rail__term {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.7fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 8px 0;
   border-top: 1px solid var(--desk-data-rule);
 }
 
-.deal-journey-rail__button {
-  position: relative;
-  display: grid;
-  grid-template-columns:
-    32px
-    minmax(96px, 0.72fr)
-    minmax(0, 0.9fr)
-    minmax(0, 1.4fr)
-    auto;
-  gap: 16px;
-  align-items: center;
-  width: 100%;
-  min-height: 56px;
-  padding: 12px 16px;
-  overflow: hidden;
+.deal-journey-rail__term-label,
+.deal-journey-rail__term-value {
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  font: 550 11px/16px "Geist Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.deal-journey-rail__term-label {
   color: var(--index-ink-soft);
-  text-align: left;
-  cursor: pointer;
-  background: transparent;
-  border: 0;
-  transition:
-    color 200ms cubic-bezier(0.32, 0.72, 0, 1),
-    background-color 200ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 200ms cubic-bezier(0.32, 0.72, 0, 1);
+  opacity: 0.5;
 }
 
-.deal-journey-rail__button::before {
-  position: absolute;
-  top: 8px;
-  bottom: 8px;
-  left: 0;
-  width: 2px;
-  background: var(--desk-accent-deep);
-  content: "";
-  opacity: 0;
-  transform: scaleY(0.5);
-  transition:
-    opacity 200ms cubic-bezier(0.32, 0.72, 0, 1),
-    transform 240ms cubic-bezier(0.32, 0.72, 0, 1);
+.deal-journey-rail__term-value {
+  overflow: hidden;
+  color: var(--index-ink);
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.deal-journey-rail__index,
-.deal-journey-rail__data,
-.deal-journey-rail__detail,
-.deal-journey-rail__status {
+.deal-journey-rail__activity-list {
+  max-height: 272px;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.deal-journey-rail__activity-item {
+  display: grid;
+  grid-template-columns: minmax(96px, 0.64fr) minmax(148px, 1.36fr) minmax(72px, 0.54fr);
+  gap: 16px;
+  align-items: baseline;
+  min-width: 0;
+  padding: 8px 0;
+  border-top: 1px solid var(--desk-data-rule);
+}
+
+.deal-journey-rail__activity-item[aria-current="step"]
+  .deal-journey-rail__activity-action {
+  color: var(--desk-accent-deep);
+}
+
+.deal-journey-rail__activity-time,
+.deal-journey-rail__activity-action,
+.deal-journey-rail__activity-actor {
   min-width: 0;
   overflow: hidden;
   font-family: "Geist Mono", ui-monospace, monospace;
@@ -228,85 +262,24 @@
   white-space: nowrap;
 }
 
-.deal-journey-rail__index {
+.deal-journey-rail__activity-time,
+.deal-journey-rail__activity-actor {
   color: var(--index-ink-soft);
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
-  opacity: 0.64;
-}
-
-.deal-journey-rail__name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--index-ink);
-  font-family: Geist, ui-sans-serif, system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 600;
-  line-height: 20px;
-  letter-spacing: -0.01em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.deal-journey-rail__data {
-  color: var(--index-ink);
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.deal-journey-rail__detail {
-  color: var(--index-ink-soft);
-  font-size: 12px;
-  font-weight: 500;
-  opacity: 0.72;
-}
-
-.deal-journey-rail__status {
-  justify-self: end;
-  color: var(--index-ink-soft);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
+  font-size: 9px;
+  font-weight: 550;
+  letter-spacing: 0.035em;
   text-transform: uppercase;
+  opacity: 0.56;
 }
 
-.deal-journey-rail__item:is([data-active="true"], [data-state="active"])
-  .deal-journey-rail__button,
-.deal-journey-rail__button:is([aria-current="step"], [aria-pressed="true"]) {
+.deal-journey-rail__activity-action {
   color: var(--index-ink);
-  background: color-mix(in srgb, var(--desk-accent) 6%, transparent);
+  font-size: 11px;
+  font-weight: 600;
 }
 
-.deal-journey-rail__item:is([data-active="true"], [data-state="active"])
-  .deal-journey-rail__button::before,
-.deal-journey-rail__button:is([aria-current="step"], [aria-pressed="true"])::before {
-  opacity: 1;
-  transform: scaleY(1);
-}
-
-.deal-journey-rail__item:is([data-active="true"], [data-state="active"])
-  :is(.deal-journey-rail__index, .deal-journey-rail__status),
-.deal-journey-rail__button:is([aria-current="step"], [aria-pressed="true"])
-  :is(.deal-journey-rail__index, .deal-journey-rail__status) {
-  color: var(--desk-accent-deep);
-  opacity: 1;
-}
-
-.deal-journey-rail__button:focus-visible {
-  outline: 2px solid var(--desk-accent-deep);
-  outline-offset: -2px;
-}
-
-.deal-journey-rail__button:active {
-  transform: translateY(1px);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .deal-journey-rail__button:hover {
-    color: var(--index-ink);
-    background: color-mix(in srgb, var(--desk-accent) 6%, transparent);
-  }
+.deal-journey-rail__activity-actor {
+  text-align: right;
 }
 
 .gpu-index[data-card-renderer="deal"] .gpu-benchmark__footer,
@@ -450,6 +423,17 @@
   transform: scale(0.995);
 }
 
+@media (max-width: 760px) {
+  .deal-journey-rail__details {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deal-journey-rail__activity {
+    border-top: 1px solid var(--desk-data-rule);
+    border-left: 0;
+  }
+}
+
 @media (max-width: 640px) {
   .gpu-index[data-card-renderer="deal"] .gpu-benchmark__chart {
     height: min(244px, calc((100vw - 24px) * 2 / 3));
@@ -463,52 +447,58 @@
 
   .deal-view-host--focus .deal-view--static .deal-view__label,
   .deal-view-host--workspace .deal-view__label {
-    font-size: 24px;
-    line-height: 32px;
+    font-size: 22px;
+    line-height: 30px;
   }
 
   .deal-view-host--focus .deal-view--static .deal-view__quote,
   .deal-view-host--workspace .deal-view__quote {
-    font-size: 48px;
+    font-size: 44px;
     line-height: 48px;
   }
 
-  .deal-view-host--focus .deal-view--static :is(.deal-view__history, .deal-view__lifecycle),
-  .deal-view-host--workspace :is(.deal-view__history, .deal-view__lifecycle) {
-    margin-top: -4px;
+  .deal-view-host--focus .deal-view--static .deal-view__spec,
+  .deal-view-host--workspace .deal-view__spec {
+    column-gap: 12px;
+    font-size: 10px;
+    line-height: 16px;
   }
 
-  .deal-journey-rail__button {
+  .deal-view-host--focus .deal-view--static .deal-view__ticket,
+  .deal-view-host--workspace .deal-view__ticket {
+    gap: 8px;
+    padding: 0 16px 18px;
+    font-size: 10px;
+    line-height: 14px;
+  }
+
+  .deal-journey-rail__terms,
+  .deal-journey-rail__activity {
+    padding: 14px 12px 16px;
+  }
+
+  .deal-journey-rail__terms-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deal-journey-rail__activity-item {
     grid-template-areas:
-      "index name status"
-      "index data data"
-      "index detail detail";
-    grid-template-columns: 24px minmax(0, 1fr) auto;
-    gap: 4px 8px;
-    min-height: 0;
-    padding: 12px 8px;
+      "action actor"
+      "time time";
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 2px 12px;
   }
 
-  .deal-journey-rail__index {
-    grid-area: index;
-    align-self: start;
-    padding-top: 4px;
+  .deal-journey-rail__activity-time {
+    grid-area: time;
   }
 
-  .deal-journey-rail__name {
-    grid-area: name;
+  .deal-journey-rail__activity-action {
+    grid-area: action;
   }
 
-  .deal-journey-rail__data {
-    grid-area: data;
-  }
-
-  .deal-journey-rail__detail {
-    grid-area: detail;
-  }
-
-  .deal-journey-rail__status {
-    grid-area: status;
+  .deal-journey-rail__activity-actor {
+    grid-area: actor;
   }
 
   .gpu-index[data-card-renderer="deal"][data-workspace-surface="craft"] .gpu-benchmark__composer {
@@ -539,17 +529,17 @@
 }
 
 @media (prefers-contrast: more) {
-  .deal-journey-rail__item + .deal-journey-rail__item,
-  .deal-journey-rail__body {
+  .deal-journey-rail__body,
+  .deal-journey-rail__activity,
+  .deal-journey-rail__term,
+  .deal-journey-rail__activity-item {
     border-color: var(--desk-accent-deep);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .gpu-index[data-card-renderer="deal"] .desk-card-focus-action,
-  .deal-journey-rail__body,
-  .deal-journey-rail__button,
-  .deal-journey-rail__button::before {
+  .deal-journey-rail__body {
     animation: none;
     transition: none;
   }

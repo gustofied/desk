@@ -64,18 +64,6 @@ const PRIVATE_CAPACITY_OPTIONS = Object.freeze([
   }),
 ]);
 
-const DEAL_STAGE_OPTION = Object.freeze({
-  id: "stage",
-  label: "Stage",
-  values: Object.freeze(["spec", "diligence", "execute"]),
-  valueLabels: Object.freeze({
-    spec: "Spec",
-    diligence: "Diligence",
-    execute: "Execute",
-  }),
-  default: "diligence",
-});
-
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
 export const PUBLISHED_CARD_VERSION = "v17";
 export const DEFAULT_PALETTE = "sand";
@@ -456,12 +444,8 @@ export const CARD_REGISTRY = Object.freeze([
     allowComparisons: false,
     layers: PRIVATE_CAPACITY_LAYERS,
     stateOptions: PRIVATE_CAPACITY_OPTIONS,
-    catalogPresets: Object.freeze([
-      Object.freeze({
-        id: "quote-041",
-        label: "Quote 041",
-      }),
-    ]),
+    // Retain the legacy route without duplicating Deal 041 in the default catalog.
+    catalogPresets: Object.freeze([]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Negotiation", unit: "usd-hour" }),
     ]),
@@ -476,7 +460,7 @@ export const CARD_REGISTRY = Object.freeze([
     publishable: false,
     title: "Deal 041",
     craftLabel: "Deal",
-    description: "Reserved B200 capacity moving from mandate to execution.",
+    description: "Reserved B200 capacity at an agreed rate.",
     sourceFile: "api/dashboard-snapshots/deal-041.json",
     dataFile: DEAL_VIEW_DATA_FILE,
     dataUrl: `./${DEAL_VIEW_DATA_FILE}`,
@@ -495,26 +479,21 @@ export const CARD_REGISTRY = Object.freeze([
       quantity: 256,
       quote: 3.65,
       rfs: "2026-10",
-      stage: "diligence",
       palette: DEFAULT_PALETTE,
       theme: DEFAULT_THEME,
     }),
     ranges: Object.freeze(["7d"]),
     allowComparisons: false,
     layers: PRIVATE_CAPACITY_LAYERS,
-    stateOptions: Object.freeze([
-      ...PRIVATE_CAPACITY_OPTIONS,
-      DEAL_STAGE_OPTION,
-    ]),
+    stateOptions: PRIVATE_CAPACITY_OPTIONS,
     catalogPresets: Object.freeze([
       Object.freeze({
         id: "deal-041",
         label: "Deal 041",
-        state: Object.freeze({ stage: "diligence" }),
       }),
     ]),
     visualizations: Object.freeze([
-      Object.freeze({ id: "price", label: "Market reference", unit: "usd-hour" }),
+      Object.freeze({ id: "price", label: "Deal terms", unit: "usd-hour" }),
     ]),
   }),
 ]);

@@ -1262,7 +1262,7 @@ button.compute-share-card-frame:focus-visible {
 
 .gpu-benchmark__craft-types {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   background: color-mix(in srgb, var(--desk-canvas) 94%, var(--desk-accent));
   border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
 }

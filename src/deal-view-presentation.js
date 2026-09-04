@@ -5,9 +5,7 @@ const VALID_VARIANTS = Object.freeze(["static", "focus", "full"]);
 /**
  * Mounts a semantic Deal view into `host`.
  *
- * Every variant is presentation-only, so it is safe inside a Catalog tile
- * button. Stage changes continue to flow through the mount API for callers
- * that control the active Deal state elsewhere.
+ * Every variant is presentation-only, so it is safe inside a Catalog tile.
  */
 export function mountDealView(
   host,
@@ -17,7 +15,6 @@ export function mountDealView(
     palette,
     reducedMotion = false,
     interactive = false,
-    onStageChange = null,
   } = {},
 ) {
   assertHost(host);
@@ -34,7 +31,6 @@ export function mountDealView(
   mount.dataset.dealViewMount = "";
   mount.dataset.variant = normalizedVariant;
   mount.dataset.kind = model.viewKind;
-  mount.dataset.stage = model.activeStage;
   mount.style.setProperty("--deal-paper", colors.paper);
   mount.style.setProperty("--deal-line", colors.line);
   mount.style.setProperty("--deal-text", colors.text);
@@ -51,68 +47,9 @@ export function mountDealView(
     ? configureDealHistoryInteraction(mount, model)
     : null;
 
-  let activeStage = model.activeStage;
-
-  const activateStage = (stageId, { notify = false } = {}) => {
-    const stageIndex = model.stages.findIndex(
-      (candidate) => candidate.id === stageId,
-    );
-    const stage = model.stages[stageIndex];
-    if (!stage) return;
-    activeStage = stageId;
-    mount.dataset.stage = stageId;
-    mount
-      .querySelector("[data-deal-view]")
-      ?.setAttribute(
-        "aria-label",
-        model.ariaLabels?.[stageId] || model.ariaLabel,
-      );
-    if (model.viewKind === "deal") {
-      const status = mount.querySelector("[data-deal-status]");
-      if (status) status.textContent = stage.label;
-
-      const lifecycle = mount.querySelector("[data-deal-lifecycle]");
-      lifecycle?.setAttribute(
-        "aria-label",
-        dealLifecycleDescription(model, stage.label),
-      );
-      const points = Array.from(
-        mount.querySelectorAll("[data-deal-lifecycle-index]"),
-      );
-      points.forEach((point, index) => {
-        point.dataset.state = index < stageIndex
-          ? "complete"
-          : index === stageIndex
-            ? "active"
-            : "pending";
-        point.querySelector("circle")?.setAttribute(
-          "r",
-          index === stageIndex ? "10" : "7",
-        );
-      });
-      const activePoint = points[stageIndex];
-      const progress = mount.querySelector("[data-deal-lifecycle-progress]");
-      if (activePoint && progress) {
-        progress.setAttribute("x2", activePoint.dataset.x);
-      }
-    }
-    if (notify && typeof onStageChange === "function") {
-      onStageChange(stageId);
-    }
-  };
-
-  activateStage(activeStage);
   return Object.freeze({
     host,
     element: mount,
-    get stage() {
-      return activeStage;
-    },
-    setStage(stageId, options = {}) {
-      activateStage(stageId, {
-        notify: Boolean(options.notify),
-      });
-    },
     destroy() {
       historyInteraction?.destroy();
       if (mount.parentNode === host) host.replaceChildren();
@@ -159,10 +96,19 @@ function staticDealViewMarkup(model, variant) {
 }
 
 function dealSummaryMarkup(model) {
+  if (model.viewKind === "quote") {
+    return `
+      <header class="deal-view__head deal-view__summary">
+        <span class="deal-view__label">${escapeHtml(model.label)}</span>
+        <span class="deal-view__status">${escapeHtml(model.statusLabel)}</span>
+        <strong class="deal-view__quote">${escapeHtml(model.quote.formatted)}</strong>
+      </header>`;
+  }
+
   return `
     <header class="deal-view__head deal-view__summary">
       <span class="deal-view__label">${escapeHtml(model.label)}</span>
-      <span class="deal-view__status" data-deal-status>${escapeHtml(model.statusLabel)}</span>
+      <span class="deal-view__status">${escapeHtml(model.asset)}</span>
       <strong class="deal-view__quote">${escapeHtml(model.quote.formatted)}</strong>
     </header>`;
 }
@@ -170,48 +116,23 @@ function dealSummaryMarkup(model) {
 function dealGraphicMarkup(model, options = {}) {
   return model.viewKind === "quote"
     ? dealNegotiationMarkup(model, options)
-    : dealLifecycleMarkup(model);
+    : dealTicketMarkup(model);
 }
 
-function dealLifecycleMarkup(model) {
-  const stages = Array.isArray(model.stages) ? model.stages : [];
-  if (!stages.length) {
-    return '<div class="deal-view__lifecycle deal-view__lifecycle--empty" aria-hidden="true"></div>';
-  }
-  const start = 96;
-  const end = 1104;
-  const y = 264;
-  const step = stages.length > 1 ? (end - start) / (stages.length - 1) : 0;
-  const activeX = start + step * model.activeStageIndex;
-  const description = dealLifecycleDescription(model);
-
+function dealTicketMarkup(model) {
+  const terms = [
+    ["Capacity", model.capacityLabel],
+    ["Region", model.region],
+    ["Ready for service", model.rfsLabel],
+  ].filter(([, value]) => value);
   return `
-    <figure class="deal-view__lifecycle" role="img" aria-label="${escapeHtml(description)}" data-deal-lifecycle>
-      <svg viewBox="0 0 1200 420" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-        <line class="deal-view__lifecycle-base" x1="${start}" y1="${y}" x2="${end}" y2="${y}"></line>
-        <line class="deal-view__lifecycle-progress" x1="${start}" y1="${y}" x2="${activeX}" y2="${y}" data-deal-lifecycle-progress></line>
-        ${stages.map((stage, index) => {
-          const state = index < model.activeStageIndex
-            ? "complete"
-            : index === model.activeStageIndex
-              ? "active"
-              : "pending";
-          const x = start + step * index;
-          return `
-            <g class="deal-view__lifecycle-point" data-state="${state}" data-x="${x}" data-deal-lifecycle-index="${index}">
-              <circle cx="${x}" cy="${y}" r="${state === "active" ? 10 : 7}"></circle>
-            </g>`;
-        }).join("")}
-      </svg>
-    </figure>`;
-}
-
-function dealLifecycleDescription(model, stageLabel = model.statusLabel) {
-  return (
-    `${model.label}, ${stageLabel} stage. ` +
-    `${model.quantity} ${model.asset} at ${model.quote.formatted} per GPU hour, ` +
-    `ready ${model.rfs}.`
-  );
+    <dl class="deal-view__ticket" aria-label="Deal terms">
+      ${terms.map(([label, value]) => `
+        <div class="deal-view__ticket-term">
+          <dt>${escapeHtml(label)}</dt>
+          <dd>${escapeHtml(value)}</dd>
+        </div>`).join("")}
+    </dl>`;
 }
 
 function dealNegotiationMarkup(model, { interactive = false } = {}) {
@@ -516,7 +437,8 @@ const dealViewStyles = `
     display: grid;
     grid-template-areas:
       "label status"
-      "quote quote";
+      "quote quote"
+      "spec spec";
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
     gap: 0;
@@ -563,6 +485,20 @@ const dealViewStyles = `
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  .deal-view__spec {
+    grid-area: spec;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px 14px;
+    align-items: baseline;
+    min-width: 0;
+    color: var(--deal-secondary);
+    font: 600 10px/14px "Geist Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+    opacity: 0.68;
+  }
   .deal-view__history {
     position: relative;
     min-width: 0;
@@ -573,47 +509,47 @@ const dealViewStyles = `
   .deal-view__history--empty {
     visibility: hidden;
   }
-  .deal-view__lifecycle {
-    position: relative;
-    min-width: 0;
-    min-height: 0;
-    margin: 0;
-    overflow: hidden;
-  }
-  .deal-view__lifecycle--empty { visibility: hidden; }
-  .deal-view__lifecycle svg {
-    display: block;
+  .deal-view__ticket {
+    align-self: end;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
     width: 100%;
-    height: 100%;
+    min-width: 0;
+    padding: 0 16px 16px;
+    margin: 0;
+    color: var(--deal-secondary);
+    font: 600 10px/16px "Geist Mono", ui-monospace, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+    opacity: 0.64;
   }
-  .deal-view__lifecycle-base,
-  .deal-view__lifecycle-progress {
-    stroke-linecap: round;
-    vector-effect: non-scaling-stroke;
+  .deal-view__ticket-term {
+    min-width: 0;
   }
-  .deal-view__lifecycle-base {
-    stroke: var(--deal-rule-strong);
-    stroke-width: 6px;
-    opacity: 0.48;
+  .deal-view__ticket-term:nth-child(2) {
+    text-align: center;
   }
-  .deal-view__lifecycle-progress {
-    stroke: var(--deal-line);
-    stroke-width: 7px;
+  .deal-view__ticket-term:last-child {
+    text-align: right;
   }
-  .deal-view__lifecycle-point circle {
-    fill: var(--deal-paper);
-    stroke: var(--deal-rule-strong);
-    stroke-width: 4px;
-    vector-effect: non-scaling-stroke;
+  .deal-view__ticket dt {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    white-space: nowrap;
+    clip: rect(0 0 0 0);
+    border: 0;
   }
-  .deal-view__lifecycle-point[data-state="complete"] circle {
-    fill: var(--deal-line);
-    stroke: var(--deal-line);
-  }
-  .deal-view__lifecycle-point[data-state="active"] circle {
-    fill: var(--deal-paper);
-    stroke: var(--deal-line);
-    stroke-width: 6px;
+  .deal-view__ticket dd {
+    overflow: hidden;
+    margin: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .deal-view__history svg {
     display: block;
@@ -740,6 +676,13 @@ const dealViewStyles = `
       padding: 12px 12px 0;
     }
     .deal-view__quote { font-size: 24px; line-height: 32px; }
+    .deal-view__spec { column-gap: 10px; }
+    .deal-view__ticket {
+      gap: 8px;
+      padding: 0 12px 12px;
+      font-size: 9px;
+      line-height: 14px;
+    }
   }
 `;
 

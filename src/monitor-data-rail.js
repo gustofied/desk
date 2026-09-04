@@ -109,7 +109,9 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     nodes.actionLabel.textContent = showingSql
       ? `Query ${sentenceLabel(model.label)}`
       : `Sync ${sentenceLabel(model.label)}`;
-    nodes.command.textContent = showingSql ? model.sql : model.command;
+    renderCode(nodes.command, showingSql ? model.sql : model.command, {
+      highlightSql: showingSql,
+    });
     nodes.commandShell?.setAttribute(
       "aria-label",
       showingSql ? "DataFusion SQL query" : "Desk CLI command",
@@ -175,6 +177,99 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       nodes.status.textContent = message;
     });
   }
+}
+
+const SQL_KEYWORDS = new Set([
+  "ALL",
+  "AND",
+  "AS",
+  "ASC",
+  "BY",
+  "CREATE",
+  "DESC",
+  "EXTERNAL",
+  "FALSE",
+  "FILTER",
+  "FROM",
+  "FULL",
+  "GROUP",
+  "IF",
+  "IN",
+  "INNER",
+  "JOIN",
+  "LEFT",
+  "LOCATION",
+  "NOT",
+  "NULL",
+  "ON",
+  "OPTIONS",
+  "OR",
+  "ORDER",
+  "OVER",
+  "PARTITION",
+  "RIGHT",
+  "SELECT",
+  "STORED",
+  "TABLE",
+  "TRUE",
+  "WHERE",
+  "WITH",
+]);
+
+const SQL_FUNCTIONS = new Set([
+  "FIRST_VALUE",
+  "MAX",
+  "MIN",
+  "NULLIF",
+  "ROUND",
+  "TO_TIMESTAMP",
+]);
+
+const SQL_TOKEN_PATTERN = /(--[^\n]*|'(?:''|[^'])*'|\b\d+(?:\.\d+)?\b|\b[A-Za-z_][A-Za-z0-9_]*\b)/g;
+
+function renderCode(node, value, { highlightSql = false } = {}) {
+  if (!node) return;
+  const source = String(value || "");
+  if (!highlightSql) {
+    node.textContent = source;
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  let cursor = 0;
+  for (const match of source.matchAll(SQL_TOKEN_PATTERN)) {
+    const index = match.index ?? 0;
+    if (index > cursor) {
+      fragment.append(document.createTextNode(source.slice(cursor, index)));
+    }
+
+    const token = match[0];
+    const tokenType = sqlTokenType(token);
+    if (tokenType) {
+      const span = document.createElement("span");
+      span.className = `desk-data-rail__sql-token desk-data-rail__sql-token--${tokenType}`;
+      span.textContent = token;
+      fragment.append(span);
+    } else {
+      fragment.append(document.createTextNode(token));
+    }
+    cursor = index + token.length;
+  }
+
+  if (cursor < source.length) {
+    fragment.append(document.createTextNode(source.slice(cursor)));
+  }
+  node.replaceChildren(fragment);
+}
+
+function sqlTokenType(token) {
+  if (token.startsWith("--")) return "comment";
+  if (token.startsWith("'")) return "string";
+  if (/^\d/.test(token)) return "number";
+  const normalized = token.toUpperCase();
+  if (SQL_FUNCTIONS.has(normalized)) return "function";
+  if (SQL_KEYWORDS.has(normalized)) return "keyword";
+  return "";
 }
 
 function sentenceLabel(value) {

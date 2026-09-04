@@ -1,13 +1,19 @@
-const DEFAULT_STAGE = "diligence";
+const DEFAULT_STAGE = "execute";
 const STAGE_IDS = Object.freeze(["spec", "diligence", "execute"]);
 
 export const DEAL_041_PAYLOAD = Object.freeze({
   version: 1,
   id: "041",
   type: "Reserved capacity",
+  side: "buy",
   asset: "B200",
   quantity: 256,
   nodes: 32,
+  region: "US East",
+  fabric: "InfiniBand",
+  service: "Dedicated bare metal",
+  tenancy: "dedicated",
+  termMonths: 24,
   rfs: "2026-10",
   currentStage: DEFAULT_STAGE,
   quote: Object.freeze({
@@ -17,15 +23,16 @@ export const DEAL_041_PAYLOAD = Object.freeze({
     prepayPercent: 20,
   }),
   quoteHistory: Object.freeze([
-    Object.freeze([1787414400, 4.25, 3.10]),
+    Object.freeze([1787415000, 4.25, 3.10]),
     Object.freeze([1787500800, 4.25, 3.20]),
     Object.freeze([1787587200, 4.05, 3.20]),
     Object.freeze([1787673600, 4.05, 3.35]),
     Object.freeze([1787760000, 3.90, 3.35]),
     Object.freeze([1787846400, 3.90, 3.50]),
     Object.freeze([1787932800, 3.75, 3.60]),
-    Object.freeze([1788019200, 3.65, 3.65]),
+    Object.freeze([1787998500, 3.65, 3.65]),
   ]),
+  eventLog: createFallbackEventLog(),
   stages: Object.freeze([
     Object.freeze({
       id: "spec",
@@ -38,24 +45,67 @@ export const DEAL_041_PAYLOAD = Object.freeze({
     Object.freeze({
       id: "diligence",
       label: "Diligence",
-      copy: "Seller quote: $3.65 / GPU-hour with 20% prepay. Capacity and topology checked.",
+      copy: "Seller quote: $3.65 / GPU-hour with 20% prepay. Technical and commercial checks complete.",
       compactCopy: "Quote checked",
       owner: "Technical + commercial",
       status: "Quote normalized",
     }),
     Object.freeze({
       id: "execute",
-      label: "Execute",
-      copy: "Finalize the quote and execute the Compute Services Agreement with the provider.",
+      label: "Execution",
+      copy: "Finalize the quote and execute the Compute Services Agreement with the seller.",
       compactCopy: "Finalize agreement",
-      owner: "Buyer + provider",
+      owner: "Buyer + seller",
       status: "Awaiting sign-off",
     }),
   ]),
   parties: 4,
   events: 18,
-  nextAction: "Resolve SLA",
+  nextAction: "Review service terms",
+  nextOwner: "Buyer",
+  workflow: Object.freeze({
+    stage: "out-for-signing",
+    status: "terms-review",
+    nextAction: "Review service terms",
+    nextOwner: "Buyer",
+  }),
 });
+
+function createFallbackEventLog() {
+  const rows = [
+    ["mandate-opened", "2026-08-20T09:10:00.000Z", "spec", "Buyer", "Mandate opened", "done"],
+    ["capacity-set", "2026-08-20T09:18:00.000Z", "spec", "Buyer", "256 × B200", "done"],
+    ["fabric-set", "2026-08-20T09:26:00.000Z", "spec", "Buyer", "US East, InfiniBand", "done"],
+    ["term-set", "2026-08-20T09:34:00.000Z", "spec", "Buyer", "24 months, Oct RFS", "done"],
+    ["rfq-sent", "2026-08-21T10:05:00.000Z", "spec", "Broker", "RFQ sent", "done"],
+    ["ask-opened", "2026-08-22T16:00:00.000Z", "diligence", "Seller", "Ask $4.25", "done"],
+    ["bid-opened", "2026-08-22T16:10:00.000Z", "diligence", "Buyer", "Bid $3.10", "done"],
+    ["bid-320", "2026-08-23T16:00:00.000Z", "diligence", "Buyer", "Bid $3.20", "done"],
+    ["ask-405", "2026-08-24T16:00:00.000Z", "diligence", "Seller", "Ask $4.05", "done"],
+    ["bid-335", "2026-08-25T16:00:00.000Z", "diligence", "Buyer", "Bid $3.35", "done"],
+    ["ask-390", "2026-08-26T16:00:00.000Z", "diligence", "Seller", "Ask $3.90", "done"],
+    ["bid-350", "2026-08-27T16:00:00.000Z", "diligence", "Buyer", "Bid $3.50", "done"],
+    ["ask-375", "2026-08-28T10:00:00.000Z", "diligence", "Seller", "Ask $3.75", "done"],
+    ["bid-360", "2026-08-28T16:00:00.000Z", "diligence", "Buyer", "Bid $3.60", "done"],
+    ["price-agreed", "2026-08-29T10:15:00.000Z", "diligence", "Buyer and seller", "$3.65 agreed", "done", 3.65],
+    ["capacity-verified", "2026-08-29T11:05:00.000Z", "diligence", "Seller", "Capacity verified", "done"],
+    ["agreement-sent", "2026-08-29T12:20:00.000Z", "execute", "Broker", "Draft agreement sent", "done"],
+    ["service-terms-open", "2026-08-29T16:00:00.000Z", "execute", "Buyer", "Service terms under review", "current"],
+  ];
+  return Object.freeze(
+    rows.map(([id, observedAt, stage, actor, label, status, valueUsdGpuHour]) =>
+      Object.freeze({
+        id,
+        observedAt,
+        stage,
+        actor,
+        label,
+        status,
+        ...(Number.isFinite(valueUsdGpuHour) ? { valueUsdGpuHour } : {}),
+      }),
+    ),
+  );
+}
 
 /**
  * Normalizes a transaction record into the small, stable model consumed by the
@@ -64,13 +114,14 @@ export const DEAL_041_PAYLOAD = Object.freeze({
  */
 export function createDealViewModel(
   dealPayload,
-  { stage, kind = "deal", marketPayload = null, overrides = {} } = {},
+  { kind = "deal", marketPayload = null, overrides = {} } = {},
 ) {
   assertDealPayload(dealPayload);
 
   const viewKind = kind === "quote" ? "quote" : "deal";
 
   const id = cleanText(dealPayload.id ?? dealPayload.dealId, "Deal id");
+  const side = normalizeSide(dealPayload.side ?? dealPayload.direction);
   const asset = cleanText(
     overrides.gpu ?? dealPayload.asset ?? dealPayload.gpu ?? dealPayload.product,
     "Deal asset",
@@ -85,20 +136,68 @@ export function createDealViewModel(
       : Math.ceil(quantity / 8),
     "Deal nodes",
   );
+  const sourceTerms = dealPayload.terms ?? {};
+  const region = optionalText(dealPayload.region ?? sourceTerms.region);
+  const fabric = optionalText(
+    dealPayload.fabric ??
+      dealPayload.interconnect ??
+      sourceTerms.fabric ??
+      sourceTerms.interconnect,
+  );
+  const service = optionalText(dealPayload.service ?? sourceTerms.service);
+  const tenancy = normalizeTenancy(
+    dealPayload.tenancy ?? sourceTerms.tenancy,
+    service,
+  );
+  const termMonths = optionalPositiveInteger(
+    dealPayload.termMonths ??
+      dealPayload.term_months ??
+      sourceTerms.termMonths ??
+      sourceTerms.term_months,
+    "Deal term",
+  );
+  const sourceQuoteValue = finiteNonNegative(
+    dealPayload.quote?.value ?? dealPayload.quote?.amount,
+    "Quote value",
+  );
   const quote = normalizeQuote({
     ...dealPayload.quote,
     value: overrides.quote ?? dealPayload.quote?.value ?? dealPayload.quote?.amount,
   });
+  const quantityFormatted = formatCompactNumber(quantity);
+  const nodesFormatted = formatCompactNumber(nodes);
+  const rfs = formatRfs(overrides.rfs ?? dealPayload.rfs);
+  const termLabel =
+    termMonths === null
+      ? null
+      : `${formatCompactNumber(termMonths)} ${termMonths === 1 ? "month" : "months"}`;
   const quoteHistory = normalizeQuoteHistory(
     dealPayload.quoteHistory ?? dealPayload.quote_history,
     quote.value,
+    sourceQuoteValue,
   );
   const stages = applyDealTermsToStages(
     normalizeStages(dealPayload.stages),
     quote,
   );
+  const eventLog = applyDealStateToEvents(
+    normalizeEventLog(dealPayload.eventLog ?? dealPayload.event_log),
+    {
+      asset,
+      quantityFormatted,
+      region,
+      fabric,
+      termLabel,
+      rfs,
+      quote,
+      sourceQuoteValue,
+    },
+  );
   const requestedStage = String(
-    stage ?? dealPayload.currentStage ?? dealPayload.stage ?? DEFAULT_STAGE,
+    dealPayload.currentStage ??
+      dealPayload.current_stage ??
+      dealPayload.stage ??
+      DEFAULT_STAGE,
   ).toLowerCase();
   const activeStage = stages.some((candidate) => candidate.id === requestedStage)
     ? requestedStage
@@ -115,6 +214,13 @@ export function createDealViewModel(
     asset,
     quote.value,
   );
+  const workflow = normalizeWorkflow(dealPayload, activeStageModel);
+  const statusLabel =
+    viewKind === "quote"
+      ? quoteStatus
+      : workflow.hasExplicitStatus
+        ? workflow.statusLabel
+        : activeStageModel.label;
   const ariaLabels = Object.freeze(
     Object.fromEntries(
       stages.map((stageModel) => [
@@ -126,8 +232,8 @@ export function createDealViewModel(
           quantity,
           asset,
           quote,
+          rfs,
           activeStage: stageModel.id,
-          market,
         }),
       ]),
     ),
@@ -138,27 +244,80 @@ export function createDealViewModel(
     viewKind,
     id,
     label: `${viewKind === "quote" ? "Quote" : "Deal"} ${id}`,
-    statusLabel:
-      viewKind === "quote" ? quoteStatus : activeStageModel.label,
+    statusLabel,
     type: cleanText(dealPayload.type ?? "Capacity", "Deal type"),
+    side,
+    sideLabel: side === "buy" ? "Buy" : "Sell",
     asset,
     quantity,
+    quantityFormatted,
+    capacityLabel: `${quantityFormatted} GPUs`,
     nodes,
+    nodesLabel: `${nodesFormatted} ${nodes === 1 ? "node" : "nodes"}`,
+    region,
+    fabric,
+    service,
+    tenancy,
+    tenancyLabel: tenancy ? titleCase(tenancy) : null,
+    termMonths,
+    termLabel,
+    rateLabel: quote.rateLabel,
+    prepayLabel: quote.prepayLabel,
     title: `${quantity} × ${asset}`,
     subtitle: `${nodes} ${nodes === 1 ? "node" : "nodes"}`,
-    rfs: formatRfs(overrides.rfs ?? dealPayload.rfs),
+    rfs,
+    rfsLabel: rfs,
     quote,
     quoteHistory,
+    eventLog,
     activeStage,
     stages,
     activeStageIndex,
     activeStageModel,
     parties: nonNegativeInteger(dealPayload.parties, "Deal parties"),
-    events: nonNegativeInteger(dealPayload.events, "Deal events"),
-    nextAction: cleanText(dealPayload.nextAction, "Next action"),
+    events: eventLog.length || nonNegativeInteger(dealPayload.events, "Deal events"),
+    workflowStage: workflow.stage,
+    workflowStageLabel: workflow.stageLabel,
+    workflowStatus: workflow.status,
+    workflowStatusLabel: workflow.statusLabel,
+    nextAction: workflow.nextAction,
+    nextOwner: workflow.nextOwner,
     market,
     ariaLabel: ariaLabels[activeStage],
     ariaLabels,
+  });
+}
+
+function normalizeWorkflow(dealPayload, activeStageModel) {
+  const source = dealPayload.workflow ?? {};
+  const rawStage = optionalText(
+    source.stage ?? source.pipelineStage ?? source.pipeline_stage,
+  );
+  const rawStatus = optionalText(source.status);
+  const stage = rawStage ? slugify(rawStage) : activeStageModel.id;
+  const status = rawStatus ? slugify(rawStatus) : null;
+  const nextAction = cleanText(
+    source.nextAction ??
+      source.next_action ??
+      dealPayload.nextAction ??
+      dealPayload.next_action,
+    "Next action",
+  );
+  const nextOwner = optionalText(
+    source.nextOwner ??
+      source.next_owner ??
+      dealPayload.nextOwner ??
+      dealPayload.next_owner,
+  );
+
+  return Object.freeze({
+    stage,
+    stageLabel: rawStage ? labelFromSlug(stage) : activeStageModel.label,
+    status,
+    statusLabel: rawStatus ? labelFromSlug(status) : activeStageModel.status,
+    hasExplicitStatus: Boolean(rawStatus),
+    nextAction,
+    nextOwner,
   });
 }
 
@@ -171,7 +330,7 @@ function applyDealTermsToStages(stages, quote) {
             copy:
               `Seller quote ${quote.formatted} per GPU hour with ` +
               `${formatCompactNumber(quote.prepayPercent)}% prepay. ` +
-              "Capacity and topology checked.",
+              "Technical and commercial checks complete.",
           })
         : stage,
     ),
@@ -193,19 +352,27 @@ function normalizeQuote(value) {
     value.prepayPercent ?? value.prepay ?? 0,
     "Quote prepay",
   );
+  const currency = cleanText(value.currency ?? "USD", "Quote currency");
+  const unit = cleanText(value.unit ?? "GPU-hour", "Quote unit");
+  const formatted = formatUsd(amount);
+  const unitLabel = unit.toLowerCase() === "gpu-hour" ? "GPU hour" : unit;
 
   return Object.freeze({
     value: amount,
-    formatted: formatUsd(amount),
-    currency: cleanText(value.currency ?? "USD", "Quote currency"),
-    unit: cleanText(value.unit ?? "GPU-hour", "Quote unit"),
+    formatted,
+    currency,
+    unit,
+    unitLabel,
+    rateLabel: `${formatted} / ${unitLabel}`,
     prepayPercent: prepay,
+    prepayLabel: `${formatCompactNumber(prepay)}% prepay`,
   });
 }
 
-function normalizeQuoteHistory(value, currentQuote) {
+function normalizeQuoteHistory(value, currentQuote, sourceQuote = currentQuote) {
   if (!Array.isArray(value)) return Object.freeze([]);
 
+  const scale = sourceQuote > 0 ? currentQuote / sourceQuote : 1;
   const points = value
     .map((point) => {
       const timestamp = quoteHistoryTimestamp(
@@ -236,10 +403,18 @@ function normalizeQuoteHistory(value, currentQuote) {
       ) {
         return null;
       }
-      return Object.freeze({ timestamp, sellerAsk, buyerBid });
+      return { timestamp, sellerAsk, buyerBid };
     })
     .filter(Boolean)
-    .sort((left, right) => left.timestamp - right.timestamp);
+    .sort((left, right) => left.timestamp - right.timestamp)
+    .map((point) =>
+      Object.freeze({
+        ...point,
+        sellerAsk: roundUsd(point.sellerAsk * scale),
+        buyerBid:
+          point.buyerBid === null ? null : roundUsd(point.buyerBid * scale),
+      }),
+    );
 
   if (
     points.length &&
@@ -255,6 +430,95 @@ function normalizeQuoteHistory(value, currentQuote) {
     });
   }
   return Object.freeze(points);
+}
+
+function applyDealStateToEvents(
+  events,
+  {
+    asset,
+    quantityFormatted,
+    region,
+    fabric,
+    termLabel,
+    rfs,
+    quote,
+    sourceQuoteValue,
+  },
+) {
+  const scale = sourceQuoteValue > 0 ? quote.value / sourceQuoteValue : 1;
+  return Object.freeze(
+    events.map((event) => {
+      let label = event.label;
+      let valueUsdGpuHour = event.valueUsdGpuHour;
+
+      if (event.id === "capacity-set") {
+        label = `${quantityFormatted} ${asset}`;
+      } else if (event.id === "fabric-set") {
+        label = [region, fabric].filter(Boolean).join(", ");
+      } else if (event.id === "term-set") {
+        label = [termLabel, `${rfs} RFS`].filter(Boolean).join(", ");
+      } else if (event.id === "price-agreed") {
+        label = `${quote.formatted} agreed`;
+        valueUsdGpuHour = quote.value;
+      } else {
+        const priceLabel = label.match(/^(Bid|Ask)\s+\$([\d.]+)$/i);
+        if (priceLabel) {
+          label = `${priceLabel[1]} ${formatUsd(Number(priceLabel[2]) * scale)}`;
+        }
+      }
+
+      return Object.freeze({
+        ...event,
+        label,
+        ...(valueUsdGpuHour === undefined
+          ? {}
+          : { valueUsdGpuHour: roundUsd(valueUsdGpuHour) }),
+      });
+    }),
+  );
+}
+
+function normalizeEventLog(value) {
+  if (!Array.isArray(value)) return Object.freeze([]);
+
+  const ids = new Set();
+  const statuses = new Set(["done", "current", "next"]);
+  const events = value
+    .map((event) => {
+      const id = String(event?.id || "").trim();
+      const timestamp = quoteHistoryTimestamp(
+        event?.timestamp ?? event?.observedAt ?? event?.observed_at,
+      );
+      const stage = String(event?.stage || "").trim().toLowerCase();
+      const status = String(event?.status || "done").trim().toLowerCase();
+      const rawValue = event?.valueUsdGpuHour ?? event?.value_usd_gpu_hour;
+      const valueUsdGpuHour = rawValue === undefined ? null : Number(rawValue);
+      if (
+        !id ||
+        ids.has(id) ||
+        !Number.isFinite(timestamp) ||
+        !STAGE_IDS.includes(stage) ||
+        !statuses.has(status) ||
+        (valueUsdGpuHour !== null &&
+          (!Number.isFinite(valueUsdGpuHour) || valueUsdGpuHour < 0))
+      ) {
+        return null;
+      }
+      ids.add(id);
+      return Object.freeze({
+        id,
+        timestamp,
+        stage,
+        actor: cleanText(event.actor, "Event actor"),
+        label: cleanText(event.label ?? event.action, "Event label"),
+        status,
+        ...(valueUsdGpuHour === null ? {} : { valueUsdGpuHour }),
+      });
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.timestamp - right.timestamp);
+
+  return Object.freeze(events);
 }
 
 function quoteHistoryTimestamp(value) {
@@ -320,6 +584,9 @@ function createMarketContext(marketPayload, asset, quoteValue) {
   const basisPercent = observation.value
     ? (basis / observation.value) * 100
     : null;
+  const basisFormatted = formatSignedUsd(basis);
+  const basisPercentFormatted =
+    basisPercent === null ? null : formatSignedPercent(basisPercent);
 
   return Object.freeze({
     asset,
@@ -328,10 +595,15 @@ function createMarketContext(marketPayload, asset, quoteValue) {
     quote: quoteValue,
     quoteFormatted: formatUsd(quoteValue),
     basis,
-    basisFormatted: formatSignedUsd(basis),
+    basisFormatted,
     basisPercent,
-    basisPercentFormatted:
-      basisPercent === null ? null : formatSignedPercent(basisPercent),
+    basisPercentFormatted,
+    benchmarkLabel: `${formatUsd(observation.value)} market`,
+    basisDirection: basis > 0 ? "above" : basis < 0 ? "below" : "at",
+    basisLabel:
+      basisPercentFormatted === null
+        ? `${basisFormatted} vs market`
+        : `${basisFormatted} (${basisPercentFormatted}) vs market`,
     lower: observation.lower,
     upper: observation.upper,
     observedAt: normalizeTimestamp(observation.timestamp),
@@ -407,19 +679,28 @@ function formatRfs(value) {
     .toUpperCase();
 }
 
-function createAriaLabel({ kind, id, type, quantity, asset, quote, activeStage, market }) {
-  const context = market
-    ? ` ${asset} benchmark ${market.benchmarkFormatted}, basis ${market.basisFormatted}.`
-    : "";
+function createAriaLabel({
+  kind,
+  id,
+  type,
+  quantity,
+  asset,
+  quote,
+  rfs,
+  activeStage,
+}) {
+  const stageLabel = activeStage === "execute"
+    ? "Execution"
+    : titleCase(activeStage);
   if (kind === "quote") {
     return (
       `Quote ${id}, ${quantity} ${asset}, agreed at ${quote.formatted} ` +
-      `per GPU hour.${context}`
+      "per GPU hour."
     );
   }
   return (
     `Deal ${id}, ${type}, ${quantity} ${asset}, quote ${quote.formatted} ` +
-    `per GPU hour, ${titleCase(activeStage)} stage.${context}`
+    `per GPU hour, ready for service ${rfs}, ${stageLabel} stage.`
   );
 }
 
@@ -439,6 +720,10 @@ function formatUsd(value) {
   return `$${Number(value).toFixed(2)}`;
 }
 
+function roundUsd(value) {
+  return Number(Number(value).toFixed(2));
+}
+
 function formatSignedUsd(value) {
   const number = Number(value);
   const sign = number > 0 ? "+" : number < 0 ? "−" : "";
@@ -455,6 +740,44 @@ function cleanText(value, label) {
   const text = String(value ?? "").trim();
   if (!text) throw new TypeError(`${label} is required`);
   return text;
+}
+
+function optionalText(value) {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
+function normalizeSide(value) {
+  const side = String(value ?? "buy").trim().toLowerCase();
+  if (side !== "buy" && side !== "sell") {
+    throw new TypeError("Deal side must be buy or sell");
+  }
+  return side;
+}
+
+function normalizeTenancy(value, service) {
+  const explicit = optionalText(value);
+  if (explicit) return slugify(explicit);
+  return /\bdedicated\b/i.test(service || "") ? "dedicated" : null;
+}
+
+function optionalPositiveInteger(value, label) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+  return positiveInteger(value, label);
+}
+
+function slugify(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+function labelFromSlug(value) {
+  return titleCase(String(value || "").replace(/-/g, " "));
 }
 
 function positiveInteger(value, label) {

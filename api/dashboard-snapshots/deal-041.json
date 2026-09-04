@@ -5,6 +5,7 @@
   "kind": "reserved-capacity",
   "as_of": "2026-08-29T16:00:00.000Z",
   "label": "Deal 041",
+  "side": "buy",
   "capacity": {
     "accelerator_model": "B200",
     "gpu_count": 256,
@@ -15,13 +16,14 @@
     "region": "US East",
     "interconnect": "InfiniBand",
     "service": "Dedicated bare metal",
+    "tenancy": "dedicated",
     "term_months": 24,
     "quote_usd_gpu_hour": 3.65,
     "prepay_percent": 20
   },
   "quote_history": [
     {
-      "observed_at": "2026-08-22T16:00:00.000Z",
+      "observed_at": "2026-08-22T16:10:00.000Z",
       "buyer_bid_usd_gpu_hour": 3.10,
       "seller_ask_usd_gpu_hour": 4.25
     },
@@ -56,15 +58,168 @@
       "seller_ask_usd_gpu_hour": 3.75
     },
     {
-      "observed_at": "2026-08-29T16:00:00.000Z",
+      "observed_at": "2026-08-29T10:15:00.000Z",
       "buyer_bid_usd_gpu_hour": 3.65,
       "seller_ask_usd_gpu_hour": 3.65
     }
   ],
-  "current_stage": "diligence",
+  "event_log": [
+    {
+      "id": "mandate-opened",
+      "observed_at": "2026-08-20T09:10:00.000Z",
+      "stage": "spec",
+      "actor": "Buyer",
+      "label": "Mandate opened",
+      "status": "done"
+    },
+    {
+      "id": "capacity-set",
+      "observed_at": "2026-08-20T09:18:00.000Z",
+      "stage": "spec",
+      "actor": "Buyer",
+      "label": "256 × B200",
+      "status": "done"
+    },
+    {
+      "id": "fabric-set",
+      "observed_at": "2026-08-20T09:26:00.000Z",
+      "stage": "spec",
+      "actor": "Buyer",
+      "label": "US East, InfiniBand",
+      "status": "done"
+    },
+    {
+      "id": "term-set",
+      "observed_at": "2026-08-20T09:34:00.000Z",
+      "stage": "spec",
+      "actor": "Buyer",
+      "label": "24 months, Oct RFS",
+      "status": "done"
+    },
+    {
+      "id": "rfq-sent",
+      "observed_at": "2026-08-21T10:05:00.000Z",
+      "stage": "spec",
+      "actor": "Broker",
+      "label": "RFQ sent",
+      "status": "done"
+    },
+    {
+      "id": "ask-opened",
+      "observed_at": "2026-08-22T16:00:00.000Z",
+      "stage": "diligence",
+      "actor": "Seller",
+      "label": "Ask $4.25",
+      "status": "done"
+    },
+    {
+      "id": "bid-opened",
+      "observed_at": "2026-08-22T16:10:00.000Z",
+      "stage": "diligence",
+      "actor": "Buyer",
+      "label": "Bid $3.10",
+      "status": "done"
+    },
+    {
+      "id": "bid-320",
+      "observed_at": "2026-08-23T16:00:00.000Z",
+      "stage": "diligence",
+      "actor": "Buyer",
+      "label": "Bid $3.20",
+      "status": "done"
+    },
+    {
+      "id": "ask-405",
+      "observed_at": "2026-08-24T16:00:00.000Z",
+      "stage": "diligence",
+      "actor": "Seller",
+      "label": "Ask $4.05",
+      "status": "done"
+    },
+    {
+      "id": "bid-335",
+      "observed_at": "2026-08-25T16:00:00.000Z",
+      "stage": "diligence",
+      "actor": "Buyer",
+      "label": "Bid $3.35",
+      "status": "done"
+    },
+    {
+      "id": "ask-390",
+      "observed_at": "2026-08-26T16:00:00.000Z",
+      "stage": "diligence",
+      "actor": "Seller",
+      "label": "Ask $3.90",
+      "status": "done"
+    },
+    {
+      "id": "bid-350",
+      "observed_at": "2026-08-27T16:00:00.000Z",
+      "stage": "diligence",
+      "actor": "Buyer",
+      "label": "Bid $3.50",
+      "status": "done"
+    },
+    {
+      "id": "ask-375",
+      "observed_at": "2026-08-28T10:00:00.000Z",
+      "stage": "diligence",
+      "actor": "Seller",
+      "label": "Ask $3.75",
+      "status": "done"
+    },
+    {
+      "id": "bid-360",
+      "observed_at": "2026-08-28T16:00:00.000Z",
+      "stage": "diligence",
+      "actor": "Buyer",
+      "label": "Bid $3.60",
+      "status": "done"
+    },
+    {
+      "id": "price-agreed",
+      "observed_at": "2026-08-29T10:15:00.000Z",
+      "stage": "diligence",
+      "actor": "Buyer and seller",
+      "label": "$3.65 agreed",
+      "value_usd_gpu_hour": 3.65,
+      "status": "done"
+    },
+    {
+      "id": "capacity-verified",
+      "observed_at": "2026-08-29T11:05:00.000Z",
+      "stage": "diligence",
+      "actor": "Seller",
+      "label": "Capacity verified",
+      "status": "done"
+    },
+    {
+      "id": "agreement-sent",
+      "observed_at": "2026-08-29T12:20:00.000Z",
+      "stage": "execute",
+      "actor": "Broker",
+      "label": "Draft agreement sent",
+      "status": "done"
+    },
+    {
+      "id": "service-terms-open",
+      "observed_at": "2026-08-29T16:00:00.000Z",
+      "stage": "execute",
+      "actor": "Buyer",
+      "label": "Service terms under review",
+      "status": "current"
+    }
+  ],
+  "workflow": {
+    "stage": "out-for-signing",
+    "status": "terms-review",
+    "next_action": "Review service terms",
+    "next_owner": "Buyer"
+  },
+  "current_stage": "execute",
   "parties": 4,
   "events": 18,
-  "next_action": "Resolve SLA",
+  "next_action": "Review service terms",
   "stages": [
     {
       "id": "spec",
@@ -76,15 +231,15 @@
     {
       "id": "diligence",
       "label": "Diligence",
-      "summary": "Seller quote $3.65 per GPU hour with 20% prepay. Capacity and topology checked.",
+      "summary": "Seller quote $3.65 per GPU hour with 20% prepay. Technical and commercial checks complete.",
       "source": "Technical and commercial",
       "status": "Quote normalized"
     },
     {
       "id": "execute",
-      "label": "Execute",
-      "summary": "Finalize the quote and execute the Compute Services Agreement with the provider.",
-      "source": "Buyer and provider",
+      "label": "Execution",
+      "summary": "Finalize the quote and execute the Compute Services Agreement with the seller.",
+      "source": "Buyer and seller",
       "status": "Awaiting sign-off"
     }
   ]

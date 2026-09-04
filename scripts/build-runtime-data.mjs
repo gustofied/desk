@@ -514,6 +514,28 @@ function buildDealRuntime(source, sourceFile) {
     round(finiteNumber(point.buyer_bid_usd_gpu_hour)),
   ]);
   assertStrictlyIncreasing(quoteHistory, `${sourceFile} quote_history`);
+  const eventLog = source.event_log.map((event, index) => ({
+    id: event.id,
+    timestamp: timestampSeconds(
+      event.observed_at,
+      `${sourceFile} event_log[${index}].observed_at`,
+    ),
+    stage: event.stage,
+    actor: event.actor,
+    label: event.label,
+    status: event.status,
+    ...(event.value_usd_gpu_hour === undefined
+      ? {}
+      : {
+          valueUsdGpuHour: round(
+            finiteNumber(event.value_usd_gpu_hour),
+          ),
+        }),
+  }));
+  assertStrictlyIncreasing(
+    eventLog.map((event) => [event.timestamp]),
+    `${sourceFile} event_log`,
+  );
   const runtime = {
     version: 1,
     cardId: dealCard.id,
@@ -523,9 +545,15 @@ function buildDealRuntime(source, sourceFile) {
       ? "Reserved capacity"
       : source.kind,
     label: source.label,
+    side: source.side,
     asset: source.capacity.accelerator_model,
     quantity: source.capacity.gpu_count,
     nodes: source.capacity.node_count,
+    region: source.terms.region,
+    fabric: source.terms.interconnect,
+    service: source.terms.service,
+    tenancy: source.terms.tenancy,
+    termMonths: source.terms.term_months,
     rfs: source.rfs.slice(0, 7),
     quote: {
       value: source.terms.quote_usd_gpu_hour,
@@ -534,10 +562,18 @@ function buildDealRuntime(source, sourceFile) {
       prepayPercent: source.terms.prepay_percent,
     },
     quoteHistory,
+    eventLog,
     currentStage: source.current_stage,
     parties: source.parties,
     events: source.events,
-    nextAction: source.next_action,
+    nextAction: source.workflow.next_action,
+    nextOwner: source.workflow.next_owner,
+    workflow: {
+      stage: source.workflow.stage,
+      status: source.workflow.status,
+      nextAction: source.workflow.next_action,
+      nextOwner: source.workflow.next_owner,
+    },
     stages: source.stages.map((stage) => ({
       id: stage.id,
       label: stage.label,
@@ -558,14 +594,75 @@ function buildDealRuntime(source, sourceFile) {
 
 function validateDealSource(source, sourceFile) {
   const stageIds = new Set(["spec", "diligence", "execute"]);
+  const eventStatuses = new Set(["done", "current", "next"]);
+  const eventIds = new Set();
+  const asOfTimestamp = Date.parse(source?.as_of);
+  const currentEvents = Array.isArray(source?.event_log)
+    ? source.event_log.filter((event) => event?.status === "current")
+    : [];
+  const agreementEvents = Array.isArray(source?.event_log)
+    ? source.event_log.filter((event) => event?.id === "price-agreed")
+    : [];
+  const agreementEvent = agreementEvents[0];
+  const agreementTimestamp = Date.parse(agreementEvent?.observed_at);
+  const agreementValue = Number(agreementEvent?.value_usd_gpu_hour);
+  const agreementMatchesQuote =
+    agreementEvents.length === 1 &&
+    Number.isFinite(agreementTimestamp) &&
+    Number.isFinite(agreementValue) &&
+    Array.isArray(source?.quote_history) &&
+    source.quote_history.some((point) => {
+      const bid = Number(point?.buyer_bid_usd_gpu_hour);
+      const ask = Number(point?.seller_ask_usd_gpu_hour ?? point?.value);
+      return (
+        Date.parse(point?.observed_at) === agreementTimestamp &&
+        bid === ask &&
+        bid === agreementValue
+      );
+    });
+  const validEventLog =
+    Array.isArray(source?.event_log) &&
+    source.event_log.length === Number(source?.events) &&
+    source.event_log.every((event) => {
+      const id = String(event?.id || "").trim();
+      if (!id || eventIds.has(id)) return false;
+      eventIds.add(id);
+      return (
+        Number.isFinite(Date.parse(event?.observed_at)) &&
+        Date.parse(event.observed_at) <= asOfTimestamp &&
+        stageIds.has(event?.stage) &&
+        String(event?.actor || "").trim().length > 0 &&
+        String(event?.label || "").trim().length > 0 &&
+        eventStatuses.has(event?.status)
+      );
+    }) &&
+    Number.isFinite(asOfTimestamp) &&
+    currentEvents.length === 1 &&
+    currentEvents[0]?.stage === source?.current_stage &&
+    agreementMatchesQuote;
   if (
     source?.version !== 1 ||
     source?.contract !== "desk_deal_view" ||
     source?.id !== "deal-041" ||
+    source?.side !== "buy" ||
     source?.capacity?.accelerator_model !== "B200" ||
-    !Number.isFinite(Number(source?.capacity?.gpu_count)) ||
-    !Number.isFinite(Number(source?.capacity?.node_count)) ||
-    !Number.isFinite(Number(source?.terms?.quote_usd_gpu_hour)) ||
+    Number(source?.capacity?.gpu_count) !== 256 ||
+    Number(source?.capacity?.node_count) !== 32 ||
+    source?.terms?.region !== "US East" ||
+    source?.terms?.interconnect !== "InfiniBand" ||
+    source?.terms?.service !== "Dedicated bare metal" ||
+    source?.terms?.tenancy !== "dedicated" ||
+    Number(source?.terms?.term_months) !== 24 ||
+    Number(source?.terms?.quote_usd_gpu_hour) !== 3.65 ||
+    Number(source?.terms?.prepay_percent) !== 20 ||
+    source?.rfs?.slice(0, 7) !== "2026-10" ||
+    source?.workflow?.stage !== "out-for-signing" ||
+    source?.workflow?.status !== "terms-review" ||
+    String(source?.workflow?.next_action || "").trim() !==
+      "Review service terms" ||
+    String(source?.workflow?.next_action || "").trim() !==
+      String(source?.next_action || "").trim() ||
+    String(source?.workflow?.next_owner || "").trim() !== "Buyer" ||
     !Array.isArray(source?.quote_history) ||
     source.quote_history.length < 2 ||
     source.quote_history.some(
@@ -586,6 +683,7 @@ function validateDealSource(source, sourceFile) {
     ) !== Number(source.terms.quote_usd_gpu_hour) ||
     Number(source.quote_history.at(-1)?.buyer_bid_usd_gpu_hour) !==
       Number(source.terms.quote_usd_gpu_hour) ||
+    !validEventLog ||
     !Array.isArray(source?.stages) ||
     source.stages.length !== stageIds.size ||
     source.stages.some((stage) => !stageIds.has(stage?.id)) ||

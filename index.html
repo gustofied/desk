@@ -85,11 +85,11 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=81">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=82">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=60">
-    <link rel="stylesheet" href="./styles/monitor-data.css?v=11">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=14">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
-    <link rel="stylesheet" href="./styles/deal-view.css?v=34">
+    <link rel="stylesheet" href="./styles/deal-view.css?v=37">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=21">
   </head>
@@ -404,16 +404,18 @@
                     data-monitor-data-command-shell
                   >
                     <pre tabindex="0"><code data-monitor-data-command></code></pre>
-                    <nav class="desk-data-rail__resources" aria-label="Desk CLI resources">
-                      <a href="https://github.com/gustofied/desk#desk-cli" target="_blank" rel="noopener">Docs</a>
-                      <a href="./cli/desk" download="desk">Download CLI</a>
-                      <a href="mailto:adam.sioud@protonmail.com">Get in touch</a>
-                    </nav>
                   </div>
                 </div>
                 <footer class="desk-data-rail__footer">
-                  <button type="button" data-monitor-data-mode>View SQL</button>
-                  <button type="button" data-monitor-data-copy>Copy command</button>
+                  <nav class="desk-data-rail__resources" aria-label="Desk CLI resources">
+                    <a href="https://github.com/gustofied/desk#desk-cli" target="_blank" rel="noopener">Docs</a>
+                    <a href="./cli/desk" download="desk">Download CLI</a>
+                    <a href="mailto:adam.sioud@protonmail.com">Get in touch</a>
+                  </nav>
+                  <div class="desk-data-rail__actions">
+                    <button type="button" data-monitor-data-mode>View SQL</button>
+                    <button type="button" data-monitor-data-copy>Copy command</button>
+                  </div>
                 </footer>
               </div>
               <p class="desk-data-rail__sr-only" aria-live="polite" data-monitor-data-status></p>
@@ -421,7 +423,7 @@
 
             <section
               class="desk-data-rail deal-journey-rail"
-              aria-label="Deal journey"
+              aria-label="Deal details"
               data-deal-journey
               hidden
               inert
@@ -434,22 +436,48 @@
                 aria-controls="deal-journey-body"
                 data-deal-journey-toggle
               >
-                <strong>Deal journey</strong>
-                <span data-deal-journey-current>Diligence</span>
-                <small data-deal-journey-events>18 events</small>
+                <strong>Details</strong>
               </button>
               <div
                 class="desk-data-rail__body deal-journey-rail__body"
                 id="deal-journey-body"
+                role="region"
+                aria-labelledby="deal-journey-toggle"
                 data-deal-journey-body
                 hidden
                 inert
               >
-                <ol
-                  class="deal-journey-rail__list"
-                  aria-label="Deal stages"
-                  data-deal-journey-stages
-                ></ol>
+                <div class="deal-journey-rail__details">
+                  <section
+                    class="deal-journey-rail__terms"
+                    aria-labelledby="deal-details-terms-title"
+                  >
+                    <h3
+                      class="deal-journey-rail__section-title"
+                      id="deal-details-terms-title"
+                    >Terms</h3>
+                    <dl
+                      class="deal-journey-rail__terms-grid"
+                      data-deal-journey-terms
+                    ></dl>
+                  </section>
+                  <section
+                    class="deal-journey-rail__activity"
+                    aria-labelledby="deal-details-activity-title"
+                  >
+                    <header class="deal-journey-rail__section-head">
+                      <h3
+                        class="deal-journey-rail__section-title"
+                        id="deal-details-activity-title"
+                      >Activity</h3>
+                    </header>
+                    <ol
+                      class="deal-journey-rail__activity-list"
+                      aria-label="Latest deal activity"
+                      data-deal-journey-events-list
+                    ></ol>
+                  </section>
+                </div>
               </div>
               <p class="desk-data-rail__sr-only" aria-live="polite" data-deal-journey-status></p>
             </section>
@@ -610,6 +638,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=172"></script>
+    <script type="module" src="./desk.js?v=178"></script>
   </body>
 </html>
