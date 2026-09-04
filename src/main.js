@@ -269,6 +269,7 @@ if (root) {
     craftBaseline: null,
     craftDraft: initialCraftDraft,
     catalogScrollY: readCatalogScrollPosition(),
+    lastRenderedSceneKey: null,
   };
   const nodes = {
     layoutPanels: new Map(
@@ -5480,20 +5481,22 @@ if (root) {
       syncComposerControls();
       return;
     }
+    const motion = resolveRenderMotion(drawAnimation);
+    state.lastRenderedSceneKey = currentRenderSceneKey();
     if (isDealCard) {
-      renderDealWorkspace(drawAnimation);
+      renderDealWorkspace(motion);
       return;
     }
     if (isDepthCard) {
-      renderDepthWorkspace(drawAnimation);
+      renderDepthWorkspace(motion);
       return;
     }
     if (isBarCard) {
-      renderBarWorkspace(drawAnimation);
+      renderBarWorkspace(motion);
       return;
     }
     if (isPowerCard) {
-      renderPowerBasisWorkspace(drawAnimation);
+      renderPowerBasisWorkspace(motion);
       return;
     }
     const rangeSeries = activeSeries({ zoom: false });
@@ -5526,8 +5529,19 @@ if (root) {
       state.panel === "detail" &&
       nodes.chart.clientWidth > 0
     ) {
-      renderChart(chartSeries, drawAnimation);
+      renderChart(chartSeries, motion);
     }
+  }
+
+  function resolveRenderMotion(drawAnimation) {
+    if (!drawAnimation || reducedMotion) return "none";
+    return state.lastRenderedSceneKey === currentRenderSceneKey()
+      ? "update"
+      : "reveal";
+  }
+
+  function currentRenderSceneKey() {
+    return `${cardId}:${state.mode}:${state.panel}:${state.layout}`;
   }
 
   function createDealModel(cardState = currentCardState(), payload = null) {
@@ -5550,7 +5564,7 @@ if (root) {
     };
   }
 
-  function renderDealWorkspace(drawAnimation) {
+  function renderDealWorkspace(motion) {
     if (!state.runtimePayload) return;
     let model;
     try {
@@ -5573,6 +5587,7 @@ if (root) {
         variant: "focus",
         palette,
         reducedMotion,
+        revealMotion: motion === "reveal",
       });
     }
     if (nodes.dealWorkspace) {
@@ -5580,7 +5595,8 @@ if (root) {
       dealWorkspaceMount = mountDealView(nodes.dealWorkspace, model, {
         variant: "full",
         palette,
-        reducedMotion: reducedMotion || !drawAnimation,
+        reducedMotion,
+        revealMotion: motion === "reveal",
         interactive: state.mode === "monitor",
       });
     }
@@ -5614,7 +5630,7 @@ if (root) {
     });
   }
 
-  function renderPowerBasisWorkspace(drawAnimation) {
+  function renderPowerBasisWorkspace(motion) {
     if (!state.runtimePayload) return;
     let model;
     try {
@@ -5635,7 +5651,7 @@ if (root) {
       mode: state.scale,
       compact: true,
       artifact: true,
-      reducedMotion,
+      reducedMotion: reducedMotion || motion !== "reveal",
       interactive: false,
     });
     syncMonitorDataModel({ powerModel: model });
@@ -5652,14 +5668,14 @@ if (root) {
         colors: palette,
         title: state.catalogName || model.location.label,
         mode: state.scale,
-        reducedMotion: reducedMotion || !drawAnimation,
+        reducedMotion: reducedMotion || motion !== "reveal",
         interactive: true,
         minimal: mobileViewport.matches,
       });
     }
   }
 
-  function renderDepthWorkspace(drawAnimation) {
+  function renderDepthWorkspace(motion) {
     if (!state.runtimePayload) return;
     let model;
     try {
@@ -5690,7 +5706,7 @@ if (root) {
       colors: palette,
       title: state.catalogName || cardDefinition.title,
       compact: true,
-      reducedMotion,
+      reducedMotion: reducedMotion || motion !== "reveal",
       interactive: false,
       view: depthViewMode(state.scale),
     });
@@ -5718,7 +5734,7 @@ if (root) {
       paintGpuMarketDepthChart(nodes.svg, model, {
         colors: palette,
         title: state.catalogName || cardDefinition.title,
-        reducedMotion: reducedMotion || !drawAnimation,
+        reducedMotion: reducedMotion || motion !== "reveal",
         interactive: !mobileViewport.matches,
         minimal: mobileViewport.matches,
         view: depthViewMode(state.scale),
@@ -5726,7 +5742,7 @@ if (root) {
     }
   }
 
-  function renderBarWorkspace(drawAnimation) {
+  function renderBarWorkspace(motion) {
     if (!state.runtimePayload) return;
     let model;
     try {
@@ -5750,7 +5766,7 @@ if (root) {
       colors: palette,
       title: state.catalogName || "Latest prices",
       compact: true,
-      reducedMotion,
+      reducedMotion: reducedMotion || motion !== "reveal",
       interactive: false,
     });
     syncMonitorDataModel({ barModel: model });
@@ -5766,7 +5782,7 @@ if (root) {
       paintGpuPriceBarChart(nodes.svg, model, {
         colors: palette,
         title: state.catalogName || "Latest prices",
-        reducedMotion: reducedMotion || !drawAnimation,
+        reducedMotion: reducedMotion || motion !== "reveal",
         interactive: true,
       });
     }
@@ -6290,7 +6306,7 @@ if (root) {
       .style("paint-order", "stroke fill");
   }
 
-  function renderChart(series, drawAnimation) {
+  function renderChart(series, motion) {
     const primary =
       series.find((candidate) => candidate.layer.id === state.selected) ||
       series.find((candidate) => candidate.primary) ||
@@ -6332,7 +6348,11 @@ if (root) {
       .scaleLinear()
       .domain(chartYDomain(values, { scale: state.scale }))
       .range([innerHeight, 0]);
+    const reveal = motion === "reveal" && !reducedMotion;
+    const update = motion === "update" && !reducedMotion;
+    const animateRoot = reveal || update;
     const svg = d3.select(nodes.svg);
+    svg.selectAll("*").interrupt();
     svg.selectAll(".gpu-benchmark__plot-root.is-exiting").remove();
     const previousRoot = svg.select(".gpu-benchmark__plot-root");
     previousRoot
@@ -6343,27 +6363,25 @@ if (root) {
     const plotRoot = svg
       .append("g")
       .attr("class", "gpu-benchmark__plot-root")
-      .attr("opacity", drawAnimation && !reducedMotion ? 0 : 1)
+      .attr("opacity", reveal ? 0 : update ? 0.55 : 1)
       .attr(
         "transform",
-        drawAnimation && !reducedMotion
-          ? "translate(0,4)"
-          : "translate(0,0)",
+        reveal ? "translate(0,4)" : "translate(0,0)",
       );
     const plot = plotRoot
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
-    if (drawAnimation && !reducedMotion) {
+    if (animateRoot) {
       previousRoot
         .transition()
         .duration(VIEW_DETAIL_DURATION)
         .ease(d3.easeCubicOut)
         .attr("opacity", 0)
-        .attr("transform", "translate(0,-2)")
+        .attr("transform", reveal ? "translate(0,-2)" : "translate(0,0)")
         .remove();
       plotRoot
         .transition()
-        .duration(VIEW_SUPPORT_DURATION)
+        .duration(reveal ? VIEW_SUPPORT_DURATION : VIEW_DETAIL_DURATION)
         .ease(d3.easeCubicOut)
         .attr("opacity", 1)
         .attr("transform", "translate(0,0)");
@@ -6456,7 +6474,7 @@ if (root) {
         .attr("stroke-width", candidate.primary ? 2.4 : 1.35);
     });
 
-    if (drawAnimation && !reducedMotion) {
+    if (reveal) {
       plot
         .select(".gpu-benchmark__line.is-selected")
         .attr("pathLength", 1)

@@ -13,6 +13,8 @@ const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 600;
 const COMPACT_SVG_HEIGHT = 675;
 const MAX_INTERACTION_COLUMNS = 180;
+const READOUT_DOT_RADIUS = 5;
+const READOUT_DOT_STROKE_WIDTH = 2.5;
 
 export function renderPowerBasisSvg(model, options = {}) {
   const { inner, ariaLabel, height } = powerBasisMarkup(model, options);
@@ -41,7 +43,11 @@ export function paintPowerBasisChart(
   const wasFocused =
     interactionTarget === interactionTarget?.ownerDocument.activeElement;
   const focusedTimestamp = interactionTarget?.dataset.powerBasisTimestamp;
-  const { inner, ariaLabel, height } = powerBasisMarkup(model, options);
+  const expectedHeight = options.compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
+  const { inner, ariaLabel, height } = powerBasisMarkup(model, {
+    ...options,
+    _renderScale: svgUniformScale(svgNode, expectedHeight),
+  });
   const canInteract = interactive && !decorative && !options.minimal;
 
   resetPowerBasisNavigation(interactionTarget);
@@ -110,6 +116,7 @@ function powerBasisMarkup(
     compact = false,
     artifact = compact,
     minimal = false,
+    _renderScale = 1,
   } = {},
 ) {
   const normalized = normalizeModel(model);
@@ -131,11 +138,21 @@ function powerBasisMarkup(
     top: plotTop,
     bottom: plotBottom,
   };
+  // The dot stroke does not scale, so convert its CSS-pixel half-width back
+  // into viewBox units before clamping the interactive marker.
+  const readoutDotEdgeInset = READOUT_DOT_RADIUS +
+    READOUT_DOT_STROKE_WIDTH / 2 / positiveScale(_renderScale);
   const firstTime = normalized.rows[0].time;
   const lastTime = normalized.rows.at(-1).time;
   const timeSpan = Math.max(1, lastTime - firstTime);
   const x = (row) =>
-    plot.left + ((row.time - firstTime) / timeSpan) * (plot.right - plot.left);
+    plot.left + ((row.time - firstTime) / timeSpan) *
+      (plot.right - plot.left);
+  const readoutX = (row) => clamp(
+    x(row),
+    plot.left + readoutDotEdgeInset,
+    plot.right - readoutDotEdgeInset,
+  );
   const values = chartMode === "basis"
     ? [0, ...normalized.rows.map((row) => row.basis)]
     : normalized.rows.flatMap((row) => [row.realTime, row.dayAhead]);
@@ -184,12 +201,12 @@ function powerBasisMarkup(
     ? `<path class="power-basis__line power-basis__line--day-ahead"
         data-power-basis-line="day-ahead" d="${dayAheadLine(normalized.rows)}"
         fill="none" stroke="${palette.secondary}" stroke-width="${secondaryWidth}"
-        stroke-opacity="0.42" stroke-dasharray="2 8" stroke-linecap="round"
+        stroke-opacity="0.42" stroke-dasharray="2 8" stroke-linecap="butt"
         stroke-linejoin="round" vector-effect="non-scaling-stroke"
         pointer-events="none" aria-hidden="true"/>`
     : "";
   const readout = showReadout
-    ? readoutMarkup(latest, chartMode, palette, plot, x(latest), y)
+    ? readoutMarkup(latest, chartMode, palette, plot, readoutX(latest), y)
     : "";
   const columns = showReadout
     ? interactionColumnMarkup(
@@ -198,6 +215,7 @@ function powerBasisMarkup(
         chartMode,
         plot,
         x,
+        readoutX,
         y,
       )
     : "";
@@ -217,7 +235,7 @@ function powerBasisMarkup(
     <path class="power-basis__line power-basis__line--${chartMode === "basis" ? "basis" : "real-time"}"
       data-power-basis-line="${chartMode === "basis" ? "basis" : "real-time"}"
       d="${line(normalized.rows)}" fill="none" stroke="${palette.line}"
-      stroke-width="${primaryWidth}" stroke-linecap="round" stroke-linejoin="round"
+      stroke-width="${primaryWidth}" stroke-linecap="butt" stroke-linejoin="round"
       vector-effect="non-scaling-stroke" pathLength="1"
       stroke-dasharray="1" stroke-dashoffset="0"
       pointer-events="none" aria-hidden="true"/>
@@ -242,8 +260,9 @@ function readoutMarkup(row, mode, palette, plot, activeX, y) {
       stroke="${palette.line}" stroke-width="1" stroke-opacity="0.2"
       vector-effect="non-scaling-stroke"/>
     <circle data-power-basis-primary-dot="" cx="${coordinate(activeX)}"
-      cy="${coordinate(realTimeY)}" r="5" fill="${palette.line}"
-      stroke="${palette.paper}" stroke-width="2.5" vector-effect="non-scaling-stroke"/>
+      cy="${coordinate(realTimeY)}" r="${READOUT_DOT_RADIUS}" fill="${palette.line}"
+      stroke="${palette.paper}" stroke-width="${READOUT_DOT_STROKE_WIDTH}"
+      vector-effect="non-scaling-stroke"/>
     ${secondaryDot}
     <text x="2%" y="32" font-family="Geist Mono, monospace" font-size="16"
       letter-spacing="0.04em">
@@ -264,20 +283,21 @@ function readoutMarkup(row, mode, palette, plot, activeX, y) {
   </g>`;
 }
 
-function interactionColumnMarkup(rows, unit, mode, plot, x, y) {
+function interactionColumnMarkup(rows, unit, mode, plot, x, readoutX, y) {
   const sampled = sampleInteractionRows(rows);
   return sampled
     .map((row, index) => {
       const center = x(row);
+      const markerX = readoutX(row);
       const previous = sampled[index - 1];
       const next = sampled[index + 1];
       const left = previous ? (x(previous) + center) / 2 : plot.left;
-      const right = next ? (center + x(next)) / 2 : plot.right;
+      const right = next ? (center + x(next)) / 2 : SVG_WIDTH;
       const primaryY = y(mode === "basis" ? row.basis : row.realTime);
       const secondaryY = y(mode === "basis" ? 0 : row.dayAhead);
       return `<g class="power-basis__column" data-power-basis-column=""
           data-timestamp="${escapeXml(row.timestamp)}"
-          data-x="${coordinate(center)}" data-primary-y="${coordinate(primaryY)}"
+          data-x="${coordinate(markerX)}" data-primary-y="${coordinate(primaryY)}"
           data-secondary-y="${coordinate(secondaryY)}"
           data-date="${escapeXml(formatDate(row.date))}"
           data-real-time="${escapeXml(formatPrice(row.realTime))}"
@@ -579,6 +599,24 @@ function setText(root, selector, value) {
 
 function coordinate(value) {
   return Math.round(Number(value) * 100) / 100;
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function svgUniformScale(svgNode, height) {
+  const widthScale = Number(svgNode?.clientWidth) / SVG_WIDTH;
+  const heightScale = Number(svgNode?.clientHeight) / height;
+  if (widthScale > 0 && heightScale > 0) {
+    return Math.min(widthScale, heightScale);
+  }
+  return positiveScale(widthScale || heightScale);
+}
+
+function positiveScale(value) {
+  const scale = Number(value);
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
 function escapeXml(value) {

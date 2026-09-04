@@ -42,6 +42,7 @@ export function mountDealView(
     variant = "static",
     palette,
     reducedMotion = false,
+    revealMotion = true,
     interactive = false,
   } = {},
 ) {
@@ -74,7 +75,7 @@ export function mountDealView(
   const isQuote = model.viewKind === "quote";
   const chartMotion = configureDealHistoryMotion(
     mount,
-    reducedMotion,
+    reducedMotion || !revealMotion,
     normalizedVariant === "full" && interactive,
   );
   const historyInteraction = normalizedVariant === "full" && interactive

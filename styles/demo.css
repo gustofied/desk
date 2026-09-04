@@ -132,7 +132,7 @@ body {
 @media (max-width: 640px) {
   body {
     align-items: start;
-    padding: calc(96px + 32px) 12px 64px;
+    padding: 136px 12px 64px;
   }
 
   .desk-stage {
@@ -154,20 +154,20 @@ body {
   }
 
   :root[data-desk-layout="all"] body {
-    padding-top: calc(96px + 32px);
+    padding-top: 136px;
   }
 
   :root[data-display-toolbar="expanded"] body,
   :root[data-display-toolbar="expanded"][data-desk-layout="all"] body {
-    padding-top: calc(96px + 80px);
+    padding-top: 184px;
   }
 
   .desk-stage .gpu-index {
-    scroll-margin-top: calc(96px + 32px);
+    scroll-margin-top: 136px;
   }
 
   :root[data-display-toolbar="expanded"] .desk-stage .gpu-index {
-    scroll-margin-top: calc(96px + 80px);
+    scroll-margin-top: 184px;
   }
 
   .desk-stage .gpu-benchmark__chart {

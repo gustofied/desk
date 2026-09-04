@@ -11,6 +11,8 @@ import {
 const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 630;
 const COMPACT_SVG_HEIGHT = 675;
+const HISTORY_READOUT_DOT_RADIUS = 6;
+const HISTORY_READOUT_DOT_STROKE_WIDTH = 2.5;
 
 export function renderGpuMarketDepthSvg(model, options = {}) {
   const { inner, ariaLabel } = gpuMarketDepthMarkup(model, options);
@@ -40,8 +42,14 @@ export function paintGpuMarketDepthChart(
   const focusedPrice = interactionTarget?.dataset.depthActivePrice;
   const focusedHistoryTimestamp =
     interactionTarget?.dataset.depthActiveTimestamp;
-  const { inner, ariaLabel } = gpuMarketDepthMarkup(model, options);
   const height = options.compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
+  const { inner, ariaLabel } = gpuMarketDepthMarkup(model, {
+    ...options,
+    _renderScale: {
+      x: svgAxisScale(svgNode.clientWidth, SVG_WIDTH),
+      y: svgAxisScale(svgNode.clientHeight, height),
+    },
+  });
   const canInteract = interactive && !decorative && !options.minimal;
   const view = depthView(model, options);
 
@@ -134,6 +142,7 @@ export function gpuMarketDepthMarkup(
     compact = false,
     artifact = compact,
     minimal = false,
+    _renderScale = {},
     ...options
   } = {},
 ) {
@@ -149,12 +158,20 @@ export function gpuMarketDepthMarkup(
       artifact,
       minimal,
       layout,
+      renderScale: _renderScale,
     });
   }
   const capacityMaximum = Math.max(
     model.targetNodes,
     model.current.totalAvailableNodes,
   );
+  const profileStrokeWidth = compact ? 6 : 3.5;
+  // Non-scaling strokes stay in CSS pixels; their safe inset must account for
+  // the current viewBox-to-viewport scale on each axis.
+  const profileInsetX = profileStrokeWidth / 2 /
+    positiveScale(_renderScale?.x);
+  const profileInsetY = profileStrokeWidth / 2 /
+    positiveScale(_renderScale?.y);
   const capacityScale = linearScale(
     0,
     capacityMaximum,
@@ -162,6 +179,11 @@ export function gpuMarketDepthMarkup(
     layout.plotRight,
   );
   const x = (value) => capacityScale(value);
+  const profileX = (value) => clamp(
+    x(value),
+    layout.plotLeft + profileInsetX,
+    layout.plotRight - profileInsetX,
+  );
   const displayPriceDomain = paddedPriceDomain(
     model.priceDomain,
     model.priceLevels,
@@ -172,7 +194,15 @@ export function gpuMarketDepthMarkup(
     layout.plotBottom,
     layout.plotTop,
   );
-  const currentPath = availabilityProfilePath(model.current.buckets, x, y);
+  const profileY = (value) => Math.max(
+    layout.plotTop + profileInsetY,
+    y(value),
+  );
+  const currentPath = availabilityProfilePath(
+    model.current.buckets,
+    profileX,
+    profileY,
+  );
   const currentArea = availabilityAreaPath(
     model.current.buckets,
     layout.plotLeft,
@@ -235,7 +265,7 @@ export function gpuMarketDepthMarkup(
     ${shelfBands}
     <path class="gpu-market-depth__profile" data-depth-current-profile=""
       d="${currentPath}" fill="none" stroke="${palette.line}"
-      stroke-width="${compact ? 6 : 3.5}" stroke-linecap="round" stroke-linejoin="round"
+      stroke-width="${profileStrokeWidth}" stroke-linecap="round" stroke-linejoin="round"
       vector-effect="non-scaling-stroke" pathLength="1" stroke-dasharray="1" stroke-dashoffset="0"/>
     <line data-depth-reference="" x1="${layout.plotLeft}" x2="${layout.plotRight}"
       y1="${coordinate(referenceY)}" y2="${coordinate(referenceY)}"
@@ -250,9 +280,17 @@ export function gpuMarketDepthMarkup(
 
 function gpuMarketDepthHistoryMarkup(
   model,
-  { palette, title, compact, artifact, minimal, layout },
+  { palette, title, compact, artifact, minimal, layout, renderScale },
 ) {
   const history = historySnapshots(model);
+  const clearingStrokeWidth = compact ? 5 : 3.5;
+  const pathInsetX = clearingStrokeWidth / 2 /
+    positiveScale(renderScale?.x);
+  const pathInsetY = clearingStrokeWidth / 2 /
+    positiveScale(renderScale?.y);
+  const readoutInsetX = HISTORY_READOUT_DOT_RADIUS +
+    HISTORY_READOUT_DOT_STROKE_WIDTH / 2 /
+      positiveScale(renderScale?.x);
   const displayPriceDomain = paddedPriceDomain(
     model.priceDomain,
     model.priceLevels,
@@ -263,14 +301,25 @@ function gpuMarketDepthHistoryMarkup(
     layout.plotBottom,
     layout.plotTop,
   );
+  const pathY = (value) => Math.max(layout.plotTop + pathInsetY, y(value));
   const columnWidth = (layout.plotRight - layout.plotLeft) /
     Math.max(1, history.length);
   const xForIndex = (index) =>
     layout.plotLeft + (index + 0.5) * columnWidth;
-  const xForPathIndex = (index) => history.length <= 1
-    ? (layout.plotLeft + layout.plotRight) / 2
-    : layout.plotLeft +
-      (index / (history.length - 1)) * (layout.plotRight - layout.plotLeft);
+  const xForReadoutIndex = (index) => clamp(
+    xForIndex(index),
+    layout.plotLeft + readoutInsetX,
+    layout.plotRight - readoutInsetX,
+  );
+  const xForPathIndex = (index) => clamp(
+    history.length <= 1
+      ? (layout.plotLeft + layout.plotRight) / 2
+      : layout.plotLeft +
+        (index / (history.length - 1)) *
+          (layout.plotRight - layout.plotLeft),
+    layout.plotLeft + pathInsetX,
+    layout.plotRight - pathInsetX,
+  );
   const intensityMaximum = historyIntensityMaximum(history);
   const cells = history
     .map((snapshot, columnIndex) => {
@@ -315,13 +364,13 @@ function gpuMarketDepthHistoryMarkup(
     history,
     (snapshot) => snapshot.benchmarkPrice,
     xForPathIndex,
-    y,
+    pathY,
   );
   const clearingPath = historyValuePath(
     history,
     (snapshot) => snapshot.clearingPrice,
     xForPathIndex,
-    y,
+    pathY,
   );
   const ariaLabel = marketDepthHistoryAriaLabel(model, history, title);
   const hitColumns = minimal
@@ -332,6 +381,7 @@ function gpuMarketDepthHistoryMarkup(
         layout,
         columnWidth,
         xForIndex,
+        xForReadoutIndex,
         y,
       );
   const readout = minimal
@@ -359,7 +409,7 @@ function gpuMarketDepthHistoryMarkup(
       stroke-opacity="0.28" stroke-dasharray="2 8" stroke-linecap="round"
       stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
     <path data-depth-history-clearing="" d="${clearingPath}" fill="none"
-      stroke="${palette.line}" stroke-width="${compact ? 5 : 3.5}"
+      stroke="${palette.line}" stroke-width="${clearingStrokeWidth}"
       stroke-linecap="round" stroke-linejoin="round"
       vector-effect="non-scaling-stroke" pathLength="1"
       stroke-dasharray="1" stroke-dashoffset="0"/>
@@ -437,6 +487,7 @@ function configureHistoryNavigation(svgNode, focusedTimestamp, ariaLabel) {
       return;
     }
     const x = Number(column.dataset.x);
+    const readoutX = Number(column.dataset.readoutX);
     const width = Number(column.dataset.width);
     const benchmarkY = Number(column.dataset.benchmarkY);
     const clearingValue = column.dataset.clearingY;
@@ -450,18 +501,18 @@ function configureHistoryNavigation(svgNode, focusedTimestamp, ariaLabel) {
       .querySelector("[data-depth-history-highlight]")
       ?.setAttribute("width", coordinate(width));
     for (const node of overlay.querySelectorAll("[data-depth-history-guide]")) {
-      node.setAttribute("x1", coordinate(x));
-      node.setAttribute("x2", coordinate(x));
+      node.setAttribute("x1", coordinate(readoutX));
+      node.setAttribute("x2", coordinate(readoutX));
     }
     const basis = overlay.querySelector("[data-depth-history-basis]");
     basis?.setAttribute("y1", coordinate(benchmarkY));
     basis?.setAttribute("y2", coordinate(clearingY ?? benchmarkY));
     basis?.setAttribute("opacity", clearingVisible ? "0.58" : "0");
     const benchmark = overlay.querySelector("[data-depth-history-benchmark-dot]");
-    benchmark?.setAttribute("cx", coordinate(x));
+    benchmark?.setAttribute("cx", coordinate(readoutX));
     benchmark?.setAttribute("cy", coordinate(benchmarkY));
     const clearing = overlay.querySelector("[data-depth-history-clearing-dot]");
-    clearing?.setAttribute("cx", coordinate(x));
+    clearing?.setAttribute("cx", coordinate(readoutX));
     clearing?.setAttribute("cy", coordinate(clearingY ?? benchmarkY));
     clearing?.setAttribute("opacity", clearingVisible ? "1" : "0");
     setText(overlay, "[data-depth-history-date]", column.dataset.dateLabel);
@@ -545,11 +596,13 @@ function historyColumnMarkup(
   layout,
   columnWidth,
   xForIndex,
+  xForReadoutIndex,
   y,
 ) {
   return history
     .map((snapshot, index) => {
       const x = xForIndex(index);
+      const readoutX = xForReadoutIndex(index);
       const left = Math.max(
         layout.plotLeft,
         layout.plotLeft + index * columnWidth,
@@ -573,7 +626,8 @@ function historyColumnMarkup(
       );
       return `<g data-depth-history-column="" data-timestamp="${snapshot.timestamp}"
         style="cursor:crosshair;outline:none"
-        data-x="${coordinate(x)}" data-width="${coordinate(Math.max(1, right - left))}"
+        data-x="${coordinate(x)}" data-readout-x="${coordinate(readoutX)}"
+        data-width="${coordinate(Math.max(1, right - left))}"
         data-benchmark-y="${coordinate(benchmarkY)}"
         data-clearing-y="${clearingY === "" ? "" : coordinate(clearingY)}"
         data-date-label="${escapeXml(formatHistoryDate(snapshot.timestamp))}"
@@ -606,7 +660,7 @@ function historyReadoutMarkup(palette, layout, compact) {
     <circle data-depth-history-benchmark-dot="" cx="0" cy="0" r="5"
       fill="${palette.paper}" stroke="${palette.secondary}" stroke-width="2.5"
       vector-effect="non-scaling-stroke"/>
-    <circle data-depth-history-clearing-dot="" cx="0" cy="0" r="6"
+    <circle data-depth-history-clearing-dot="" cx="0" cy="0" r="${HISTORY_READOUT_DOT_RADIUS}"
       fill="${palette.line}" stroke="${palette.paper}" stroke-width="2.5"
       vector-effect="non-scaling-stroke"/>
     <text x="18" y="${coordinate(readoutY)}" font-family="Geist Mono, monospace"
@@ -1039,6 +1093,19 @@ function chartLayout(compact) {
     plotTop: 0,
     plotBottom: height - 8,
   };
+}
+
+function clamp(value, minimum, maximum) {
+  return Math.max(minimum, Math.min(maximum, value));
+}
+
+function svgAxisScale(renderedLength, viewBoxLength) {
+  return positiveScale(Number(renderedLength) / viewBoxLength);
+}
+
+function positiveScale(value) {
+  const scale = Number(value);
+  return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
 function normalizeColors(colors) {

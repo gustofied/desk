@@ -150,7 +150,8 @@
   :root[data-desk-view="monitor"]
     .gpu-index:is(
       [data-card-renderer="line"],
-      [data-card-renderer="power-basis"]
+      [data-card-renderer="power-basis"],
+      [data-card-renderer="cumulative-depth"]
     )
     .gpu-benchmark__mobile-summary {
     display: grid;
@@ -1594,7 +1595,7 @@ button.compute-share-card-frame:focus-visible {
 
 @media (max-width: 640px) {
   .desk-top-controls {
-    top: calc(64px + 8px);
+    top: 84px;
     left: 50%;
     gap: 4px;
   }
@@ -1602,7 +1603,7 @@ button.compute-share-card-frame:focus-visible {
   .desk-corners::before {
     position: absolute;
     inset: 0 0 auto;
-    height: calc(96px + 32px);
+    height: 136px;
     content: "";
     background: var(--desk-canvas);
     transition:
@@ -1611,7 +1612,7 @@ button.compute-share-card-frame:focus-visible {
   }
 
   :root[data-display-toolbar="expanded"] .desk-corners::before {
-    height: calc(96px + 80px);
+    height: 184px;
   }
 
   .desk-corner {
@@ -1678,12 +1679,7 @@ button.compute-share-card-frame:focus-visible {
   }
 
   .gpu-benchmark__depth-contract {
-    flex: 0 0 auto;
-  }
-
-  .gpu-benchmark__depth-contract span {
-    padding-inline: 6px;
-    font-size: 10px;
+    display: none;
   }
 
   .gpu-benchmark__depth-choice > button,
@@ -1716,7 +1712,7 @@ button.compute-share-card-frame:focus-visible {
     padding-inline: 4px;
   }
 
-  .gpu-benchmark__data-row:first-child {
+  .gpu-benchmark__data-row[data-card-primary-row] {
     display: grid;
     grid-template-columns: 64px minmax(0, 1fr);
     overflow: visible;
@@ -1724,17 +1720,17 @@ button.compute-share-card-frame:focus-visible {
     mask-image: none;
   }
 
-  .gpu-benchmark__data-row:first-child .gpu-benchmark__primary {
+  .gpu-benchmark__data-row[data-card-primary-row] .gpu-benchmark__primary {
     min-width: 0;
     overflow-x: auto;
     scrollbar-width: none;
   }
 
-  .gpu-benchmark__data-row:first-child .gpu-benchmark__primary::-webkit-scrollbar {
+  .gpu-benchmark__data-row[data-card-primary-row] .gpu-benchmark__primary::-webkit-scrollbar {
     display: none;
   }
 
-  .gpu-benchmark__data-row:first-child .gpu-benchmark__scale-control {
+  .gpu-benchmark__data-row[data-card-primary-row] .gpu-benchmark__scale-control {
     grid-column: 1 / -1;
     margin-left: 0;
     border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
@@ -1753,7 +1749,7 @@ button.compute-share-card-frame:focus-visible {
     flex: 0 0 20px;
   }
 
-  .gpu-benchmark__data-row:last-child {
+  .gpu-benchmark__data-row[data-card-layer-row] {
     display: grid;
     grid-template-columns: 64px minmax(0, 1fr);
     overflow: visible;
@@ -1761,17 +1757,17 @@ button.compute-share-card-frame:focus-visible {
     mask-image: none;
   }
 
-  .gpu-benchmark__data-row:last-child .gpu-benchmark__layers {
+  .gpu-benchmark__data-row[data-card-layer-row] .gpu-benchmark__layers {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     min-width: 0;
   }
 
-  .gpu-benchmark__data-row:last-child .gpu-benchmark__layers::after {
+  .gpu-benchmark__data-row[data-card-layer-row] .gpu-benchmark__layers::after {
     display: none;
   }
 
-  .gpu-benchmark__data-row:last-child .gpu-benchmark__layers button {
+  .gpu-benchmark__data-row[data-card-layer-row] .gpu-benchmark__layers button {
     gap: 4px;
     min-width: 0;
     padding-inline: 4px;
@@ -1887,6 +1883,7 @@ button.compute-share-card-frame:focus-visible {
   .desk-display-option,
   .desk-view-action,
   .desk-corners,
+  .desk-corners::before,
   .gpu-index,
   .gpu-index-detail,
   .gpu-benchmark,
