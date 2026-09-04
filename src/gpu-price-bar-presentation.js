@@ -137,7 +137,9 @@ export function gpuPriceBarMarkup(
   const palette = normalizeColors(colors);
   const bars = model.bars;
   const canvasHeight = compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
-  const railY = canvasHeight / 2;
+  // Artifact cards carry their heading inside the canvas, so the rail needs a
+  // small optical offset to sit in the center of the remaining visual field.
+  const railY = canvasHeight / 2 + (artifact ? 24 : 0);
   const copyOpticalOffset = 32;
   const priceY = railY - (compact ? 74 : 76) + copyOpticalOffset;
   const labelY = railY + (compact ? 80 : 76) + copyOpticalOffset;

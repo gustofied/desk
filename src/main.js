@@ -4557,6 +4557,9 @@ if (root) {
     }
 
     state.transitionPending = false;
+    if (mobileViewport.matches && targetLayout !== "all") {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
     root.dispatchEvent(
       new CustomEvent("compute-card:panel", {
         detail: { panel: nextName, layout: state.layout, mode: state.mode },

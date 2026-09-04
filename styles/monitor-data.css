@@ -297,54 +297,94 @@
   }
 
   .desk-data-rail__toggle {
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
-    padding-inline: 8px;
+    padding-inline: 12px;
   }
 
+  .desk-data-rail__toggle > small,
   .desk-data-rail__path {
-    padding-inline: 8px;
-  }
-
-  .desk-data-rail__path li > span {
-    padding-inline: 8px;
+    display: none;
   }
 
   .desk-data-rail__workspace {
-    padding: 16px 8px 24px;
+    padding: 16px;
+  }
+
+  .desk-data-rail__action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    white-space: nowrap;
+    clip-path: inset(50%);
+  }
+
+  .desk-data-rail__command {
+    background: color-mix(in srgb, var(--desk-accent) 6%, transparent);
+    border: 0;
+    border-radius: 2px;
   }
 
   .desk-data-rail pre {
-    block-size: 192px;
-    padding: 24px 16px;
+    block-size: auto;
+    min-block-size: 112px;
+    max-block-size: 192px;
+    padding: 16px;
     font-size: 12px;
     line-height: 16px;
   }
 
   .desk-data-rail__footer {
-    padding-inline: 8px;
-  }
-
-  .desk-data-rail__footer :is(a, button) {
-    padding-inline: 8px;
-  }
-}
-
-@media (max-width: 420px) {
-  .desk-data-rail__footer {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: 0;
     padding: 0;
   }
 
   .desk-data-rail__resources,
   .desk-data-rail__actions {
+    display: grid;
     min-height: 48px;
-    padding-inline: 8px;
+    gap: 0;
+    align-items: stretch;
+  }
+
+  .desk-data-rail__resources {
+    grid-row: 2;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border-top: 1px solid var(--desk-data-rule);
   }
 
   .desk-data-rail__actions {
-    justify-content: flex-end;
-    border-top: 1px solid var(--desk-data-rule);
+    grid-row: 1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .desk-data-rail__footer :is(a, button) {
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    padding-inline: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .desk-data-rail__resources a + a,
+  .desk-data-rail__actions button + button {
+    border-left: 1px solid var(--desk-data-rule);
+  }
+
+  .desk-data-rail__footer [data-monitor-data-copy] {
+    background: color-mix(in srgb, var(--desk-accent) 6%, transparent);
+  }
+}
+
+@media (max-width: 420px) {
+  .desk-data-rail__toggle {
+    padding-inline: 8px;
   }
 }
 

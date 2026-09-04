@@ -1365,31 +1365,6 @@ button.compute-share-card-frame:focus-visible {
   }
 }
 
-@media (max-width: 480px) {
-  .gpu-index[data-craft-empty="true"] .gpu-benchmark__chart {
-    min-height: 304px;
-  }
-
-  .gpu-benchmark__craft-empty {
-    padding: 20px;
-  }
-
-  .gpu-benchmark__craft-types {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .gpu-benchmark__craft-types button,
-  .gpu-benchmark__craft-types button:nth-child(-n + 2) {
-    grid-column: auto;
-    border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
-    border-left: 0;
-  }
-
-  .gpu-benchmark__craft-types button:first-child {
-    border-top: 0;
-  }
-}
-
 .gpu-index[data-craft-empty="true"] .gpu-benchmark__footer {
   display: none;
 }
@@ -1584,9 +1559,28 @@ button.compute-share-card-frame:focus-visible {
 
 @media (max-width: 640px) {
   .desk-top-controls {
-    top: 64px;
+    top: calc(64px + 8px);
     left: 50%;
     gap: 4px;
+  }
+
+  .desk-corners::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: calc(96px + 32px);
+    content: "";
+    background: var(--desk-canvas);
+    transition:
+      height 240ms var(--desk-ease-out),
+      background-color 240ms var(--desk-ease-out);
+  }
+
+  :root[data-display-toolbar="expanded"] .desk-corners::before {
+    height: calc(96px + 80px);
+  }
+
+  .desk-corner {
+    z-index: 1;
   }
 
   .desk-mobile-search {
@@ -1623,6 +1617,25 @@ button.compute-share-card-frame:focus-visible {
 
   .gpu-benchmark__composer {
     grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+
+  .gpu-index[data-craft-empty="true"] .gpu-benchmark__chart {
+    height: auto;
+    min-height: 0;
+    margin-top: 0;
+    aspect-ratio: auto;
+    border: 0;
+  }
+
+  .gpu-index[data-craft-empty="true"] .gpu-benchmark__craft-empty {
+    position: relative;
+    inset: auto;
+    padding: 16px;
+  }
+
+  .gpu-index[data-craft-empty="true"] .gpu-benchmark__craft-types {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border: 0;
   }
 
   .gpu-benchmark__depth-craft {
