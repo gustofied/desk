@@ -13,8 +13,8 @@
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="Desk">
     <meta property="og:url" content="https://desk.adamsioud.com/">
-    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=11">
-    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=11">
+    <meta property="og:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=12">
+    <meta property="og:image:secure_url" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=12">
     <meta property="og:image:type" content="image/png">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
@@ -22,7 +22,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Desk">
     <meta name="twitter:description" content="Explore, compose, monitor, and share compute market views.">
-    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=11">
+    <meta name="twitter:image" content="https://desk.adamsioud.com/assets/social/gpu-index/desk-comparison.png?v=12">
     <meta name="twitter:image:alt" content="A Desk comparison chart showing H100, H200, and the Token Price Index.">
     <title>Desk</title>
     <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
@@ -38,6 +38,23 @@
           ? params.get("view")
           : null;
         const requestedLayout = params.get("layout");
+        const hasViewState = [
+          "card",
+          "view",
+          "layout",
+          "gpu",
+          "layers",
+          "scale",
+          "range",
+          "location",
+          "target",
+          "quantity",
+          "quote",
+          "rfs",
+          "stage",
+          "item",
+          "draft",
+        ].some((name) => params.has(name));
         const mobileViewport = window.matchMedia("(max-width: 640px)");
         const mobileCardView =
           mobileViewport.matches && requestedView === "card";
@@ -46,7 +63,7 @@
           : "dark";
         let palette = palettes.includes(requestedPalette)
           ? requestedPalette
-          : "sand";
+          : "linen";
         try {
           const savedTheme = window.localStorage.getItem("desk-theme");
           const savedPalette = window.localStorage.getItem("desk-palette");
@@ -58,7 +75,7 @@
             theme = savedTheme === "light" || savedTheme === "dark"
               ? savedTheme
               : "dark";
-            palette = palettes.includes(savedPalette) ? savedPalette : "sand";
+            palette = palettes.includes(savedPalette) ? savedPalette : "linen";
           }
         } catch {}
         document.documentElement.dataset.theme = theme;
@@ -74,7 +91,8 @@
           (
             mobileViewport.matches ||
             requestedView === "gallery" ||
-            requestedLayout === "all"
+            requestedLayout === "all" ||
+            !hasViewState
           );
         document.documentElement.dataset.deskView = deskView;
         document.documentElement.dataset.deskLayout = isGallery ? "all" : "focus";
@@ -85,13 +103,13 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=85">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=61">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=87">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=62">
     <link rel="stylesheet" href="./styles/monitor-data.css?v=15">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
     <link rel="stylesheet" href="./styles/deal-view.css?v=40">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
-    <link rel="stylesheet" href="./styles/demo.css?v=22">
+    <link rel="stylesheet" href="./styles/demo.css?v=23">
   </head>
   <body>
     <div class="desk-top-controls">
@@ -99,7 +117,7 @@
         <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Azure palette" aria-pressed="false" data-palette-value="azure">
           <i aria-hidden="true"></i>
         </button>
-        <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Linen palette" aria-pressed="false" data-palette-value="linen">
+        <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Linen palette" aria-pressed="true" data-palette-value="linen">
           <i aria-hidden="true"></i>
         </button>
         <button class="desk-display-option desk-theme-option" type="button" aria-pressed="false" data-theme-value="light">Light</button>
@@ -107,7 +125,7 @@
         <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Sage Green palette" aria-pressed="false" data-palette-value="sage">
           <i aria-hidden="true"></i>
         </button>
-        <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Warm Sand palette" aria-pressed="true" data-palette-value="sand">
+        <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Warm Sand palette" aria-pressed="false" data-palette-value="sand">
           <i aria-hidden="true"></i>
         </button>
       </nav>
@@ -160,29 +178,7 @@
         data-card-id="gpu-index"
       >
         <header class="desk-card-rail">
-          <div class="desk-card-tabs" role="tablist" aria-label="Market views">
-            <button id="gpu-card-tab-h100" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-gpu-family="H100">
-              <span>H100</span>
-            </button>
-            <button id="gpu-card-tab-h200" type="button" role="tab" aria-selected="true" aria-controls="desk-card-focus" data-gpu-family="H200">
-              <span>H200</span>
-            </button>
-            <button id="gpu-card-tab-b200" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-gpu-family="B200">
-              <span>B200</span>
-            </button>
-            <button id="gpu-card-tab-b300" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-gpu-family="B300">
-              <span>B300</span>
-            </button>
-            <button id="gpu-card-tab-prices" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-card-preset="gpu-price-snapshot">
-              <span>Prices</span>
-            </button>
-            <button id="gpu-card-tab-depth" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-card-preset="gpu-market-depth">
-              <span>Depth</span>
-            </button>
-            <button id="gpu-card-tab-power" type="button" role="tab" aria-selected="false" aria-controls="desk-card-focus" data-card-preset="power-basis">
-              <span>Power</span>
-            </button>
-          </div>
+          <div class="desk-card-tabs" role="tablist" aria-label="Views in this catalog" data-view-tabs></div>
           <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog views" data-index-gallery-toggle>All</button>
         </header>
         <div
@@ -190,7 +186,7 @@
           id="desk-card-focus"
           tabindex="-1"
           data-card-theme="dark"
-          data-card-palette="sand"
+          data-card-palette="linen"
           data-card-layout-panel="focus"
         >
           <div class="gpu-index-detail-stage" data-index-panel="detail">
@@ -423,7 +419,7 @@
 
             <section
               class="desk-data-rail deal-journey-rail"
-              aria-label="Deal details"
+              aria-label="Deal activity"
               data-deal-journey
               hidden
               inert
@@ -449,48 +445,11 @@
                 hidden
                 inert
               >
-                <div class="deal-journey-rail__details">
-                  <section
-                    class="deal-journey-rail__states"
-                    aria-labelledby="deal-details-states-title"
-                  >
-                    <h3
-                      class="desk-data-rail__sr-only"
-                      id="deal-details-states-title"
-                    >Deal status</h3>
-                    <dl
-                      class="deal-journey-rail__states-list"
-                      data-deal-journey-states
-                    ></dl>
-                  </section>
-                  <section
-                    class="deal-journey-rail__terms"
-                    aria-labelledby="deal-details-terms-title"
-                  >
-                    <h3
-                      class="desk-data-rail__sr-only"
-                      id="deal-details-terms-title"
-                    >Terms</h3>
-                    <dl
-                      class="deal-journey-rail__terms-grid"
-                      data-deal-journey-terms
-                    ></dl>
-                  </section>
-                  <section
-                    class="deal-journey-rail__activity"
-                    aria-labelledby="deal-details-activity-title"
-                  >
-                    <h3
-                      class="desk-data-rail__sr-only"
-                      id="deal-details-activity-title"
-                    >Activity</h3>
-                    <ol
-                      class="deal-journey-rail__activity-list"
-                      aria-label="Deal activity"
-                      data-deal-journey-events-list
-                    ></ol>
-                  </section>
-                </div>
+                <ol
+                  class="deal-journey-rail__activity-list"
+                  aria-label="Deal activity"
+                  data-deal-journey-events-list
+                ></ol>
               </div>
               <p class="desk-data-rail__sr-only" aria-live="polite" data-deal-journey-status></p>
             </section>
@@ -536,7 +495,7 @@
         <p class="desk-workspace-status" role="status" aria-live="polite" aria-atomic="true" data-workspace-status></p>
       </section>
     </main>
-    <aside class="desk-corners" aria-hidden="true">
+    <aside class="desk-corners" aria-label="Desk status">
       <span class="desk-corner desk-corner--top-left desk-brand">
         <span class="desk-brand__line">
           <span class="desk-brand__word">Market</span>
@@ -547,6 +506,7 @@
           <span class="desk-brand__word">Compute</span>
           <strong class="desk-brand__accent">Desks</strong>
         </span>
+        <a class="desk-brand__byline" href="https://www.adamsioud.com/exemplars/compute-desk/your_compute_desk.html">by <strong>ADAM</strong></a>
       </span>
       <time class="desk-corner desk-corner--top-left desk-market-clock" data-desk-clock>
         <span class="desk-market-clock__date" data-desk-clock-date>pending</span>

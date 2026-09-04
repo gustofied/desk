@@ -527,6 +527,41 @@ button.compute-share-card-frame:focus-visible {
   transition: color 240ms var(--desk-ease-out);
 }
 
+.desk-brand__byline {
+  margin-top: 0;
+  color: var(--desk-accent-deep);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  letter-spacing: 0.08em;
+  text-decoration-line: underline;
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+  text-transform: none;
+  opacity: 0.56;
+  pointer-events: auto;
+  transition:
+    color 240ms var(--desk-ease-out),
+    opacity 240ms var(--desk-ease-out),
+    text-decoration-color 240ms var(--desk-ease-out);
+}
+
+.desk-brand__byline strong {
+  font: inherit;
+  font-weight: 600;
+}
+
+.desk-brand__byline:hover {
+  opacity: 0.9;
+}
+
+.desk-brand__byline:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+  opacity: 1;
+}
+
 .desk-corner--top-right {
   top: 104px;
   right: 24px;

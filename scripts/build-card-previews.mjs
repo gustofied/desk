@@ -13,6 +13,8 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as d3 from "d3";
 import {
+  DEFAULT_PALETTE,
+  DEFAULT_THEME,
   getCardDefinition,
   normalizeCardState,
   PALETTES,
@@ -1214,7 +1216,7 @@ function renderLegacyCardImage(family, range, rows, latest, accent, theme) {
 }
 
 function renderDefaultComparisonImage() {
-  const colors = themeColors(palettes.sand, "dark");
+  const colors = themeColors(palettes[DEFAULT_PALETTE], DEFAULT_THEME);
   const startDate = new Date(latestDate.getTime() - RANGES["7d"].milliseconds);
   const layerIds = ["H100", "H200", "TOKEN"];
   const series = layerIds.map((layerId) => {

@@ -3,12 +3,16 @@ import {
   viewArtifactHeaderLayout,
   viewArtifactHeaderMarkup,
 } from "./view-artifact-header.js";
+import {
+  VIEW_EASE,
+  VIEW_REVEAL_DURATION,
+  VIEW_SUPPORT_DURATION,
+} from "./view-motion.js";
 
 const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 600;
 const COMPACT_SVG_HEIGHT = 675;
 const MAX_INTERACTION_COLUMNS = 180;
-const DESK_EASE_OUT = "cubic-bezier(0.32, 0.72, 0, 1)";
 
 export function renderPowerBasisSvg(model, options = {}) {
   const { inner, ariaLabel, height } = powerBasisMarkup(model, options);
@@ -66,16 +70,16 @@ export function paintPowerBasisChart(
   svgNode.querySelector("[data-power-basis-area]")?.animate?.(
     [{ opacity: 0 }, { opacity: 1 }],
     {
-      duration: 360,
-      easing: DESK_EASE_OUT,
+      duration: VIEW_SUPPORT_DURATION,
+      easing: VIEW_EASE,
       fill: "both",
     },
   );
   svgNode.querySelector('[data-power-basis-line="day-ahead"]')?.animate?.(
     [{ opacity: 0 }, { opacity: 1 }],
     {
-      duration: 360,
-      easing: DESK_EASE_OUT,
+      duration: VIEW_SUPPORT_DURATION,
+      easing: VIEW_EASE,
       fill: "both",
     },
   );
@@ -90,8 +94,8 @@ export function paintPowerBasisChart(
       ],
       {
         delay: 48,
-        duration: 560,
-        easing: DESK_EASE_OUT,
+        duration: VIEW_REVEAL_DURATION,
+        easing: VIEW_EASE,
         fill: "both",
       },
     );

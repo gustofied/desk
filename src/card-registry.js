@@ -21,20 +21,24 @@ const DEAL_VIEW_ID = "deal-view";
 const DEAL_VIEW_SLUG = "deal-041";
 const DEAL_VIEW_DATA_FILE = "data/deal-041.json";
 
-const PRIVATE_CAPACITY_LAYERS = Object.freeze([
-  Object.freeze({
-    id: "B200",
-    label: "B200",
-    unit: "usd-hour",
-    views: Object.freeze(["price"]),
-  }),
-]);
+const PRIVATE_CAPACITY_MODELS = Object.freeze(["H100", "H200", "B200", "B300"]);
+
+const PRIVATE_CAPACITY_LAYERS = Object.freeze(
+  PRIVATE_CAPACITY_MODELS.map((model) =>
+    Object.freeze({
+      id: model,
+      label: model,
+      unit: "usd-hour",
+      views: Object.freeze(["price"]),
+    })
+  ),
+);
 
 const PRIVATE_CAPACITY_OPTIONS = Object.freeze([
   Object.freeze({
     id: "gpu",
     label: "Model",
-    values: Object.freeze(["H100", "H200", "B200", "B300"]),
+    values: PRIVATE_CAPACITY_MODELS,
     default: "B200",
   }),
   Object.freeze({
@@ -66,7 +70,7 @@ const PRIVATE_CAPACITY_OPTIONS = Object.freeze([
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
 export const PUBLISHED_CARD_VERSION = "v17";
-export const DEFAULT_PALETTE = "sand";
+export const DEFAULT_PALETTE = "linen";
 export const DEFAULT_THEME = "dark";
 
 export const PALETTES = Object.freeze([
@@ -343,10 +347,10 @@ export const CARD_REGISTRY = Object.freeze([
       }),
     ]),
     catalogPresets: Object.freeze([
-      Object.freeze({ id: "h100-us", label: "H100 depth" }),
+      Object.freeze({ id: "h100-us", label: "Depth now" }),
       Object.freeze({
         id: "h100-history",
-        label: "H100 depth",
+        label: "Depth history",
         state: Object.freeze({ scale: "history", target: "128" }),
       }),
     ]),

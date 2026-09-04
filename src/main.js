@@ -67,6 +67,11 @@ import {
 import { shareRangeLabel } from "./share-range-label.js";
 import { viewArtifactHeaderLayout } from "./view-artifact-header.js";
 import {
+  VIEW_DETAIL_DURATION,
+  VIEW_REVEAL_DURATION,
+  VIEW_SUPPORT_DURATION,
+} from "./view-motion.js";
+import {
   horizontalHitZones,
   positionSvgTooltip,
 } from "./chart-pointer.js";
@@ -84,31 +89,33 @@ if (root) {
   const params = new URL(window.location.href).searchParams;
   const neutralCraftRequested =
     params.get("view") === "craft" && params.get("draft") === "new";
-  const cardDefinition = getCardDefinition(
+  let cardDefinition = getCardDefinition(
     neutralCraftRequested
       ? "gpu-index"
       : params.get("card") || root.dataset.cardId,
   );
-  const cardId = cardDefinition.id;
-  const isBarCard = cardDefinition.renderer === "categorical-bar";
-  const isDepthCard = cardDefinition.renderer === "cumulative-depth";
-  const isPowerCard = cardDefinition.renderer === "power-basis";
-  const isDealCard = cardDefinition.renderer === "deal";
-  const isQuoteCard = cardDefinition.viewKind === "quote";
-  const isTransactionCard = isDealCard && !isQuoteCard;
+  let cardId = cardDefinition.id;
+  let isBarCard = cardDefinition.renderer === "categorical-bar";
+  let isDepthCard = cardDefinition.renderer === "cumulative-depth";
+  let isPowerCard = cardDefinition.renderer === "power-basis";
+  let isDealCard = cardDefinition.renderer === "deal";
+  let isQuoteCard = cardDefinition.viewKind === "quote";
+  let isTransactionCard = isDealCard && !isQuoteCard;
   root.dataset.cardId = cardId;
   root.dataset.cardRenderer = cardDefinition.renderer || "line";
   root
     .querySelector(".gpu-index-detail__body")
     ?.setAttribute("aria-label", cardDefinition.title);
-  const craftDraftStorageKey = `desk.craft-draft.v1.${cardId}`;
+  let craftDraftStorageKey = `desk.craft-draft.v1.${cardId}`;
   const catalogScrollStorageKey = "desk.catalog-scroll.v1";
   const activeCatalogSessionKey = "desk.active-catalog.v1";
+  const railFocusStorageKey = "desk.rail-focus.v1";
+  let pendingRailFocusKey = takePendingRailFocus();
   const reducedMotion = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   ).matches;
   const mobileViewport = window.matchMedia("(max-width: 640px)");
-  const families = cardDefinition.layers
+  let families = cardDefinition.layers
     .filter((layer) => layer.primary !== false)
     .map((layer) => layer.id);
   const railFamilies = getCardDefinition("gpu-index").layers
@@ -130,6 +137,23 @@ if (root) {
     "craft",
   ];
   const requestedLayout = params.get("layout");
+  const hasViewState = [
+    "card",
+    "view",
+    "layout",
+    "gpu",
+    "layers",
+    "scale",
+    "range",
+    "location",
+    "target",
+    "quantity",
+    "quote",
+    "rfs",
+    "stage",
+    "item",
+    "draft",
+  ].some((name) => params.has(name));
   const mobileCardView =
     mobileViewport.matches && requestedView === "card";
   const initialMode =
@@ -149,7 +173,8 @@ if (root) {
     (
       mobileViewport.matches ||
       requestedView === "gallery" ||
-      requestedLayout === "all"
+      requestedLayout === "all" ||
+      !hasViewState
     )
       ? "all"
       : "focus";
@@ -259,6 +284,9 @@ if (root) {
       ]),
     ),
     cardRail: root.querySelector(".desk-card-rail"),
+    cardTabs: root.querySelector("[data-view-tabs]"),
+    cardRailButtons: [],
+    cardRailEntries: new Map(),
     galleryGrid: root.querySelector("[data-card-gallery-grid]"),
     galleryStatus: root.querySelector("[data-card-gallery-status]"),
     catalogBar: document.querySelector("[data-catalog-bar]"),
@@ -288,8 +316,6 @@ if (root) {
     dealPreview: root.querySelector("[data-deal-preview]"),
     dealWorkspace: root.querySelector("[data-deal-workspace]"),
     focusCardMonitor: root.querySelector("[data-focus-card-monitor]"),
-    familyButtons: Array.from(root.querySelectorAll("[data-gpu-family]")),
-    cardPresetButtons: Array.from(root.querySelectorAll("[data-card-preset]")),
     rangeButtons: Array.from(root.querySelectorAll("[data-gpu-range]")),
     rangeGroup: root.querySelector("[data-gpu-range-group]"),
     depthView: root.querySelector("[data-depth-view]"),
@@ -391,10 +417,18 @@ if (root) {
   });
   let dealPreviewMount = null;
   let dealWorkspaceMount = null;
+  let depthCraftListenersConfigured = false;
+  let dealCraftListenersConfigured = false;
   const catalogCards = new Map();
   const catalogReflowAnimations = new Map();
   let catalogPointerDrag = null;
   let suppressedCatalogClickKey = null;
+  let loadCardsPromise = Promise.resolve();
+  let activePanelTransition = null;
+  let activePanelIntent = null;
+  let queuedPanelIntent = null;
+  let cardEntryIntent = 0;
+  let unregisterCoreCommands = () => {};
   let unregisterSavedCatalogCommands = () => {};
   let unregisterCatalogCollectionCommands = () => {};
   initialize();
@@ -434,18 +468,6 @@ if (root) {
     configureUtcClock();
     if (initialStateNeedsRepair || initialViewNeedsRepair) updateLocation();
     configureChoiceButtons(
-      nodes.familyButtons,
-      (button) => button.dataset.gpuFamily,
-      selectCardTab,
-      "aria-selected",
-      "horizontal",
-    );
-    nodes.cardPresetButtons.forEach((button) => {
-      button.addEventListener("click", (event) => {
-        openCardPreset(button.dataset.cardPreset, "card", event.detail === 0);
-      });
-    });
-    configureChoiceButtons(
       nodes.rangeButtons,
       (button) => button.dataset.gpuRange,
       selectRange,
@@ -462,10 +484,12 @@ if (root) {
     for (const button of nodes.modeButtons) {
       button.addEventListener("click", () => {
         const mode = button.dataset.deskMode;
+        const workspace = intendedWorkspaceState();
         if (
           mode === "catalog" &&
-          state.mode === "catalog" &&
-          state.layout === "all"
+          workspace.mode === "catalog" &&
+          workspace.layout === "all" &&
+          !activePanelTransition
         ) {
           setCatalogMenuOpen(!state.catalogMenuOpen, { moveFocus: true });
         } else if (mode === "craft") openNeutralCraft(false);
@@ -507,7 +531,7 @@ if (root) {
 
     syncControls();
     syncComposerControls();
-    loadCards();
+    loadCardsPromise = loadCards();
   }
 
   function configureCraftStartControls() {
@@ -531,6 +555,9 @@ if (root) {
   }
 
   function configureComposerControls() {
+    nodes.optionButtons = [];
+    nodes.depthCraftViewButtons = [];
+
     if (nodes.primaryGroup) {
       nodes.primaryButtons = families.map((family) => {
         const button = document.createElement("button");
@@ -596,7 +623,12 @@ if (root) {
       );
     }
 
-    if (isDepthCard) configureDepthCraftControls();
+    if (isDepthCard) {
+      configureDepthCraftControls();
+    } else {
+      nodes.depthTargetOptions?.replaceChildren();
+      nodes.depthCraftViews?.replaceChildren();
+    }
 
     if (nodes.optionGroup && !isDepthCard && !isDealCard) {
       const optionControls = (cardDefinition.stateOptions || []).map((option) => {
@@ -634,6 +666,9 @@ if (root) {
       });
       nodes.optionGroup.replaceChildren(...optionControls);
       nodes.optionGroup.hidden = optionControls.length === 0;
+    } else if (nodes.optionGroup) {
+      nodes.optionGroup.replaceChildren();
+      nodes.optionGroup.hidden = true;
     }
   }
 
@@ -696,6 +731,9 @@ if (root) {
         "horizontal",
       );
     }
+
+    if (depthCraftListenersConfigured) return;
+    depthCraftListenersConfigured = true;
 
     nodes.depthTargetTrigger?.addEventListener("click", (event) => {
       setDepthCraftMenu(
@@ -793,6 +831,9 @@ if (root) {
         "radio",
       );
     }
+    if (dealCraftListenersConfigured) return;
+    dealCraftListenersConfigured = true;
+
     const controls = [
       ["quantity", nodes.dealCraftQuantity],
       ["quote", nodes.dealCraftQuote],
@@ -1666,6 +1707,7 @@ if (root) {
   }
 
   async function openNeutralCraft(focusNavigation = false) {
+    advanceCardEntryIntent();
     if (state.mode === "craft") {
       if (state.craftEmpty) {
         if (focusNavigation) {
@@ -1710,6 +1752,7 @@ if (root) {
   async function resumeCraftDraft(focusNavigation = false) {
     const draft = state.craftDraft;
     if (!draft) return;
+    advanceCardEntryIntent();
     applyCompositionFields(draft.cardState);
     state.activeCatalogId = draft.activeCatalogId;
     state.catalogName = draft.catalogName;
@@ -1780,6 +1823,7 @@ if (root) {
       (definition) => definition.id === nextCardId && definition.craftable !== false,
     );
     if (!nextCard) return;
+    advanceCardEntryIntent();
     const next = createComposition(nextCard.id, {
       palette: currentPalette(),
       theme: currentTheme(),
@@ -1906,7 +1950,8 @@ if (root) {
   }
 
   function configureCommandPalette() {
-    commandPalette.register([
+    unregisterCoreCommands();
+    unregisterCoreCommands = commandPalette.register([
       {
         id: "workspace.catalog",
         group: "Workspace",
@@ -2744,6 +2789,92 @@ if (root) {
     nodes.galleryGrid.replaceChildren(...cards);
     syncCatalogCollectionControls();
     syncCatalogCardPositions();
+    configureCardRail();
+  }
+
+  function configureCardRail() {
+    if (!nodes.cardTabs) return;
+    const previousScroll = nodes.cardTabs.scrollLeft;
+    const focusedKey = nodes.cardTabs.contains(document.activeElement)
+      ? document.activeElement?.dataset.catalogEntryKey || ""
+      : "";
+    const restoreKey = pendingRailFocusKey || focusedKey;
+    const entries = cardRailCatalogEntries();
+    const existingButtons = new Map(
+      nodes.cardRailButtons
+        .filter((button) => button.isConnected)
+        .map((button) => [button.dataset.catalogEntryKey, button]),
+    );
+    const buttons = entries.map((entry, index) => {
+      let button = existingButtons.get(entry.key);
+      const label = catalogEntryTitle(entry);
+      if (!button) {
+        button = document.createElement("button");
+        button.type = "button";
+        button.setAttribute("role", "tab");
+        button.setAttribute("aria-selected", "false");
+        button.setAttribute("aria-controls", "desk-card-focus");
+        button.dataset.catalogEntryKey = entry.key;
+        button.append(document.createElement("span"));
+        button.addEventListener("click", (event) => {
+          openCardRailEntry(
+            nodes.cardRailEntries.get(button.dataset.catalogEntryKey),
+            event.detail === 0,
+          );
+        });
+      }
+      button.id = `desk-view-tab-${entry.key}`;
+      button.setAttribute("aria-posinset", String(index + 1));
+      button.setAttribute("aria-setsize", String(entries.length));
+      button.title = label;
+      button.querySelector("span").textContent = label;
+      return button;
+    });
+    nodes.cardRailEntries = new Map(entries.map((entry) => [entry.key, entry]));
+    nodes.cardRailButtons = buttons;
+    const currentButtons = Array.from(nodes.cardTabs.children);
+    const structureChanged =
+      currentButtons.length !== buttons.length ||
+      buttons.some((button, index) => currentButtons[index] !== button);
+    if (structureChanged) nodes.cardTabs.replaceChildren(...buttons);
+    nodes.cardTabs.scrollLeft = previousScroll;
+    syncCardRailSelection(false);
+    if (!restoreKey) return;
+    pendingRailFocusKey = "";
+    const restoreButton = buttons.find(
+      (button) => button.dataset.catalogEntryKey === restoreKey,
+    ) || activeCardRailButton();
+    window.requestAnimationFrame(() => {
+      if (!restoreButton?.isConnected) return;
+      restoreButton.focus({ preventScroll: true });
+      revealCardRailTab(restoreButton);
+    });
+  }
+
+  function cardRailCatalogEntries() {
+    const entries = catalogEntries();
+    const activeKey = activeCatalogKey();
+    if (activeKey && entries.some((entry) => entry.key === activeKey)) {
+      return entries;
+    }
+    const activeEntry = activeKey
+      ? catalogEntriesAll().find((entry) => entry.key === activeKey)
+      : null;
+    if (activeEntry) return [activeEntry, ...entries];
+    return [
+      {
+        key: currentCardRailKey(),
+        kind: "current",
+        cardId,
+        label: workspaceLabel(),
+        state: currentCardState(),
+      },
+      ...entries,
+    ];
+  }
+
+  function currentCardRailKey() {
+    return `current-${cardId}`;
   }
 
   function catalogEntries() {
@@ -3182,6 +3313,7 @@ if (root) {
     }
     syncCatalogCardMapOrder();
     syncCatalogCollectionControls();
+    configureCardRail();
   }
 
   function syncCatalogCardMapOrder() {
@@ -3290,8 +3422,21 @@ if (root) {
   }
 
   function activeCatalogKey() {
-    if (state.craftDraft && !state.craftDraft.activeCatalogId) return null;
+    if (
+      state.mode === "craft" &&
+      state.craftDraft &&
+      !state.craftDraft.activeCatalogId
+    ) {
+      return null;
+    }
     if (state.activeCatalogId) {
+      if (
+        !state.savedCatalog.some((item) => item.id === state.activeCatalogId)
+      ) {
+        state.activeCatalogId = null;
+        state.catalogName = "";
+        return null;
+      }
       return savedCatalogKey(cardId, state.activeCatalogId);
     }
     const presetId = activePresetId();
@@ -3328,7 +3473,7 @@ if (root) {
 
     if (nodes.cardRail) {
       const showRail =
-        !isDealCard && state.layout === "focus" && state.panel === "share";
+        state.layout === "focus" && state.mode !== "craft";
       nodes.cardRail.hidden = !showRail;
       nodes.cardRail.toggleAttribute("inert", !showRail);
     }
@@ -3645,10 +3790,9 @@ if (root) {
 
   function handleCardRailKeydown(event) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-    const tabs = [
-      ...nodes.familyButtons,
-      ...nodes.cardPresetButtons,
-    ].filter((button) => button && !button.disabled);
+    const tabs = nodes.cardRailButtons.filter(
+      (button) => button.isConnected && !button.disabled,
+    );
     const current = tabs.indexOf(event.target);
     if (current < 0) return;
     event.preventDefault();
@@ -3660,9 +3804,12 @@ if (root) {
           ? tabs.length - 1
           : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
             tabs.length;
-    tabs[nextIndex].focus({ preventScroll: true });
-    tabs[nextIndex].click();
-    window.requestAnimationFrame(() => revealCardRailTab(tabs[nextIndex]));
+    const nextTab = tabs[nextIndex];
+    tabs.forEach((tab) => {
+      tab.tabIndex = tab === nextTab ? 0 : -1;
+    });
+    nextTab.focus({ preventScroll: true });
+    window.requestAnimationFrame(() => revealCardRailTab(nextTab));
   }
 
   function handleMobileViewportChange(event) {
@@ -3677,18 +3824,219 @@ if (root) {
   }
 
   function revealCardRailTab(button) {
-    if (!mobileViewport.matches || !button) return;
+    if (!button) return;
     const scroller = button.closest(".desk-card-tabs");
     if (!scroller) return;
-    const tabStart = button.offsetLeft;
-    const tabEnd = tabStart + button.offsetWidth;
-    const visibleStart = scroller.scrollLeft;
-    const visibleEnd = visibleStart + scroller.clientWidth;
-    if (tabStart < visibleStart) {
-      scroller.scrollTo({ left: tabStart, behavior: "auto" });
-    } else if (tabEnd > visibleEnd) {
-      scroller.scrollTo({ left: tabEnd - scroller.clientWidth, behavior: "auto" });
+    const scrollerRect = scroller.getBoundingClientRect();
+    const buttonRect = button.getBoundingClientRect();
+    const edgePadding = 8;
+    if (buttonRect.left < scrollerRect.left + edgePadding) {
+      scroller.scrollTo({
+        left:
+          scroller.scrollLeft +
+          buttonRect.left -
+          scrollerRect.left -
+          edgePadding,
+        behavior: "auto",
+      });
+    } else if (buttonRect.right > scrollerRect.right - edgePadding) {
+      scroller.scrollTo({
+        left:
+          scroller.scrollLeft +
+          buttonRect.right -
+          scrollerRect.right +
+          edgePadding,
+        behavior: "auto",
+      });
     }
+  }
+
+  function storePendingRailFocus(key) {
+    if (!key) return;
+    try {
+      window.sessionStorage.setItem(railFocusStorageKey, key);
+    } catch {
+      // Navigation still works when storage is unavailable.
+    }
+  }
+
+  function takePendingRailFocus() {
+    try {
+      const key = window.sessionStorage.getItem(railFocusStorageKey) || "";
+      window.sessionStorage.removeItem(railFocusStorageKey);
+      return key;
+    } catch {
+      return "";
+    }
+  }
+
+  function openCardRailEntry(entry, moveFocus) {
+    if (intendedWorkspaceState().mode === "monitor") {
+      monitorCatalogEntry(entry, moveFocus);
+      return;
+    }
+    openCatalogRailEntry(entry, moveFocus);
+  }
+
+  function advanceCardEntryIntent() {
+    cardEntryIntent += 1;
+    return cardEntryIntent;
+  }
+
+  function resetActiveRenderer() {
+    const chart = nodes.chart;
+
+    chart?.__deskDepthNavigation?.abort();
+    chart?.__deskPowerBasisNavigation?.abort();
+    if (chart) {
+      delete chart.__deskDepthNavigation;
+      delete chart.__deskPowerBasisNavigation;
+      delete chart.dataset.depthActivePrice;
+      delete chart.dataset.depthActiveTimestamp;
+      delete chart.dataset.powerBasisTimestamp;
+      chart.removeAttribute("data-depth-interactive");
+      chart.removeAttribute("data-power-basis-interactive");
+      chart.classList.remove("power-basis__interactive");
+      chart.removeAttribute("tabindex");
+      chart.removeAttribute("role");
+      chart.removeAttribute("aria-label");
+      chart.querySelector("[data-depth-live]")?.remove();
+      chart.querySelector("[data-power-basis-live]")?.remove();
+    }
+
+    if (nodes.svg) {
+      d3.select(nodes.svg).interrupt();
+      d3.select(nodes.svg).selectAll("*").interrupt();
+      nodes.svg.getAnimations?.().forEach((animation) => animation.cancel());
+      nodes.svg.querySelectorAll("*").forEach((node) => {
+        node.getAnimations?.().forEach((animation) => animation.cancel());
+      });
+      const description = document.createElementNS(
+        "http://www.w3.org/2000/svg",
+        "desc",
+      );
+      description.dataset.gpuChartDescription = "";
+      nodes.svg.replaceChildren(description);
+      nodes.chartDescription = description;
+      nodes.svg.removeAttribute("aria-hidden");
+      nodes.svg.setAttribute("role", "img");
+    }
+    if (nodes.shareArtifactSvg) {
+      d3.select(nodes.shareArtifactSvg).interrupt();
+      d3.select(nodes.shareArtifactSvg).selectAll("*").interrupt();
+      nodes.shareArtifactSvg
+        .querySelectorAll("*")
+        .forEach((node) => {
+          node.getAnimations?.().forEach((animation) => animation.cancel());
+        });
+      nodes.shareArtifactSvg.replaceChildren();
+      nodes.shareArtifactSvg.hidden = false;
+    }
+    if (nodes.tooltip) {
+      nodes.tooltip.hidden = true;
+      nodes.tooltip.replaceChildren();
+    }
+    if (nodes.chartState) nodes.chartState.hidden = true;
+  }
+
+  function activateCardDefinition(nextCard) {
+    if (!nextCard || nextCard.id === cardId) return true;
+    const sourceId = nextCard.sourceCardId || nextCard.id;
+    const payload = state.runtimePayloads.get(sourceId);
+    if (!payload) return false;
+
+    resetActiveRenderer();
+    dealPreviewMount?.destroy();
+    dealWorkspaceMount?.destroy();
+    dealPreviewMount = null;
+    dealWorkspaceMount = null;
+    dealJourneyRail.setModel(null);
+    monitorDataRail.setModel(null);
+    if (nodes.dealPreview) {
+      nodes.dealPreview.hidden = true;
+      nodes.dealPreview.replaceChildren();
+    }
+    if (nodes.dealWorkspace) {
+      nodes.dealWorkspace.hidden = true;
+      nodes.dealWorkspace.replaceChildren();
+    }
+    if (nodes.shareArtifactSvg) nodes.shareArtifactSvg.hidden = false;
+
+    cardDefinition = nextCard;
+    cardId = nextCard.id;
+    isBarCard = nextCard.renderer === "categorical-bar";
+    isDepthCard = nextCard.renderer === "cumulative-depth";
+    isPowerCard = nextCard.renderer === "power-basis";
+    isDealCard = nextCard.renderer === "deal";
+    isQuoteCard = nextCard.viewKind === "quote";
+    isTransactionCard = isDealCard && !isQuoteCard;
+    craftDraftStorageKey = `desk.craft-draft.v1.${cardId}`;
+    families = nextCard.layers
+      .filter((layer) => layer.primary !== false)
+      .map((layer) => layer.id);
+
+    root.dataset.cardId = cardId;
+    root.dataset.cardRenderer = nextCard.renderer || "line";
+    root.dataset.cardDataVersion = String(payload.version);
+    nodes.workspaceRegion?.setAttribute("aria-label", nextCard.title);
+    state.runtimePayload = payload;
+    state.dataRevision = payload.revision;
+    state.savedCatalog = loadSavedCatalog(cardId);
+    state.craftDraft = loadCraftDraft(state.savedCatalog);
+    state.catalogDirty = true;
+    state.zoomWindow = null;
+    state.compareOpen = false;
+    state.depthCraftMenu = null;
+    // Rebuild card-specific controls before applyCardState closes any open
+    // composer UI. That close synchronizes controls, so retaining buttons from
+    // the previous card here would compare them with the new card definition.
+    configureComposerControls();
+    return true;
+  }
+
+  function finishCardDefinitionChange(focusKey = "") {
+    if (focusKey) pendingRailFocusKey = focusKey;
+    configureDealCraftControls();
+    configureCommandPalette();
+    syncSavedCatalogCommands();
+    configureCardRail();
+  }
+
+  async function openCatalogRailEntry(entry, moveFocus) {
+    if (!entry) return;
+    const intent = advanceCardEntryIntent();
+    preserveCraftDraft();
+    const entryCard = getCardDefinition(entry.cardId || cardId);
+    const entryState = catalogEntryOpenState(entry);
+    const cardChanged = entryCard.id !== cardId;
+    if (cardChanged && !activateCardDefinition(entryCard)) {
+      await loadCardsPromise;
+      if (intent !== cardEntryIntent) return;
+      if (!activateCardDefinition(entryCard)) {
+        const url = cardUrl(entryCard.id, "card", entryState);
+        if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
+        if (moveFocus) storePendingRailFocus(entry.key);
+        persistCatalogScrollPosition();
+        window.location.assign(url);
+        return;
+      }
+    }
+    if (intent !== cardEntryIntent) return;
+    const alreadyFocused =
+      state.mode === "catalog" &&
+      state.panel === "share" &&
+      state.layout === "focus";
+    if (!applyCatalogEntryState(entry, entryState)) return;
+    if (cardChanged) finishCardDefinitionChange(moveFocus ? entry.key : "");
+    syncControls();
+    if (alreadyFocused) {
+      render(true);
+      updateLocation();
+      announceWorkspaceView();
+      if (moveFocus) activeCardRailButton()?.focus({ preventScroll: true });
+      return;
+    }
+    await showPanel("share", true, "focus", moveFocus, "catalog");
   }
 
   function selectCardTab(family, event) {
@@ -3711,6 +4059,7 @@ if (root) {
     stateOverrides = {},
   ) {
     const nextCard = getCardDefinition(nextCardId);
+    advanceCardEntryIntent();
     if (nextCard.id === cardId) {
       preserveCraftDraft();
       applyCardState({
@@ -3737,17 +4086,14 @@ if (root) {
 
   async function openPublishedCard(family, moveFocus) {
     if (!railFamilies.includes(family)) return;
+    advanceCardEntryIntent();
     preserveCraftDraft();
     applyCardState(publishedCardState(family));
     syncControls();
     if (state.panel === "share" && state.layout === "focus") {
       render(true);
       updateLocation();
-      if (moveFocus) {
-        nodes.familyButtons
-          .find((button) => button.dataset.gpuFamily === state.selected)
-          ?.focus({ preventScroll: true });
-      }
+      if (moveFocus) activeCardRailButton()?.focus({ preventScroll: true });
       announceWorkspaceView();
       return;
     }
@@ -3756,31 +4102,31 @@ if (root) {
 
   async function monitorCatalogEntry(entry, focusNavigation) {
     if (!entry) return;
+    const intent = advanceCardEntryIntent();
     preserveCraftDraft();
     const entryCard = getCardDefinition(entry.cardId || cardId);
     const entryState = catalogEntryOpenState(entry);
-    if (entryCard.id !== cardId) {
-      const url = cardUrl(entryCard.id, "monitor", entryState);
-      if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
-      persistCatalogScrollPosition();
-      window.location.assign(url);
-      return;
+    const cardChanged = entryCard.id !== cardId;
+    if (cardChanged && !activateCardDefinition(entryCard)) {
+      await loadCardsPromise;
+      if (intent !== cardEntryIntent) return;
+      if (!activateCardDefinition(entryCard)) {
+        const url = cardUrl(entryCard.id, "monitor", entryState);
+        if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
+        if (focusNavigation) storePendingRailFocus(entry.key);
+        persistCatalogScrollPosition();
+        window.location.assign(url);
+        return;
+      }
     }
+    if (intent !== cardEntryIntent) return;
     const alreadyMonitoring =
       state.mode === "monitor" &&
       state.panel === "detail" &&
       state.layout === "focus";
-    if (entry.kind === "saved") {
-      applyCardState(entry.item.state, {
-        catalogId: entry.item.id,
-        catalogName: entry.item.name,
-      });
-    } else if (entry.state) {
-      applyCardState(entryState);
-    } else if (families.includes(entry.family)) {
-      applyCardState(publishedCardState(entry.family));
-    } else {
-      return;
+    if (!applyCatalogEntryState(entry, entryState)) return;
+    if (cardChanged) {
+      finishCardDefinitionChange(focusNavigation ? entry.key : "");
     }
     syncControls();
     if (alreadyMonitoring) {
@@ -3788,13 +4134,33 @@ if (root) {
       updateLocation();
       announceWorkspaceView();
       if (focusNavigation) {
-        nodes.modeButtons
-          .find((button) => button.dataset.deskMode === "monitor")
-          ?.focus({ preventScroll: true });
+        activeCardRailButton()?.focus({ preventScroll: true });
       }
       return;
     }
     await switchWorkspaceMode("monitor", focusNavigation);
+  }
+
+  function applyCatalogEntryState(
+    entry,
+    entryState = catalogEntryOpenState(entry),
+  ) {
+    if (entry.kind === "saved") {
+      applyCardState(entry.item.state, {
+        catalogId: entry.item.id,
+        catalogName: entry.item.name,
+      });
+      return true;
+    }
+    if (entry.state) {
+      applyCardState(entryState);
+      return true;
+    }
+    if (families.includes(entry.family)) {
+      applyCardState(publishedCardState(entry.family));
+      return true;
+    }
+    return false;
   }
 
   function publishedCardState(family) {
@@ -3911,61 +4277,61 @@ if (root) {
     });
   }
 
-  function syncControls() {
-    const activeFamilyButton = nodes.familyButtons.find(
-      (button) => button.dataset.gpuFamily === state.selected,
-    );
-    const activePresetButton = nodes.cardPresetButtons.find(
-      (button) => button.dataset.cardPreset === cardId,
-    );
-    nodes.familyButtons.forEach((button) => {
-      const selected =
-        cardId === "gpu-index" &&
-        state.layout === "focus" &&
-        state.panel === "share" &&
-        button === activeFamilyButton;
+  function activeCardRailButton() {
+    const activeKey = activeCatalogKey() || currentCardRailKey();
+    return nodes.cardRailButtons.find(
+      (button) => button.dataset.catalogEntryKey === activeKey,
+    ) || null;
+  }
+
+  function syncCardRailSelection(allowReconfigure = true) {
+    if (!nodes.cardTabs) return;
+    let activeKey = activeCatalogKey() || currentCardRailKey();
+    const hasStaleCurrent =
+      activeKey !== currentCardRailKey() &&
+      nodes.cardRailEntries.has(currentCardRailKey());
+    if (!nodes.cardRailEntries.has(activeKey) || hasStaleCurrent) {
+      if (allowReconfigure) {
+        configureCardRail();
+        return;
+      }
+      activeKey =
+        nodes.cardRailButtons[0]?.dataset.catalogEntryKey ||
+        currentCardRailKey();
+    }
+    let activeButton = null;
+    nodes.cardRailButtons.forEach((button) => {
+      const selected = button.dataset.catalogEntryKey === activeKey;
       button.setAttribute("aria-selected", String(selected));
       button.tabIndex = selected ? 0 : -1;
+      if (selected) activeButton = button;
     });
-    nodes.cardPresetButtons.forEach((button) => {
-      const selected =
-        state.layout === "focus" &&
-        state.panel === "share" &&
-        button === activePresetButton;
-      button.setAttribute("aria-selected", String(selected));
-      button.tabIndex = selected ? 0 : -1;
-    });
+    if (!activeButton && nodes.cardRailButtons[0]) {
+      nodes.cardRailButtons[0].tabIndex = 0;
+    }
     if (nodes.galleryToggle) nodes.galleryToggle.tabIndex = 0;
-    const activeRailButton = cardDefinition.renderer === "line"
-      ? activeFamilyButton
-      : activePresetButton;
     if (
       state.layout === "focus" &&
-      state.panel === "share" &&
-      activeRailButton
+      state.mode !== "craft" &&
+      activeButton
     ) {
-      window.requestAnimationFrame(() => revealCardRailTab(activeRailButton));
+      window.requestAnimationFrame(() => revealCardRailTab(activeButton));
     }
-    if (nodes.focusPanel) {
-      const labelledBy = cardDefinition.renderer === "line"
-        ? activeFamilyButton?.id
-        : activePresetButton?.id;
-      if (
-        state.panel === "share" &&
-        state.layout === "focus" &&
-        labelledBy
-      ) {
-        nodes.focusPanel.setAttribute("role", "tabpanel");
-        nodes.focusPanel.setAttribute("aria-labelledby", labelledBy);
-        nodes.focusPanel.removeAttribute("aria-label");
-        nodes.focusPanel.tabIndex = -1;
-      } else {
-        nodes.focusPanel.removeAttribute("role");
-        nodes.focusPanel.removeAttribute("aria-label");
-        nodes.focusPanel.removeAttribute("aria-labelledby");
-        nodes.focusPanel.tabIndex = -1;
-      }
+    if (!nodes.focusPanel) return;
+    if (state.layout === "focus" && state.mode !== "craft" && activeButton) {
+      nodes.focusPanel.setAttribute("role", "tabpanel");
+      nodes.focusPanel.setAttribute("aria-labelledby", activeButton.id);
+      nodes.focusPanel.removeAttribute("aria-label");
+    } else {
+      nodes.focusPanel.removeAttribute("role");
+      nodes.focusPanel.removeAttribute("aria-label");
+      nodes.focusPanel.removeAttribute("aria-labelledby");
     }
+    nodes.focusPanel.tabIndex = -1;
+  }
+
+  function syncControls() {
+    syncCardRailSelection();
     nodes.rangeButtons.forEach((button) => {
       const selected = button.dataset.gpuRange === state.range;
       const unavailable =
@@ -4190,6 +4556,11 @@ if (root) {
     nodes.layerButtons.forEach((button) => {
       const selected = !empty && state.layers.has(button.dataset.cardLayer);
       const layer = getLayerDefinition(cardDefinition, button.dataset.cardLayer);
+      if (!layer) {
+        button.hidden = true;
+        button.disabled = true;
+        return;
+      }
       const primary = !empty && button.dataset.cardLayer === state.selected;
       const replacesSpreadComparison =
         state.scale === "spread" &&
@@ -4439,12 +4810,14 @@ if (root) {
 
   async function switchWorkspaceMode(mode, focusNavigation = false) {
     if (!["catalog", "monitor", "craft"].includes(mode)) return;
+    advanceCardEntryIntent();
     if (mode === "monitor" && state.craftEmpty) {
       announceWorkspace("Start a view before opening Monitor");
       return;
     }
-    if (mode === state.mode) {
-      if (mode === "catalog" && state.layout !== "all") {
+    const workspace = intendedWorkspaceState();
+    if (mode === workspace.mode) {
+      if (mode === "catalog" && workspace.layout !== "all") {
         await showPanel("share", true, "all", false, mode);
       }
       if (focusNavigation) {
@@ -4474,7 +4847,7 @@ if (root) {
     }
   }
 
-  async function showPanel(
+  function showPanel(
     nextName,
     updateUrl,
     nextLayout = "focus",
@@ -4497,10 +4870,67 @@ if (root) {
         ? document.activeElement
         : null;
     const returnFocusWasVisible = returnFocus?.matches(":focus-visible") ?? false;
-    const shouldMoveFocus = moveFocus ?? returnFocusWasVisible;
-    if (state.transitionPending || !nodes.panels.has(nextName)) {
-      return;
+    if (!nodes.panels.has(nextName)) return Promise.resolve();
+
+    queuedPanelIntent = {
+      nextName,
+      updateUrl,
+      targetLayout,
+      targetMode,
+      moveFocus,
+      returnFocus,
+      returnFocusWasVisible,
+    };
+    if (!activePanelTransition) {
+      const transition = drainPanelIntents();
+      const trackedTransition = transition.finally(() => {
+        if (activePanelTransition === trackedTransition) {
+          activePanelTransition = null;
+        }
+      });
+      activePanelTransition = trackedTransition;
     }
+    return activePanelTransition;
+  }
+
+  async function drainPanelIntents() {
+    while (queuedPanelIntent) {
+      const intent = queuedPanelIntent;
+      queuedPanelIntent = null;
+      activePanelIntent = intent;
+      try {
+        await performPanelTransition(intent);
+      } finally {
+        if (activePanelIntent === intent) activePanelIntent = null;
+      }
+    }
+  }
+
+  function intendedWorkspaceState() {
+    const intent = queuedPanelIntent || activePanelIntent;
+    return intent
+      ? {
+          panel: intent.nextName,
+          layout: intent.targetLayout,
+          mode: intent.targetMode,
+        }
+      : {
+          panel: state.panel,
+          layout: state.layout,
+          mode: state.mode,
+        };
+  }
+
+  async function performPanelTransition({
+    nextName,
+    updateUrl,
+    targetLayout,
+    targetMode,
+    moveFocus,
+    returnFocus,
+    returnFocusWasVisible,
+  }) {
+    const shouldMoveFocus = moveFocus ?? returnFocusWasVisible;
     if (
       nextName === state.panel &&
       targetLayout === state.layout &&
@@ -4540,27 +4970,30 @@ if (root) {
       syncModeActions(animateLayout);
     };
 
-    if (canMorph) {
-      const transition = document.startViewTransition(() => {
-        commitPanelChange(false);
-      });
-      await transition.finished.catch(() => {});
-    } else {
-      if (!reducedMotion && previousLayout) {
-        const exit = animate(
-          previousLayout,
-          {
-            opacity: [1, 0.42],
-            transform: ["translateY(0)", "translateY(-2px)"],
-          },
-          { duration: 0.2, ease: [0.23, 1, 0.32, 1] },
-        );
-        await exit.finished?.catch(() => {});
+    try {
+      if (canMorph) {
+        const transition = document.startViewTransition(() => {
+          commitPanelChange(false);
+        });
+        await transition.finished.catch(() => {});
+      } else {
+        if (!reducedMotion && previousLayout) {
+          const exit = animate(
+            previousLayout,
+            {
+              opacity: [1, 0.42],
+              transform: ["translateY(0)", "translateY(-2px)"],
+            },
+            { duration: 0.2, ease: [0.23, 1, 0.32, 1] },
+          );
+          await exit.finished?.catch(() => {});
+        }
+        commitPanelChange(!reducedMotion);
       }
-      commitPanelChange(!reducedMotion);
+    } finally {
+      state.transitionPending = false;
     }
 
-    state.transitionPending = false;
     if (mobileViewport.matches && targetLayout !== "all") {
       window.scrollTo({ top: 0, behavior: "auto" });
     }
@@ -4604,14 +5037,7 @@ if (root) {
       return nodes.craftTypeButtons[0];
     }
     if (panel === "detail") return nodes.detailPanel;
-    if (isDealCard) return nodes.focusCardMonitor;
-    return cardDefinition.renderer !== "line"
-      ? nodes.cardPresetButtons.find(
-          (button) => button.dataset.cardPreset === cardId,
-        )
-      : nodes.familyButtons.find(
-          (button) => button.dataset.gpuFamily === state.selected,
-        );
+    return activeCardRailButton() || nodes.focusCardMonitor;
   }
 
   function announceWorkspaceView() {
@@ -5055,7 +5481,7 @@ if (root) {
       return;
     }
     if (isDealCard) {
-      renderDealWorkspace();
+      renderDealWorkspace(drawAnimation);
       return;
     }
     if (isDepthCard) {
@@ -5124,7 +5550,7 @@ if (root) {
     };
   }
 
-  function renderDealWorkspace() {
+  function renderDealWorkspace(drawAnimation) {
     if (!state.runtimePayload) return;
     let model;
     try {
@@ -5154,7 +5580,7 @@ if (root) {
       dealWorkspaceMount = mountDealView(nodes.dealWorkspace, model, {
         variant: "full",
         palette,
-        reducedMotion,
+        reducedMotion: reducedMotion || !drawAnimation,
         interactive: state.mode === "monitor",
       });
     }
@@ -5930,14 +6356,14 @@ if (root) {
     if (drawAnimation && !reducedMotion) {
       previousRoot
         .transition()
-        .duration(220)
+        .duration(VIEW_DETAIL_DURATION)
         .ease(d3.easeCubicOut)
         .attr("opacity", 0)
         .attr("transform", "translate(0,-2)")
         .remove();
       plotRoot
         .transition()
-        .duration(220)
+        .duration(VIEW_SUPPORT_DURATION)
         .ease(d3.easeCubicOut)
         .attr("opacity", 1)
         .attr("transform", "translate(0,0)");
@@ -6029,6 +6455,34 @@ if (root) {
         )
         .attr("stroke-width", candidate.primary ? 2.4 : 1.35);
     });
+
+    if (drawAnimation && !reducedMotion) {
+      plot
+        .select(".gpu-benchmark__line.is-selected")
+        .attr("pathLength", 1)
+        .attr("stroke-dasharray", 1)
+        .attr("stroke-dashoffset", 1)
+        .transition()
+        .duration(VIEW_REVEAL_DURATION)
+        .ease(d3.easeCubicOut)
+        .attr("stroke-dashoffset", 0)
+        .on("end", function restorePrimaryLine() {
+          d3.select(this)
+            .attr("pathLength", null)
+            .attr("stroke-dasharray", null)
+            .attr("stroke-dashoffset", null);
+        });
+      plot
+        .selectAll(
+          ".gpu-benchmark__band, .gpu-benchmark__value-area, " +
+          ".gpu-benchmark__reference-line, .gpu-benchmark__line.is-layer",
+        )
+        .attr("opacity", 0)
+        .transition()
+        .duration(VIEW_SUPPORT_DURATION)
+        .ease(d3.easeCubicOut)
+        .attr("opacity", 1);
+    }
 
     if (series.length > 1) {
       const labelPositions = spreadLineLabels(

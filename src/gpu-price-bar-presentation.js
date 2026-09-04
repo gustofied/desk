@@ -1,4 +1,11 @@
 import { viewArtifactHeaderMarkup } from "./view-artifact-header.js";
+import {
+  VIEW_DETAIL_DURATION,
+  VIEW_EASE,
+  VIEW_REVEAL_DELAY,
+  VIEW_REVEAL_DURATION,
+  VIEW_STAGGER,
+} from "./view-motion.js";
 
 const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 630;
@@ -89,8 +96,8 @@ export function paintGpuPriceBarChart(
       { strokeDashoffset: 0, opacity: 1 },
     ],
     {
-      duration: 520,
-      easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+      duration: VIEW_REVEAL_DURATION,
+      easing: VIEW_EASE,
       fill: "both",
     },
   );
@@ -103,9 +110,9 @@ export function paintGpuPriceBarChart(
         { transform: "scale(1)", opacity: 1 },
       ],
       {
-        delay: 180 + index * 45,
-        duration: 220,
-        easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+        delay: VIEW_REVEAL_DELAY + index * VIEW_STAGGER,
+        duration: VIEW_DETAIL_DURATION,
+        easing: VIEW_EASE,
         fill: "both",
       },
     );
@@ -115,9 +122,9 @@ export function paintGpuPriceBarChart(
         { transform: "translateY(0)", opacity: 1 },
       ],
       {
-        delay: 230 + index * 45,
-        duration: 260,
-        easing: "cubic-bezier(0.23, 1, 0.32, 1)",
+        delay: VIEW_REVEAL_DELAY + 48 + index * VIEW_STAGGER,
+        duration: VIEW_DETAIL_DURATION,
+        easing: VIEW_EASE,
         fill: "both",
       },
     );

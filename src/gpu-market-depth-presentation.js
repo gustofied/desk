@@ -1,4 +1,12 @@
 import { viewArtifactHeaderMarkup } from "./view-artifact-header.js";
+import {
+  VIEW_DETAIL_DURATION,
+  VIEW_EASE,
+  VIEW_REVEAL_DELAY,
+  VIEW_REVEAL_DURATION,
+  VIEW_STAGGER,
+  VIEW_SUPPORT_DURATION,
+} from "./view-motion.js";
 
 const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 630;
@@ -12,7 +20,7 @@ export function renderGpuMarketDepthSvg(model, options = {}) {
     : `role="img" aria-label="${escapeXml(ariaLabel)}"`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${SVG_WIDTH}" ` +
-    `height="${height}" viewBox="0 0 ${SVG_WIDTH} ${height}" ` +
+    `height="${height}" viewBox="0 0 ${SVG_WIDTH} ${height}" preserveAspectRatio="none" ` +
     `${accessibility}>${inner}</svg>`
   );
 }
@@ -38,6 +46,7 @@ export function paintGpuMarketDepthChart(
   const view = depthView(model, options);
 
   svgNode.setAttribute("viewBox", `0 0 ${SVG_WIDTH} ${height}`);
+  svgNode.setAttribute("preserveAspectRatio", "none");
   if (decorative || canInteract) {
     svgNode.setAttribute("aria-hidden", "true");
     svgNode.removeAttribute("role");
@@ -62,17 +71,20 @@ export function paintGpuMarketDepthChart(
     svgNode.querySelector("[data-depth-history-heatmap]")?.animate?.(
       [{ opacity: 0 }, { opacity: 1 }],
       {
-        duration: 280,
-        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+        duration: VIEW_SUPPORT_DURATION,
+        easing: VIEW_EASE,
         fill: "both",
       },
     );
     svgNode.querySelector("[data-depth-history-clearing]")?.animate?.(
-      [{ opacity: 0 }, { opacity: 1 }],
+      [
+        { strokeDashoffset: 1, opacity: 0.42 },
+        { strokeDashoffset: 0, opacity: 1 },
+      ],
       {
-        delay: 80,
-        duration: 360,
-        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+        delay: 48,
+        duration: VIEW_REVEAL_DURATION,
+        easing: VIEW_EASE,
         fill: "both",
       },
     );
@@ -82,8 +94,8 @@ export function paintGpuMarketDepthChart(
   svgNode.querySelectorAll("[data-depth-shelf-band]").forEach((shelf, index) => {
     shelf.animate?.([{ opacity: 0 }, { opacity: 1 }], {
       delay: Math.min(index * 14, 180),
-      duration: 360,
-      easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+      duration: VIEW_SUPPORT_DURATION,
+      easing: VIEW_EASE,
       fill: "both",
     });
   });
@@ -93,8 +105,8 @@ export function paintGpuMarketDepthChart(
       { strokeDashoffset: 0, opacity: 1 },
     ],
     {
-      duration: 560,
-      easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+      duration: VIEW_REVEAL_DURATION,
+      easing: VIEW_EASE,
       fill: "both",
     },
   );
@@ -105,9 +117,9 @@ export function paintGpuMarketDepthChart(
         { transform: "scale(1)", opacity: 1 },
       ],
       {
-        delay: 170 + index * 45,
-        duration: 280,
-        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+        delay: VIEW_REVEAL_DELAY + index * VIEW_STAGGER,
+        duration: VIEW_DETAIL_DURATION,
+        easing: VIEW_EASE,
         fill: "both",
       },
     );
@@ -255,6 +267,10 @@ function gpuMarketDepthHistoryMarkup(
     Math.max(1, history.length);
   const xForIndex = (index) =>
     layout.plotLeft + (index + 0.5) * columnWidth;
+  const xForPathIndex = (index) => history.length <= 1
+    ? (layout.plotLeft + layout.plotRight) / 2
+    : layout.plotLeft +
+      (index / (history.length - 1)) * (layout.plotRight - layout.plotLeft);
   const intensityMaximum = historyIntensityMaximum(history);
   const cells = history
     .map((snapshot, columnIndex) => {
@@ -298,13 +314,13 @@ function gpuMarketDepthHistoryMarkup(
   const benchmarkPath = historyValuePath(
     history,
     (snapshot) => snapshot.benchmarkPrice,
-    xForIndex,
+    xForPathIndex,
     y,
   );
   const clearingPath = historyValuePath(
     history,
     (snapshot) => snapshot.clearingPrice,
-    xForIndex,
+    xForPathIndex,
     y,
   );
   const ariaLabel = marketDepthHistoryAriaLabel(model, history, title);
@@ -345,7 +361,8 @@ function gpuMarketDepthHistoryMarkup(
     <path data-depth-history-clearing="" d="${clearingPath}" fill="none"
       stroke="${palette.line}" stroke-width="${compact ? 5 : 3.5}"
       stroke-linecap="round" stroke-linejoin="round"
-      vector-effect="non-scaling-stroke"/>
+      vector-effect="non-scaling-stroke" pathLength="1"
+      stroke-dasharray="1" stroke-dashoffset="0"/>
     ${hitColumns}
     ${readout}
     ${artifactHeader}`;

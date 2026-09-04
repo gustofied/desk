@@ -14,6 +14,12 @@ import {
   horizontalHitZones,
   positionSvgTooltip,
 } from "./chart-pointer.js";
+import {
+  VIEW_DETAIL_DURATION,
+  VIEW_REVEAL_DELAY,
+  VIEW_REVEAL_DURATION,
+  VIEW_SUPPORT_DURATION,
+} from "./view-motion.js";
 
 const VALID_VARIANTS = Object.freeze(["static", "focus", "full"]);
 const QUOTE_CHART_WIDTH = 1200;
@@ -22,7 +28,6 @@ const DEAL_CHART_WIDTH = 1200;
 const DEAL_CHART_HEIGHT = 600;
 const DEAL_PLOT_TOP = 220;
 const DEAL_PLOT_BOTTOM = 556;
-const DEAL_REVEAL_DURATION = 200;
 let dealChartSequence = 0;
 
 /**
@@ -67,15 +72,11 @@ export function mountDealView(
 
   host.replaceChildren(mount);
   const isQuote = model.viewKind === "quote";
-  const chartMotion = isQuote
-    ? null
-    : configureDealHistoryMotion(
-      mount,
-      host,
-      model,
-      reducedMotion,
-      normalizedVariant === "full" && interactive,
-    );
+  const chartMotion = configureDealHistoryMotion(
+    mount,
+    reducedMotion,
+    normalizedVariant === "full" && interactive,
+  );
   const historyInteraction = normalizedVariant === "full" && interactive
     ? isQuote
       ? configureQuoteHistoryInteraction(mount, model)
@@ -193,14 +194,16 @@ function quoteNegotiationMarkup(model, { interactive = false } = {}) {
     <figure class="deal-view__history quote-view__history" role="${interactive ? "group" : "img"}"
       aria-label="${escapeHtml(description)}" ${interactive ? 'data-deal-history-interactive="true"' : ""}>
       <svg viewBox="0 0 ${QUOTE_CHART_WIDTH} ${QUOTE_CHART_HEIGHT}" preserveAspectRatio="none" aria-hidden="true" focusable="false">
-        <path class="deal-view__negotiation-line deal-view__negotiation-line--bid" d="${geometry.bid}"></path>
-        <path class="deal-view__negotiation-line deal-view__negotiation-line--ask" d="${geometry.ask}"></path>
-        <g class="quote-view__flow-signals">
-          ${geometry.connectors.map((connector) => `
-            <g class="quote-view__flow-signal quote-view__flow-signal--${connector.role}">
-              <line x1="${connector.x}" y1="${QUOTE_CHART_HEIGHT}" x2="${connector.x}" y2="${connector.y}"></line>
-              <circle cx="${connector.x}" cy="${connector.y}" r="${connector.role === "desk" ? 8 : 6}"></circle>
-            </g>`).join("")}
+        <g data-deal-history-reveal>
+          <path class="deal-view__negotiation-line deal-view__negotiation-line--bid" d="${geometry.bid}"></path>
+          <path class="deal-view__negotiation-line deal-view__negotiation-line--ask" d="${geometry.ask}"></path>
+          <g class="quote-view__flow-signals">
+            ${geometry.connectors.map((connector) => `
+              <g class="quote-view__flow-signal quote-view__flow-signal--${connector.role}">
+                <line x1="${connector.x}" y1="${QUOTE_CHART_HEIGHT}" x2="${connector.x}" y2="${connector.y}"></line>
+                <circle cx="${connector.x}" cy="${connector.y}" r="${connector.role === "desk" ? 8 : 6}"></circle>
+              </g>`).join("")}
+          </g>
         </g>
         ${interactive ? quoteHistoryInteractionMarkup(history) : ""}
       </svg>
@@ -442,8 +445,6 @@ function dealHistoryInteractionMarkup(history, geometry) {
 
 function configureDealHistoryMotion(
   mount,
-  host,
-  model,
   reducedMotion,
   interactive,
 ) {
@@ -451,22 +452,13 @@ function configureDealHistoryMotion(
   const agreedPoint = mount.querySelector(".deal-view__agreed-point");
   if (!reveal || !interactive || reducedMotion) return null;
 
-  const signature = [
-    model.id,
-    model.quoteHistory.length,
-    model.quoteHistory.at(-1)?.timestamp,
-    model.quote.value,
-  ].join(":");
-  if (host.dataset.dealMotionSignature === signature) return null;
-  host.dataset.dealMotionSignature = signature;
-
   const selection = select(reveal);
   selection
     .interrupt()
     .attr("transform", "translate(0 4)")
     .style("opacity", 0.48)
     .transition()
-    .duration(DEAL_REVEAL_DURATION)
+    .duration(VIEW_REVEAL_DURATION)
     .ease(easeCubicOut)
     .attr("transform", "translate(0 0)")
     .style("opacity", 1);
@@ -474,13 +466,11 @@ function configureDealHistoryMotion(
   pointSelection
     ?.interrupt()
     .style("opacity", 0)
-    .style("transform", "translate(var(--deal-point-x, -50%), -50%) scale(0.94)")
     .transition()
-    .delay(DEAL_REVEAL_DURATION - 80)
-    .duration(100)
+    .delay(VIEW_REVEAL_DELAY + VIEW_SUPPORT_DURATION)
+    .duration(VIEW_DETAIL_DURATION)
     .ease(easeCubicOut)
-    .style("opacity", 1)
-    .style("transform", "translate(var(--deal-point-x, -50%), -50%) scale(1)");
+    .style("opacity", 1);
 
   return Object.freeze({
     destroy() {
@@ -490,8 +480,7 @@ function configureDealHistoryMotion(
         .style("opacity", 1);
       pointSelection
         ?.interrupt()
-        .style("opacity", 1)
-        .style("transform", "translate(var(--deal-point-x, -50%), -50%) scale(1)");
+        .style("opacity", 1);
     },
   });
 }
@@ -555,25 +544,55 @@ function configureDealHistoryInteraction(
     }, { index: -1, distance: Infinity }).index;
   };
 
-  const show = (index, announce = false) => {
+  const setSelectionLine = (node, attributes, animate) => {
+    const lineSelection = select(node).interrupt();
+    const target = animate
+      ? lineSelection
+        .transition()
+        .duration(420)
+        .ease(easeCubicOut)
+      : lineSelection;
+    Object.entries(attributes).forEach(([name, value]) => {
+      target.attr(name, value);
+    });
+  };
+
+  const show = (index, announce = false, { playback = false } = {}) => {
     const observation = geometry.observations[index];
     if (!observation) return;
+    const animateSelection = Boolean(
+      playback && !reducedMotion && activeIndex >= 0 && !selection.hidden,
+    );
     activeIndex = index;
-    cursor.setAttribute("x1", observation.ask.x);
-    cursor.setAttribute("x2", observation.ask.x);
-    cursor.setAttribute("y1", DEAL_PLOT_TOP);
-    cursor.setAttribute("y2", DEAL_PLOT_BOTTOM);
-    gap.setAttribute("x1", observation.ask.x);
-    gap.setAttribute("x2", observation.ask.x);
-    gap.setAttribute("y1", observation.ask.y);
-    gap.setAttribute("y2", observation.bid.y);
-    bidPoint.setAttribute("style", pointPositionStyle(observation.bid));
-    askPoint.setAttribute("style", pointPositionStyle(observation.ask));
-    bidPoint.hidden = false;
-    askPoint.hidden = false;
     selection.hidden = false;
+    setSelectionLine(cursor, {
+      x1: observation.ask.x,
+      x2: observation.ask.x,
+      y1: DEAL_PLOT_TOP,
+      y2: DEAL_PLOT_BOTTOM,
+    }, animateSelection);
+    setSelectionLine(gap, {
+      x1: observation.ask.x,
+      x2: observation.ask.x,
+      y1: observation.ask.y,
+      y2: observation.bid.y,
+    }, animateSelection);
     keyboard.setAttribute("aria-valuenow", String(index + 1));
     keyboard.setAttribute("aria-valuetext", dealRevisionAria(observation.row));
+
+    if (playback) {
+      bidPoint.hidden = true;
+      askPoint.hidden = true;
+      callout.hidden = true;
+      calloutWasVisible = false;
+    } else {
+      bidPoint.setAttribute("style", pointPositionStyle(observation.bid));
+      askPoint.setAttribute("style", pointPositionStyle(observation.ask));
+      bidPoint.hidden = false;
+      askPoint.hidden = false;
+    }
+    if (playback) return;
+
     callout.innerHTML = dealRevisionCallout(
       observation.row,
       index,
@@ -616,6 +635,8 @@ function configureDealHistoryInteraction(
 
   const hide = () => {
     const shouldSyncActivity = selectionSource !== "activity";
+    select(cursor).interrupt();
+    select(gap).interrupt();
     selection.hidden = true;
     bidPoint.hidden = true;
     askPoint.hidden = true;
@@ -705,7 +726,9 @@ function configureDealHistoryInteraction(
       hide();
       return;
     }
-    show(index, Boolean(event.detail?.announce));
+    show(index, Boolean(event.detail?.announce), {
+      playback: Boolean(event.detail?.playback),
+    });
   }, listenerOptions);
   figure.ownerDocument.addEventListener("desk:deal-event-clear", (event) => {
     if (String(event.detail?.dealId) !== String(model.id)) return;
