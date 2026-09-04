@@ -1,7 +1,4 @@
-import {
-  viewArtifactHeaderLayout,
-  viewArtifactHeaderMarkup,
-} from "./view-artifact-header.js";
+import { viewArtifactHeaderMarkup } from "./view-artifact-header.js";
 
 const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 630;
@@ -130,7 +127,7 @@ export function gpuMarketDepthMarkup(
 ) {
   assertModel(model);
   const palette = normalizeColors(colors);
-  const layout = chartLayout(compact, artifact);
+  const layout = chartLayout(compact);
   const view = depthView(model, options);
   if (view === "history") {
     return gpuMarketDepthHistoryMarkup(model, {
@@ -1016,15 +1013,14 @@ function marketDepthAriaLabel(model, title) {
   return `${title}. ${reference} ${target}${basis}`;
 }
 
-function chartLayout(compact, artifact = compact) {
+function chartLayout(compact) {
   const height = compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
-  const header = viewArtifactHeaderLayout("", { compact });
   return {
     height,
     plotLeft: 0,
     plotRight: SVG_WIDTH,
-    plotTop: artifact ? header.plotTop : 0,
-    plotBottom: artifact ? height : height - 8,
+    plotTop: 0,
+    plotBottom: height - 8,
   };
 }
 

@@ -53,6 +53,11 @@
       "seller_ask_usd_gpu_hour": 3.90
     },
     {
+      "observed_at": "2026-08-28T10:00:00.000Z",
+      "buyer_bid_usd_gpu_hour": 3.50,
+      "seller_ask_usd_gpu_hour": 3.75
+    },
+    {
       "observed_at": "2026-08-28T16:00:00.000Z",
       "buyer_bid_usd_gpu_hour": 3.60,
       "seller_ask_usd_gpu_hour": 3.75
@@ -100,7 +105,7 @@
       "id": "rfq-sent",
       "observed_at": "2026-08-21T10:05:00.000Z",
       "stage": "spec",
-      "actor": "Broker",
+      "actor": "Desk",
       "label": "RFQ sent",
       "status": "done"
     },
@@ -108,8 +113,8 @@
       "id": "ask-opened",
       "observed_at": "2026-08-22T16:00:00.000Z",
       "stage": "diligence",
-      "actor": "Seller",
-      "label": "Ask $4.25",
+      "actor": "Provider",
+      "label": "Quote $4.25",
       "status": "done"
     },
     {
@@ -117,7 +122,7 @@
       "observed_at": "2026-08-22T16:10:00.000Z",
       "stage": "diligence",
       "actor": "Buyer",
-      "label": "Bid $3.10",
+      "label": "Target $3.10",
       "status": "done"
     },
     {
@@ -125,15 +130,15 @@
       "observed_at": "2026-08-23T16:00:00.000Z",
       "stage": "diligence",
       "actor": "Buyer",
-      "label": "Bid $3.20",
+      "label": "Target $3.20",
       "status": "done"
     },
     {
       "id": "ask-405",
       "observed_at": "2026-08-24T16:00:00.000Z",
       "stage": "diligence",
-      "actor": "Seller",
-      "label": "Ask $4.05",
+      "actor": "Provider",
+      "label": "Quote $4.05",
       "status": "done"
     },
     {
@@ -141,15 +146,15 @@
       "observed_at": "2026-08-25T16:00:00.000Z",
       "stage": "diligence",
       "actor": "Buyer",
-      "label": "Bid $3.35",
+      "label": "Target $3.35",
       "status": "done"
     },
     {
       "id": "ask-390",
       "observed_at": "2026-08-26T16:00:00.000Z",
       "stage": "diligence",
-      "actor": "Seller",
-      "label": "Ask $3.90",
+      "actor": "Provider",
+      "label": "Quote $3.90",
       "status": "done"
     },
     {
@@ -157,15 +162,15 @@
       "observed_at": "2026-08-27T16:00:00.000Z",
       "stage": "diligence",
       "actor": "Buyer",
-      "label": "Bid $3.50",
+      "label": "Target $3.50",
       "status": "done"
     },
     {
       "id": "ask-375",
       "observed_at": "2026-08-28T10:00:00.000Z",
       "stage": "diligence",
-      "actor": "Seller",
-      "label": "Ask $3.75",
+      "actor": "Provider",
+      "label": "Quote $3.75",
       "status": "done"
     },
     {
@@ -173,15 +178,15 @@
       "observed_at": "2026-08-28T16:00:00.000Z",
       "stage": "diligence",
       "actor": "Buyer",
-      "label": "Bid $3.60",
+      "label": "Target $3.60",
       "status": "done"
     },
     {
       "id": "price-agreed",
       "observed_at": "2026-08-29T10:15:00.000Z",
       "stage": "diligence",
-      "actor": "Buyer and seller",
-      "label": "$3.65 agreed",
+      "actor": "Buyer + Provider",
+      "label": "Rate agreed $3.65",
       "value_usd_gpu_hour": 3.65,
       "status": "done"
     },
@@ -189,15 +194,15 @@
       "id": "capacity-verified",
       "observed_at": "2026-08-29T11:05:00.000Z",
       "stage": "diligence",
-      "actor": "Seller",
-      "label": "Capacity verified",
+      "actor": "Provider",
+      "label": "Capacity confirmed",
       "status": "done"
     },
     {
       "id": "agreement-sent",
       "observed_at": "2026-08-29T12:20:00.000Z",
       "stage": "execute",
-      "actor": "Broker",
+      "actor": "Desk",
       "label": "Draft agreement sent",
       "status": "done"
     },
@@ -223,24 +228,24 @@
   "stages": [
     {
       "id": "spec",
-      "label": "Spec",
+      "label": "RFQ",
       "summary": "US East, InfiniBand, dedicated bare metal, 24-month reserved term.",
-      "source": "Buyer mandate",
+      "source": "Buyer",
       "status": "RFQ open"
     },
     {
       "id": "diligence",
-      "label": "Diligence",
-      "summary": "Seller quote $3.65 per GPU hour with 20% prepay. Technical and commercial checks complete.",
-      "source": "Technical and commercial",
-      "status": "Quote normalized"
+      "label": "Negotiation",
+      "summary": "Provider quote $3.65 per GPU hour with 20% prepay. Commercial terms agreed.",
+      "source": "Buyer and provider",
+      "status": "Rate agreed"
     },
     {
       "id": "execute",
-      "label": "Execution",
-      "summary": "Finalize the quote and execute the Compute Services Agreement with the seller.",
-      "source": "Buyer and seller",
-      "status": "Awaiting sign-off"
+      "label": "Contract",
+      "summary": "Service terms are under review before signing.",
+      "source": "Buyer and provider",
+      "status": "Terms review"
     }
   ]
 }

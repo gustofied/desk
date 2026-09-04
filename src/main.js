@@ -389,6 +389,8 @@ if (root) {
     root: root.querySelector("[data-deal-journey]"),
     reducedMotion,
   });
+  let dealPreviewMount = null;
+  let dealWorkspaceMount = null;
   const catalogCards = new Map();
   const catalogReflowAnimations = new Map();
   let catalogPointerDrag = null;
@@ -797,17 +799,19 @@ if (root) {
       ["rfs", nodes.dealCraftRfs],
     ];
     controls.forEach(([optionId, control]) => {
-      let inputTimer = null;
+      let inputFrame = 0;
       control?.addEventListener("input", () => {
         if (control instanceof HTMLSelectElement) return;
-        window.clearTimeout(inputTimer);
+        window.cancelAnimationFrame(inputFrame);
         if (!control.value || !control.checkValidity()) return;
-        inputTimer = window.setTimeout(() => {
+        inputFrame = window.requestAnimationFrame(() => {
+          inputFrame = 0;
           commitDealCraftField(optionId, control);
-        }, 240);
+        });
       });
       control?.addEventListener("change", () => {
-        window.clearTimeout(inputTimer);
+        window.cancelAnimationFrame(inputFrame);
+        inputFrame = 0;
         commitDealCraftField(optionId, control);
       });
     });
@@ -5132,10 +5136,14 @@ if (root) {
     }
 
     const palette = cardPalette(currentCardState());
+    dealPreviewMount?.destroy();
+    dealWorkspaceMount?.destroy();
+    dealPreviewMount = null;
+    dealWorkspaceMount = null;
     if (nodes.shareArtifactSvg) nodes.shareArtifactSvg.hidden = true;
     if (nodes.dealPreview) {
       nodes.dealPreview.hidden = false;
-      mountDealView(nodes.dealPreview, model, {
+      dealPreviewMount = mountDealView(nodes.dealPreview, model, {
         variant: "focus",
         palette,
         reducedMotion,
@@ -5143,7 +5151,7 @@ if (root) {
     }
     if (nodes.dealWorkspace) {
       nodes.dealWorkspace.hidden = false;
-      mountDealView(nodes.dealWorkspace, model, {
+      dealWorkspaceMount = mountDealView(nodes.dealWorkspace, model, {
         variant: "full",
         palette,
         reducedMotion,

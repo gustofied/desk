@@ -89,7 +89,7 @@
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=61">
     <link rel="stylesheet" href="./styles/monitor-data.css?v=15">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
-    <link rel="stylesheet" href="./styles/deal-view.css?v=37">
+    <link rel="stylesheet" href="./styles/deal-view.css?v=40">
     <link rel="stylesheet" href="./styles/command-palette.css?v=5">
     <link rel="stylesheet" href="./styles/demo.css?v=22">
   </head>
@@ -436,7 +436,9 @@
                 aria-controls="deal-journey-body"
                 data-deal-journey-toggle
               >
-                <strong>Details</strong>
+                <strong>Activity</strong>
+                <span data-deal-journey-summary></span>
+                <small data-deal-journey-count></small>
               </button>
               <div
                 class="desk-data-rail__body deal-journey-rail__body"
@@ -449,11 +451,24 @@
               >
                 <div class="deal-journey-rail__details">
                   <section
+                    class="deal-journey-rail__states"
+                    aria-labelledby="deal-details-states-title"
+                  >
+                    <h3
+                      class="desk-data-rail__sr-only"
+                      id="deal-details-states-title"
+                    >Deal status</h3>
+                    <dl
+                      class="deal-journey-rail__states-list"
+                      data-deal-journey-states
+                    ></dl>
+                  </section>
+                  <section
                     class="deal-journey-rail__terms"
                     aria-labelledby="deal-details-terms-title"
                   >
                     <h3
-                      class="deal-journey-rail__section-title"
+                      class="desk-data-rail__sr-only"
                       id="deal-details-terms-title"
                     >Terms</h3>
                     <dl
@@ -465,15 +480,13 @@
                     class="deal-journey-rail__activity"
                     aria-labelledby="deal-details-activity-title"
                   >
-                    <header class="deal-journey-rail__section-head">
-                      <h3
-                        class="deal-journey-rail__section-title"
-                        id="deal-details-activity-title"
-                      >Activity</h3>
-                    </header>
+                    <h3
+                      class="desk-data-rail__sr-only"
+                      id="deal-details-activity-title"
+                    >Activity</h3>
                     <ol
                       class="deal-journey-rail__activity-list"
-                      aria-label="Latest deal activity"
+                      aria-label="Deal activity"
                       data-deal-journey-events-list
                     ></ol>
                   </section>

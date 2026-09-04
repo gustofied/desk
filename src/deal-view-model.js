@@ -29,6 +29,7 @@ export const DEAL_041_PAYLOAD = Object.freeze({
     Object.freeze([1787673600, 4.05, 3.35]),
     Object.freeze([1787760000, 3.90, 3.35]),
     Object.freeze([1787846400, 3.90, 3.50]),
+    Object.freeze([1787911200, 3.75, 3.50]),
     Object.freeze([1787932800, 3.75, 3.60]),
     Object.freeze([1787998500, 3.65, 3.65]),
   ]),
@@ -36,27 +37,27 @@ export const DEAL_041_PAYLOAD = Object.freeze({
   stages: Object.freeze([
     Object.freeze({
       id: "spec",
-      label: "Spec",
+      label: "RFQ",
       copy: "US East / InfiniBand / dedicated bare metal / 24-month reserved term.",
       compactCopy: "Reserved capacity",
-      owner: "Buyer mandate",
+      owner: "Buyer",
       status: "RFQ open",
     }),
     Object.freeze({
       id: "diligence",
-      label: "Diligence",
-      copy: "Seller quote: $3.65 / GPU-hour with 20% prepay. Technical and commercial checks complete.",
-      compactCopy: "Quote checked",
-      owner: "Technical + commercial",
-      status: "Quote normalized",
+      label: "Negotiation",
+      copy: "Provider quote $3.65 / GPU-hour with 20% prepay. Commercial terms agreed.",
+      compactCopy: "Rate agreed",
+      owner: "Buyer + provider",
+      status: "Rate agreed",
     }),
     Object.freeze({
       id: "execute",
-      label: "Execution",
-      copy: "Finalize the quote and execute the Compute Services Agreement with the seller.",
-      compactCopy: "Finalize agreement",
-      owner: "Buyer + seller",
-      status: "Awaiting sign-off",
+      label: "Contract",
+      copy: "Service terms are under review before signing.",
+      compactCopy: "Terms review",
+      owner: "Buyer + provider",
+      status: "Terms review",
     }),
   ]),
   parties: 4,
@@ -77,19 +78,19 @@ function createFallbackEventLog() {
     ["capacity-set", "2026-08-20T09:18:00.000Z", "spec", "Buyer", "256 × B200", "done"],
     ["fabric-set", "2026-08-20T09:26:00.000Z", "spec", "Buyer", "US East, InfiniBand", "done"],
     ["term-set", "2026-08-20T09:34:00.000Z", "spec", "Buyer", "24 months, Oct RFS", "done"],
-    ["rfq-sent", "2026-08-21T10:05:00.000Z", "spec", "Broker", "RFQ sent", "done"],
-    ["ask-opened", "2026-08-22T16:00:00.000Z", "diligence", "Seller", "Ask $4.25", "done"],
-    ["bid-opened", "2026-08-22T16:10:00.000Z", "diligence", "Buyer", "Bid $3.10", "done"],
-    ["bid-320", "2026-08-23T16:00:00.000Z", "diligence", "Buyer", "Bid $3.20", "done"],
-    ["ask-405", "2026-08-24T16:00:00.000Z", "diligence", "Seller", "Ask $4.05", "done"],
-    ["bid-335", "2026-08-25T16:00:00.000Z", "diligence", "Buyer", "Bid $3.35", "done"],
-    ["ask-390", "2026-08-26T16:00:00.000Z", "diligence", "Seller", "Ask $3.90", "done"],
-    ["bid-350", "2026-08-27T16:00:00.000Z", "diligence", "Buyer", "Bid $3.50", "done"],
-    ["ask-375", "2026-08-28T10:00:00.000Z", "diligence", "Seller", "Ask $3.75", "done"],
-    ["bid-360", "2026-08-28T16:00:00.000Z", "diligence", "Buyer", "Bid $3.60", "done"],
-    ["price-agreed", "2026-08-29T10:15:00.000Z", "diligence", "Buyer and seller", "$3.65 agreed", "done", 3.65],
-    ["capacity-verified", "2026-08-29T11:05:00.000Z", "diligence", "Seller", "Capacity verified", "done"],
-    ["agreement-sent", "2026-08-29T12:20:00.000Z", "execute", "Broker", "Draft agreement sent", "done"],
+    ["rfq-sent", "2026-08-21T10:05:00.000Z", "spec", "Desk", "RFQ sent", "done"],
+    ["ask-opened", "2026-08-22T16:00:00.000Z", "diligence", "Provider", "Quote $4.25", "done"],
+    ["bid-opened", "2026-08-22T16:10:00.000Z", "diligence", "Buyer", "Target $3.10", "done"],
+    ["bid-320", "2026-08-23T16:00:00.000Z", "diligence", "Buyer", "Target $3.20", "done"],
+    ["ask-405", "2026-08-24T16:00:00.000Z", "diligence", "Provider", "Quote $4.05", "done"],
+    ["bid-335", "2026-08-25T16:00:00.000Z", "diligence", "Buyer", "Target $3.35", "done"],
+    ["ask-390", "2026-08-26T16:00:00.000Z", "diligence", "Provider", "Quote $3.90", "done"],
+    ["bid-350", "2026-08-27T16:00:00.000Z", "diligence", "Buyer", "Target $3.50", "done"],
+    ["ask-375", "2026-08-28T10:00:00.000Z", "diligence", "Provider", "Quote $3.75", "done"],
+    ["bid-360", "2026-08-28T16:00:00.000Z", "diligence", "Buyer", "Target $3.60", "done"],
+    ["price-agreed", "2026-08-29T10:15:00.000Z", "diligence", "Buyer + Provider", "Rate agreed $3.65", "done", 3.65],
+    ["capacity-verified", "2026-08-29T11:05:00.000Z", "diligence", "Provider", "Capacity confirmed", "done"],
+    ["agreement-sent", "2026-08-29T12:20:00.000Z", "execute", "Desk", "Draft agreement sent", "done"],
     ["service-terms-open", "2026-08-29T16:00:00.000Z", "execute", "Buyer", "Service terms under review", "current"],
   ];
   return Object.freeze(
@@ -130,10 +131,22 @@ export function createDealViewModel(
     overrides.quantity ?? dealPayload.quantity ?? dealPayload.gpuCount,
     "Deal quantity",
   );
+  const sourceQuantity = positiveInteger(
+    dealPayload.quantity ?? dealPayload.gpuCount,
+    "Source deal quantity",
+  );
+  const sourceNodes = positiveInteger(
+    dealPayload.nodes ?? dealPayload.nodeCount,
+    "Source deal nodes",
+  );
+  const acceleratorsPerNode = Math.max(
+    1,
+    Math.round(sourceQuantity / sourceNodes),
+  );
   const nodes = positiveInteger(
     overrides.quantity === undefined
-      ? dealPayload.nodes ?? dealPayload.nodeCount
-      : Math.ceil(quantity / 8),
+      ? sourceNodes
+      : Math.ceil(quantity / acceleratorsPerNode),
     "Deal nodes",
   );
   const sourceTerms = dealPayload.terms ?? {};
@@ -175,6 +188,7 @@ export function createDealViewModel(
     dealPayload.quoteHistory ?? dealPayload.quote_history,
     quote.value,
     sourceQuoteValue,
+    viewKind,
   );
   const stages = applyDealTermsToStages(
     normalizeStages(dealPayload.stages),
@@ -206,15 +220,19 @@ export function createDealViewModel(
     (candidate) => candidate.id === activeStage,
   );
   const activeStageModel = stages[activeStageIndex];
-  const latestRevision = quoteHistory.at(-1);
-  const quoteStatus =
-    latestRevision?.buyerBid === latestRevision?.sellerAsk ? "Agreed" : "Open";
+  const quoteStatus = eventLog.some(
+    (event) => event.id === "price-agreed" && event.status !== "next",
+  )
+    ? "Rate agreed"
+    : "Open";
   const market = createMarketContext(
     marketPayload ?? dealPayload.marketPayload ?? dealPayload.market,
     asset,
     quote.value,
   );
   const workflow = normalizeWorkflow(dealPayload, activeStageModel);
+  const checksStatusLabel = dealChecksStatus(eventLog);
+  const deliveryStatusLabel = dealDeliveryStatus(dealPayload);
   const statusLabel =
     viewKind === "quote"
       ? quoteStatus
@@ -245,6 +263,10 @@ export function createDealViewModel(
     id,
     label: `${viewKind === "quote" ? "Quote" : "Deal"} ${id}`,
     statusLabel,
+    priceStatusLabel: quoteStatus,
+    checksStatusLabel,
+    contractStatusLabel: workflow.statusLabel,
+    deliveryStatusLabel,
     type: cleanText(dealPayload.type ?? "Capacity", "Deal type"),
     side,
     sideLabel: side === "buy" ? "Buy" : "Sell",
@@ -288,6 +310,36 @@ export function createDealViewModel(
   });
 }
 
+function dealChecksStatus(eventLog) {
+  if (eventLog.some((event) => event.status === "blocked")) return "Blocked";
+  if (
+    eventLog.some(
+      (event) => event.id === "capacity-verified" && event.status === "done",
+    )
+  ) {
+    return "Confirmed";
+  }
+  return "Pending";
+}
+
+function dealDeliveryStatus(dealPayload) {
+  const rawStatus = optionalText(
+    dealPayload.delivery?.status ??
+      dealPayload.deliveryStatus ??
+      dealPayload.delivery_status,
+  );
+  const allowed = new Map([
+    ["not-scheduled", "Not scheduled"],
+    ["scheduled", "Scheduled"],
+    ["provisioning", "Provisioning"],
+    ["testing", "Testing"],
+    ["ready", "Ready"],
+    ["live", "Live"],
+    ["complete", "Complete"],
+  ]);
+  return allowed.get(slugify(rawStatus)) || "Not scheduled";
+}
+
 function normalizeWorkflow(dealPayload, activeStageModel) {
   const source = dealPayload.workflow ?? {};
   const rawStage = optionalText(
@@ -328,9 +380,9 @@ function applyDealTermsToStages(stages, quote) {
         ? Object.freeze({
             ...stage,
             copy:
-              `Seller quote ${quote.formatted} per GPU hour with ` +
+              `Provider quote ${quote.formatted} per GPU hour with ` +
               `${formatCompactNumber(quote.prepayPercent)}% prepay. ` +
-              "Technical and commercial checks complete.",
+              "Commercial terms agreed.",
           })
         : stage,
     ),
@@ -369,11 +421,16 @@ function normalizeQuote(value) {
   });
 }
 
-function normalizeQuoteHistory(value, currentQuote, sourceQuote = currentQuote) {
+function normalizeQuoteHistory(
+  value,
+  currentQuote,
+  sourceQuote = currentQuote,
+  viewKind = "deal",
+) {
   if (!Array.isArray(value)) return Object.freeze([]);
 
   const scale = sourceQuote > 0 ? currentQuote / sourceQuote : 1;
-  const points = value
+  const normalized = value
     .map((point) => {
       const timestamp = quoteHistoryTimestamp(
         Array.isArray(point)
@@ -406,29 +463,37 @@ function normalizeQuoteHistory(value, currentQuote, sourceQuote = currentQuote) 
       return { timestamp, sellerAsk, buyerBid };
     })
     .filter(Boolean)
-    .sort((left, right) => left.timestamp - right.timestamp)
-    .map((point) =>
-      Object.freeze({
+    .sort((left, right) => left.timestamp - right.timestamp);
+
+  const lastIndex = Math.max(0, normalized.length - 1);
+  const quoteDelta = currentQuote - sourceQuote;
+  const points = normalized.map((point, index) => {
+    if (viewKind !== "quote") {
+      return Object.freeze({
         ...point,
         sellerAsk: roundUsd(point.sellerAsk * scale),
         buyerBid:
           point.buyerBid === null ? null : roundUsd(point.buyerBid * scale),
-      }),
-    );
+      });
+    }
 
-  if (
-    points.length &&
-    (points.at(-1).sellerAsk !== currentQuote ||
-      (points.at(-1).buyerBid !== null &&
-        points.at(-1).buyerBid !== currentQuote))
-  ) {
-    const latest = points.at(-1);
-    points[points.length - 1] = Object.freeze({
-      ...latest,
-      sellerAsk: currentQuote,
-      buyerBid: latest.buyerBid === null ? null : currentQuote,
+    const progress = lastIndex === 0 ? 1 : index / lastIndex;
+    const adjustment = quoteDelta * progress * progress * (3 - 2 * progress);
+    const isAgreement = index === lastIndex;
+    return Object.freeze({
+      ...point,
+      sellerAsk: isAgreement
+        ? roundUsd(currentQuote)
+        : roundUsd(point.sellerAsk + adjustment),
+      buyerBid:
+        point.buyerBid === null
+          ? null
+          : isAgreement
+            ? roundUsd(currentQuote)
+            : roundUsd(point.buyerBid + adjustment),
     });
-  }
+  });
+
   return Object.freeze(points);
 }
 
@@ -458,12 +523,17 @@ function applyDealStateToEvents(
       } else if (event.id === "term-set") {
         label = [termLabel, `${rfs} RFS`].filter(Boolean).join(", ");
       } else if (event.id === "price-agreed") {
-        label = `${quote.formatted} agreed`;
+        label = `Rate agreed ${quote.formatted}`;
         valueUsdGpuHour = quote.value;
       } else {
-        const priceLabel = label.match(/^(Bid|Ask)\s+\$([\d.]+)$/i);
+        const priceLabel = label.match(
+          /^(Bid|Ask|Target|Quote)\s+\$([\d.]+)$/i,
+        );
         if (priceLabel) {
-          label = `${priceLabel[1]} ${formatUsd(Number(priceLabel[2]) * scale)}`;
+          const term = /^(bid|target)$/i.test(priceLabel[1])
+            ? "Target"
+            : "Quote";
+          label = `${term} ${formatUsd(Number(priceLabel[2]) * scale)}`;
         }
       }
 
@@ -482,7 +552,7 @@ function normalizeEventLog(value) {
   if (!Array.isArray(value)) return Object.freeze([]);
 
   const ids = new Set();
-  const statuses = new Set(["done", "current", "next"]);
+  const statuses = new Set(["done", "current", "next", "blocked"]);
   const events = value
     .map((event) => {
       const id = String(event?.id || "").trim();
@@ -689,9 +759,11 @@ function createAriaLabel({
   rfs,
   activeStage,
 }) {
-  const stageLabel = activeStage === "execute"
-    ? "Execution"
-    : titleCase(activeStage);
+  const stageLabel = activeStage === "spec"
+    ? "RFQ"
+    : activeStage === "diligence"
+      ? "Negotiation"
+      : "Contract";
   if (kind === "quote") {
     return (
       `Quote ${id}, ${quantity} ${asset}, agreed at ${quote.formatted} ` +
