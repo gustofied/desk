@@ -110,6 +110,7 @@
     <link rel="stylesheet" href="./styles/deal-view.css?v=40">
     <link rel="stylesheet" href="./styles/command-palette.css?v=16">
     <link rel="stylesheet" href="./styles/demo.css?v=26">
+    <link rel="stylesheet" href="./styles/desk-shell.css?v=8">
   </head>
   <body>
     <div class="desk-top-controls">
@@ -170,7 +171,7 @@
         </div>
       </nav>
     </div>
-    <main class="desk-stage">
+    <main class="desk-stage" data-desk-workspace>
       <section
         class="gpu-index compute-card-skin compute-card-skin--market"
         id="gpu-benchmark-card"
@@ -518,13 +519,16 @@
       <kbd class="desk-search__shortcut" aria-hidden="true">⌘G</kbd>
       <span>Desk</span>
     </button>
-    <dialog class="desk-command-menu" id="desk-command-menu" aria-labelledby="desk-command-title" data-command-palette>
+    <dialog class="desk-command-menu" id="desk-command-menu" aria-labelledby="desk-command-title" data-command-palette data-desk-sidecar data-presentation="menu">
       <h2 class="desk-command-menu__title" id="desk-command-title">Desk</h2>
+      <button class="desk-sidecar-handle" type="button" aria-label="Close sidebar" title="Drag left to close" aria-controls="desk-command-menu" data-sidecar-handle></button>
       <div class="desk-command-menu__stage">
       <section class="desk-command-menu__entry" aria-label="Desk login" data-desk-entry>
         <header class="desk-command-menu__entry-header">
           <span>Desk</span>
-          <button class="desk-command-menu__close" type="button" data-command-close>Close</button>
+          <span class="desk-command-menu__entry-actions">
+            <button class="desk-command-menu__close" type="button" data-command-close>Close</button>
+          </span>
         </header>
         <div class="desk-command-menu__entry-body">
           <div class="desk-command-menu__login-motion" data-desk-login-motion>
@@ -631,6 +635,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=196"></script>
+    <script type="module" src="./desk.js?v=204"></script>
   </body>
 </html>

@@ -476,6 +476,7 @@ if (root) {
     configureCommandPalette();
     syncSavedCatalogCommands();
     syncCatalogCollectionCommands();
+    commandPalette.initializeSidecar?.();
     configureUtcClock();
     if (initialStateNeedsRepair || initialViewNeedsRepair) updateLocation();
     configureChoiceButtons(
@@ -508,7 +509,7 @@ if (root) {
       });
     }
     nodes.commandOpen?.addEventListener("click", event => {
-      commandPalette.open({ returnFocus: nodes.commandOpen, animateEntrance: event.detail !== 0 });
+      commandPalette.toggle({ returnFocus: nodes.commandOpen, animateEntrance: event.detail !== 0 });
     });
     mobileViewport.addEventListener("change", handleMobileViewportChange);
     nodes.galleryToggle?.addEventListener("click", (event) => {
@@ -3867,7 +3868,7 @@ if (root) {
     if (
       event.key !== "Escape" || event.defaultPrevented || event.repeat ||
       event.isComposing || event.metaKey || event.ctrlKey || event.altKey ||
-      event.shiftKey || document.hidden || document.querySelector("dialog[open]")
+      event.shiftKey || document.hidden || workspaceHasModal()
     ) return;
 
     // Nested menus and dialogs own Escape before workspace navigation does.
@@ -3907,12 +3908,18 @@ if (root) {
     focusGalleryButton(card.button);
   }
 
+  function workspaceHasModal() {
+    return Boolean(document.querySelector(
+      'dialog[open]:not([data-desk-sidecar]), [data-desk-sidecar][open][aria-modal="true"]',
+    ));
+  }
+
   function viewShortcutTargetBlocked(eventTarget) {
     const target = eventTarget instanceof Element
       ? eventTarget
       : document.activeElement;
     return !target || target.isContentEditable || Boolean(target.closest(
-      'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"], [role="listbox"], [role="menu"], [role="slider"], [role="spinbutton"]',
+      '[data-desk-sidecar], input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"], [role="listbox"], [role="menu"], [role="slider"], [role="spinbutton"]',
     ));
   }
 
@@ -3922,7 +3929,7 @@ if (root) {
       state.mode === "craft" ||
       state.catalogMenuOpen ||
       catalogPointerDrag ||
-      document.querySelector("dialog[open]") ||
+      workspaceHasModal() ||
       viewShortcutTargetBlocked(target)
     ) return false;
     if (state.mode === "catalog" && state.layout === "all") {
@@ -4590,6 +4597,8 @@ if (root) {
     syncModeActions(false);
     syncComposerControls();
     syncMonitorRailVisibility();
+    // The dock remains open while data loads and the workspace changes.
+    commandPalette.refresh();
   }
 
   function syncMobileSummary() {

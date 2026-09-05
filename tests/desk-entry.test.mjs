@@ -2,14 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createDeskEntry } from "../src/desk-entry.js";
 
-function harness({ baseInk = null, revealInk = null, ...options } = {}) {
-  const panel = () => ({ hidden: false, inert: false, style: { removeProperty() {} } });
+function harness({ baseInk = null, revealInk = null, buttonTabIndex = null, ...options } = {}) {
+  const panel = () => ({
+    hidden: false, inert: false, style: { removeProperty() {} }, attributes: new Map(),
+    getAttribute(name) { return this.attributes.get(name) ?? null; },
+    setAttribute(name, value) { this.attributes.set(name, value); },
+  });
   const entry = panel();
   const content = panel();
   const button = new EventTarget();
   button.style = panel().style;
   const attributes = new Map();
+  if (buttonTabIndex !== null) attributes.set("tabindex", buttonTabIndex);
+  button.getAttribute = name => attributes.get(name) ?? null;
   button.setAttribute = (name, value) => attributes.set(name, value);
+  button.removeAttribute = name => attributes.delete(name);
   button.toggleAttribute = (name, value) => value ? attributes.set(name, "") : attributes.delete(name);
   const label = { textContent: "Log in" };
   button.querySelector = selector => {
@@ -22,9 +29,11 @@ function harness({ baseInk = null, revealInk = null, ...options } = {}) {
   const waits = new Map();
   let timerId = 0;
   let reveals = 0;
+  let logouts = 0;
   const gate = createDeskEntry({
     entry, content, button,
     onReveal: () => reveals++,
+    onLogout: () => logouts++,
     schedule(callback, delay) {
       waits.set(++timerId, { callback, delay });
       return timerId;
@@ -49,7 +58,7 @@ function harness({ baseInk = null, revealInk = null, ...options } = {}) {
     waits.clear();
     pending.forEach(wait => wait.callback());
   }
-  return { gate, entry, content, motions, click, finishWait, waits, label, attributes, get reveals() { return reveals; } };
+  return { gate, entry, content, button, motions, click, finishWait, waits, label, attributes, get reveals() { return reveals; }, get logouts() { return logouts; } };
 }
 
 test("entry hides and disables commands until the mock login is clicked", () => {
@@ -181,6 +190,178 @@ test("destroy while waiting cancels its timer", () => {
   assert.equal(h.reveals, 0);
 });
 
+test("keyboard and reduced-motion logout return immediately to the original login panel", () => {
+  for (const reducedMotion of [false, true]) {
+    const h = harness({ reducedMotion });
+    h.gate.open();
+    h.click(0);
+    assert.equal(h.gate.logout({ animate: reducedMotion }), true);
+    assert.equal(h.gate.ready, false);
+    assert.equal(h.entry.hidden, false);
+    assert.equal(h.entry.inert, false);
+    assert.equal(h.content.hidden, true);
+    assert.equal(h.content.inert, true);
+    assert.equal(h.label.textContent, "Log in");
+    assert.equal(h.motions.length, 0);
+    assert.equal(h.waits.size, 0);
+    assert.equal(h.logouts, 1);
+    h.gate.destroy();
+  }
+});
+
+test("pointer logout fades only opacity, disables commands immediately, and has no waiting state", async () => {
+  const h = harness();
+  h.gate.open();
+  h.click(0);
+  h.gate.logout();
+  assert.equal(h.gate.ready, false);
+  assert.equal(h.content.inert, true);
+  assert.equal(h.entry.hidden, false);
+  assert.equal(h.entry.inert, false);
+  assert.equal(h.waits.size, 0);
+  assert.equal(h.attributes.get("aria-busy"), "false");
+  assert.equal(h.motions.length, 2);
+  assert.ok(h.motions.every(motion => Object.keys(motion.keyframes).join() === "opacity"));
+  assert.ok(h.motions.every(motion => motion.timing.duration === 0.18));
+  assert.equal(h.gate.logout(), false);
+  assert.equal(h.motions.length, 2);
+  assert.equal(h.logouts, 1);
+  h.motions.forEach(motion => motion.finish());
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.content.hidden, true);
+  assert.equal(h.entry.hidden, false);
+  h.gate.destroy();
+});
+
+test("repeated login and logout permit reopening in the logged-out state", () => {
+  const h = harness();
+  for (let cycle = 0; cycle < 3; cycle++) {
+    h.gate.open();
+    h.click(0);
+    assert.equal(h.gate.ready, true);
+    h.gate.logout({ animate: false });
+    h.gate.close();
+    assert.equal(h.gate.open(), false);
+    assert.equal(h.entry.hidden, false);
+  }
+  assert.equal(h.reveals, 3);
+  assert.equal(h.logouts, 3);
+  h.gate.destroy();
+});
+
+test("logout cancels a pending mock login and rejects its stale waiting callback", () => {
+  const h = harness();
+  h.gate.open();
+  h.click();
+  const stale = [...h.waits.values()][0].callback;
+  h.gate.logout();
+  assert.equal(h.waits.size, 0);
+  assert.equal(h.attributes.get("aria-busy"), "false");
+  stale();
+  assert.equal(h.gate.ready, false);
+  assert.equal(h.reveals, 0);
+  h.click(0);
+  assert.equal(h.gate.ready, true);
+  assert.equal(h.reveals, 1);
+  h.gate.destroy();
+});
+
+test("logout reverses an unfinished login from the visible opacities", async () => {
+  const opacities = new Map();
+  const motionDocument = new EventTarget();
+  motionDocument.defaultView = { getComputedStyle: panel => ({ opacity: opacities.get(panel) ?? "1" }) };
+  const h = harness({ motionDocument });
+  h.gate.open();
+  h.click();
+  h.finishWait();
+  const loginMotions = [...h.motions];
+  opacities.set(h.entry, "0.6");
+  opacities.set(h.content, "0.4");
+  h.gate.logout();
+  assert.ok(loginMotions.every(motion => motion.animation.cancelled));
+  const returning = h.motions.slice(loginMotions.length);
+  assert.deepEqual(returning.find(motion => motion.element === h.entry).keyframes, { opacity: [0.6, 1] });
+  assert.deepEqual(returning.find(motion => motion.element === h.content).keyframes, { opacity: [0.4, 0] });
+  loginMotions.forEach(motion => motion.finish());
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.gate.ready, false);
+  assert.ok(returning.every(motion => !motion.animation.cancelled));
+  h.gate.destroy();
+});
+
+test("login interrupts a returning fade from live opacity without a new wait or translation", async () => {
+  const opacities = new Map();
+  const motionDocument = new EventTarget();
+  motionDocument.defaultView = { getComputedStyle: panel => ({ opacity: opacities.get(panel) ?? "1" }) };
+  const h = harness({ motionDocument });
+  h.gate.open();
+  h.click(0);
+  h.gate.logout();
+  const returning = [...h.motions];
+  opacities.set(h.entry, "0.25");
+  opacities.set(h.content, "0.75");
+  h.click();
+  assert.equal(h.gate.ready, true);
+  assert.equal(h.waits.size, 0);
+  assert.ok(returning.every(motion => motion.animation.cancelled));
+  const loginMotions = h.motions.slice(returning.length);
+  assert.deepEqual(loginMotions.find(motion => motion.element === h.entry).keyframes, { opacity: [0.25, 0] });
+  assert.deepEqual(loginMotions.find(motion => motion.element === h.content).keyframes, { opacity: [0.75, 1] });
+  returning.forEach(motion => motion.finish());
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.gate.ready, true);
+  assert.ok(loginMotions.every(motion => !motion.animation.cancelled));
+  h.gate.destroy();
+});
+
+for (const action of ["close", "destroy"]) {
+  test(`${action} during logout cancels the fade and cannot trigger a late return callback`, async () => {
+    const h = harness();
+    h.gate.open();
+    h.click(0);
+    h.gate.logout();
+    h.gate[action]();
+    h.motions.forEach(motion => motion.finish());
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(h.motions.every(motion => motion.animation.cancelled));
+    assert.equal(h.logouts, 1);
+    assert.equal(h.gate.ready, false);
+    assert.equal(h.content.hidden, true);
+    assert.equal(h.gate.logout(), false);
+    h.click();
+    assert.equal(h.reveals, 1);
+  });
+}
+
+test("closing from a login or logout callback prevents subsequent transition work", () => {
+  let h;
+  h = harness({ onLogout: () => h.gate.close() });
+  h.gate.open();
+  h.click(0);
+  h.gate.logout();
+  assert.equal(h.motions.length, 0);
+  assert.equal(h.content.hidden, true);
+  h.gate.destroy();
+  h = harness({ onReveal: () => h.gate.close() });
+  h.gate.open();
+  h.click();
+  h.finishWait();
+  assert.equal(h.motions.length, 0);
+  assert.equal(h.gate.ready, true);
+  h.gate.destroy();
+});
+
+test("logout while the dialog is closed leaves the completed mock login unchanged", () => {
+  const h = harness();
+  h.gate.open();
+  h.click(0);
+  h.gate.close();
+  assert.equal(h.gate.logout(), false);
+  assert.equal(h.gate.open(), true);
+  assert.equal(h.logouts, 0);
+  h.gate.destroy();
+});
+
 function logoLayer() {
   const values = new Map();
   return {
@@ -191,6 +372,145 @@ function logoLayer() {
     },
   };
 }
+
+test("sidebar logo is passive and cannot change mock login state", () => {
+  for (const reducedMotion of [false, true]) {
+    for (const unlocked of [false, true]) {
+      const h = harness({ reducedMotion });
+      h.gate.open();
+      if (unlocked) h.click(0);
+      const reveals = h.reveals;
+      h.gate.setPresentation("sidebar");
+      h.gate.open({ animateEntrance: true });
+      assert.equal(h.entry.getAttribute("aria-label"), "Desk");
+      assert.equal(h.button.disabled, true);
+      assert.equal(h.button.inert, true);
+      assert.equal(h.attributes.get("tabindex"), "-1");
+      assert.equal(h.attributes.get("aria-hidden"), "true");
+      assert.equal(h.attributes.get("aria-disabled"), "true");
+      for (const detail of [1, 0, 1, 0]) h.click(detail);
+      assert.equal(h.gate.logout(), false);
+      assert.equal(h.gate.ready, unlocked);
+      assert.equal(h.gate.commandsVisible, false);
+      assert.equal(h.entry.hidden, false);
+      assert.equal(h.entry.inert, false);
+      assert.equal(h.content.hidden, true);
+      assert.equal(h.content.inert, true);
+      assert.equal(h.waits.size, 0);
+      assert.equal(h.motions.length, 0);
+      assert.equal(h.reveals, reveals);
+      assert.equal(h.logouts, 0);
+      h.gate.close();
+      h.click(0);
+      assert.equal(h.gate.open(), unlocked);
+      assert.equal(h.button.disabled, true);
+      h.gate.destroy();
+    }
+  }
+});
+
+test("moving between menu and sidebar preserves mock state and restores the correct menu panel", () => {
+  const h = harness();
+  h.gate.open();
+  h.click(0);
+  h.gate.setPresentation("sidebar");
+  assert.equal(h.gate.ready, true);
+  assert.equal(h.gate.commandsVisible, false);
+  assert.equal(h.content.hidden, true);
+  assert.equal(h.button.disabled, true);
+  h.gate.setPresentation("menu");
+  assert.equal(h.gate.ready, true);
+  assert.equal(h.gate.commandsVisible, true);
+  assert.equal(h.content.hidden, false);
+  assert.equal(h.entry.hidden, true);
+  assert.equal(h.button.disabled, false);
+  assert.equal(h.button.inert, false);
+  assert.equal(h.attributes.has("aria-hidden"), false);
+  assert.equal(h.attributes.has("tabindex"), false);
+  assert.equal(h.entry.getAttribute("aria-label"), "Desk login");
+  h.gate.setPresentation("sidebar");
+  h.click(0);
+  h.gate.setPresentation("menu");
+  assert.equal(h.gate.ready, true);
+  assert.equal(h.gate.commandsVisible, true);
+  h.gate.logout({ animate: false });
+  assert.equal(h.gate.ready, false);
+  assert.equal(h.gate.commandsVisible, false);
+  assert.equal(h.entry.hidden, false);
+  assert.equal(h.content.hidden, true);
+  assert.equal(h.label.textContent, "Log in");
+  h.gate.destroy();
+});
+
+test("returning to centered login restores its original tab order and button semantics", () => {
+  const h = harness({ buttonTabIndex: "0" });
+  h.gate.open();
+  h.gate.setPresentation("sidebar");
+  assert.equal(h.attributes.get("tabindex"), "-1");
+  h.gate.setPresentation("menu");
+  assert.equal(h.attributes.get("tabindex"), "0");
+  assert.equal(h.attributes.has("aria-hidden"), false);
+  assert.equal(h.attributes.get("aria-disabled"), "false");
+  assert.equal(h.button.disabled, false);
+  assert.equal(h.button.inert, false);
+  h.click(0);
+  assert.equal(h.gate.ready, true);
+  assert.equal(h.gate.commandsVisible, true);
+  h.gate.destroy();
+});
+
+test("entering and closing the sidebar rejects stale menu waiting and fade completions", async () => {
+  for (const phase of ["waiting", "revealing", "logout"]) {
+    const h = harness();
+    h.gate.open();
+    h.click();
+    const staleWait = [...h.waits.values()][0].callback;
+    if (phase !== "waiting") h.finishWait();
+    if (phase === "logout") h.gate.logout();
+    h.gate.setPresentation("sidebar");
+    const ready = h.gate.ready;
+    const callbacks = [h.reveals, h.logouts];
+    assert.equal(h.waits.size, 0);
+    assert.equal(h.content.hidden, true);
+    assert.equal(h.content.inert, true);
+    h.gate.close();
+    staleWait();
+    h.motions.forEach(motion => motion.finish());
+    await new Promise(resolve => setImmediate(resolve));
+    h.click();
+    assert.equal(h.gate.ready, ready);
+    assert.deepEqual([h.reveals, h.logouts], callbacks);
+    assert.ok(h.motions.every(motion => motion.animation.cancelled));
+    assert.equal(h.content.hidden, true);
+    h.gate.setPresentation("menu");
+    assert.equal(h.gate.open(), ready);
+    assert.equal(h.content.hidden, !ready);
+    h.gate.destroy();
+  }
+});
+
+test("passive sidebar clicks leave mock auth and the original logo loop untouched", () => {
+  const h = logoHarness();
+  h.gate.open();
+  h.click(0);
+  h.gate.setPresentation("sidebar");
+  const loops = h.motions.slice(-2);
+  const motionCount = h.motions.length;
+  assert.equal(loops.length, 2);
+  h.click();
+  h.gate.setPresentation("sidebar");
+  h.click(0);
+  h.click();
+  assert.equal(h.gate.logout(), false);
+  assert.equal(h.gate.ready, true);
+  assert.equal(h.motions.length, motionCount);
+  assert.ok(loops.every(motion => !motion.animation.cancelled));
+  assert.equal(h.content.hidden, true);
+  h.gate.setPresentation("menu");
+  assert.ok(loops.every(motion => motion.animation.cancelled));
+  assert.equal(h.gate.commandsVisible, true);
+  h.gate.destroy();
+});
 
 function logoHarness(options = {}) {
   const baseInk = logoLayer();
@@ -374,7 +694,22 @@ test("close and reopen restart both loops while keyboard login ends them instant
   h.gate.destroy();
 });
 
-test("a live reduced-motion preference cancels both loops and prevents late restarts", () => {
+test("logout restarts the original logo animation on the same two image layers", () => {
+  const h = logoHarness();
+  h.gate.open();
+  h.click(0);
+  assert.ok(h.motions.every(motion => motion.animation.cancelled));
+  h.gate.logout({ animate: false });
+  assert.equal(h.motions.length, 4);
+  const restarted = h.motions.slice(2);
+  assert.equal(restarted[0].element, h.baseInk);
+  assert.equal(restarted[1].element, h.revealInk);
+  assert.ok(restarted.every(motion => motion.timing.repeat === Infinity && !motion.animation.cancelled));
+  h.gate.destroy();
+  assert.ok(h.motions.every(motion => motion.animation.cancelled));
+});
+
+test("a live reduced-motion preference cancels logo loops and an active logout fade", () => {
   const preference = new EventTarget();
   preference.matches = false;
   const previousMatchMedia = Object.getOwnPropertyDescriptor(globalThis, "matchMedia");
@@ -403,7 +738,16 @@ test("a live reduced-motion preference cancels both loops and prevents late rest
   preference.matches = false;
   preference.dispatchEvent(new Event("change"));
   assert.equal(h.motions.length, 4);
+  h.click(0);
+  h.gate.logout();
+  assert.equal(h.motions.length, 8);
+  preference.matches = true;
+  preference.dispatchEvent(new Event("change"));
+  assert.ok(h.motions.every(motion => motion.animation.cancelled));
+  assert.equal(h.entry.hidden, false);
+  assert.equal(h.content.hidden, true);
+  assertLogoStylesCleared(h);
   h.gate.destroy();
   preference.dispatchEvent(new Event("change"));
-  assert.equal(h.motions.length, 4);
+  assert.equal(h.motions.length, 8);
 });

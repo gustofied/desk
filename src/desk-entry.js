@@ -3,21 +3,25 @@ import { animate as motionAnimate } from "motion";
 // A visual preview only: this does not authenticate or protect any data.
 // Kept in memory so a page refresh lets the login mock be tried again.
 export function createDeskEntry({
-  entry, content, button, onReveal, reducedMotion = false, animate = motionAnimate,
+  entry, content, button, onReveal, onLogout, reducedMotion = false, animate = motionAnimate,
   schedule = globalThis.setTimeout, cancel = globalThis.clearTimeout,
   motionDocument = globalThis.document,
 }) {
   let unlocked = !entry || !content || !button;
   let opened = false;
+  let presentation = "menu";
   let revision = 0;
   let animations = [];
   let waiting = false;
+  let logoutFading = false;
   let waitTimer = null;
   let idleAnimations = [];
   const targets = new Set();
   const baseInk = button?.querySelector?.("[data-desk-logo-base]");
   const revealInk = button?.querySelector?.("[data-desk-logo-reveal]");
   const label = button?.querySelector?.("[data-desk-login-label]");
+  const buttonTabIndex = button?.getAttribute?.("tabindex") ?? null;
+  const entryLabel = entry?.getAttribute?.("aria-label") || "Desk login";
   const motionPreference = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
 
   function stopIdle() {
@@ -31,7 +35,7 @@ export function createDeskEntry({
 
   function startIdle() {
     stopIdle();
-    if (!baseInk || !revealInk || !opened || unlocked || waiting || motionDocument?.hidden || !motionAllowed()) return;
+    if (!baseInk || !revealInk || !opened || (unlocked && presentation !== "sidebar") || waiting || motionDocument?.hidden || !motionAllowed()) return;
     // Reveal the actual PNG over its silhouette; never move or redraw the ink.
     // This decorative loop also runs after shortcut opening, without delaying it.
     const settle = [0.32, 0.72, 0, 1];
@@ -52,14 +56,34 @@ export function createDeskEntry({
   function onMotionEnvironmentChange() {
     if (motionDocument?.hidden || !motionAllowed()) stopIdle();
     else startIdle();
+    if (logoutFading && !motionAllowed()) {
+      clearMotion();
+      sync();
+    }
   }
 
   function setWaiting(value) {
     waiting = value;
     button?.setAttribute("aria-busy", String(value));
-    button?.setAttribute("aria-disabled", String(value));
     button?.toggleAttribute("data-opening", value);
-    if (label && (value || !unlocked)) label.textContent = value ? "Opening…" : "Log in";
+    syncButton();
+  }
+
+  function syncButton() {
+    if (!button) return;
+    const passive = presentation === "sidebar";
+    button.disabled = passive;
+    button.inert = passive;
+    button.setAttribute("aria-disabled", String(passive || waiting));
+    if (passive) {
+      button.setAttribute("aria-hidden", "true");
+      button.setAttribute("tabindex", "-1");
+    } else {
+      button.removeAttribute("aria-hidden");
+      if (buttonTabIndex === null) button.removeAttribute("tabindex");
+      else button.setAttribute("tabindex", buttonTabIndex);
+    }
+    if (label) label.textContent = waiting ? "Opening…" : "Log in";
   }
 
   function cancelWait() {
@@ -70,6 +94,7 @@ export function createDeskEntry({
 
   function clearMotion() {
     revision++;
+    logoutFading = false;
     animations.forEach(animation => animation.cancel());
     animations = [];
     for (const panel of targets) {
@@ -95,14 +120,34 @@ export function createDeskEntry({
 
   function sync() {
     if (!entry || !content) return;
-    entry.hidden = unlocked;
-    entry.inert = unlocked;
-    content.hidden = !unlocked;
-    content.inert = !unlocked;
+    const showCommands = unlocked && presentation !== "sidebar";
+    entry.hidden = showCommands;
+    entry.inert = showCommands;
+    content.hidden = !showCommands;
+    content.inert = !showCommands;
+    entry.setAttribute("aria-label", presentation === "sidebar" ? "Desk" : entryLabel);
+    syncButton();
+  }
+
+  function setPresentation(value) {
+    const next = value === "sidebar" ? "sidebar" : "menu";
+    if (next === presentation) return;
+    stopIdle();
+    clearMotion();
+    cancelWait();
+    presentation = next;
+    sync();
+    startIdle();
   }
 
   function motionAllowed() {
     return !reducedMotion && !motionPreference?.matches;
+  }
+
+  function opacityOf(panel) {
+    if (panel.hidden) return 0;
+    const opacity = Number.parseFloat(motionDocument?.defaultView?.getComputedStyle(panel).opacity);
+    return Number.isFinite(opacity) ? Math.max(0, Math.min(1, opacity)) : 1;
   }
 
   function open({ animateEntrance = false } = {}) {
@@ -111,7 +156,7 @@ export function createDeskEntry({
     cancelWait();
     opened = true;
     sync();
-    if (!unlocked && animateEntrance && motionAllowed()) {
+    if (!unlocked && presentation !== "sidebar" && animateEntrance && motionAllowed()) {
       play(entry, { opacity: [0, 1] },
         { duration: 0.24, ease: [0.23, 1, 0.32, 1] });
       settle();
@@ -121,13 +166,20 @@ export function createDeskEntry({
   }
 
   function reveal(event) {
-    if (!opened || unlocked || waiting) return;
+    if (!opened || presentation === "sidebar" || unlocked || waiting) return;
+    const returning = logoutFading
+      ? { entry: opacityOf(entry), content: opacityOf(content) }
+      : null;
     clearMotion();
     // The delay exists only to demonstrate a waiting state in this mock.
     // Keyboard activation and reduced motion skip the simulated wait.
     if (!event.detail || !motionAllowed()) {
       stopIdle();
       revealMenu(false);
+      return;
+    }
+    if (returning) {
+      revealMenu(true, returning);
       return;
     }
     setWaiting(true);
@@ -140,7 +192,7 @@ export function createDeskEntry({
     }, 600);
   }
 
-  function revealMenu(animateReveal) {
+  function revealMenu(animateReveal, returning = null) {
     stopIdle();
     clearMotion();
     unlocked = true;
@@ -148,23 +200,52 @@ export function createDeskEntry({
     entry.inert = true;
     content.hidden = false;
     content.inert = false;
+    const current = revision;
     onReveal?.();
+    if (!opened || !unlocked || current !== revision) return;
 
     if (!animateReveal) {
       sync();
       return;
     }
-    play(entry, { opacity: [1, 0] },
+    play(entry, { opacity: [returning?.entry ?? 1, 0] },
       { duration: 0.2, ease: [0.23, 1, 0.32, 1] });
-    play(content, { opacity: [0, 1], transform: ["translateY(8px)", "translateY(0)"] },
+    play(content, returning
+      ? { opacity: [returning.content, 1] }
+      : { opacity: [0, 1], transform: ["translateY(8px)", "translateY(0)"] },
       { duration: 0.28, ease: [0.23, 1, 0.32, 1] });
     // Only the initial visible options get choreography, never search updates.
-    const rows = [...(content.querySelectorAll?.("[data-command-index]") || [])].slice(0, 6);
+    const rows = returning ? [] : [...(content.querySelectorAll?.("[data-command-index]") || [])].slice(0, 6);
     rows.forEach((row, index) => {
       play(row, { opacity: [0, 1], transform: ["translateY(8px)", "translateY(0)"] },
         { duration: 0.24, delay: index * 0.03, ease: [0.23, 1, 0.32, 1] });
     });
     settle();
+  }
+
+  function logout({ animate: animateReturn = true } = {}) {
+    if (!opened || presentation === "sidebar" || !entry || !content || !button || (!unlocked && !waiting)) return false;
+    const from = { entry: opacityOf(entry), content: opacityOf(content) };
+    stopIdle();
+    clearMotion();
+    unlocked = false;
+    cancelWait();
+    content.inert = true;
+    entry.hidden = false;
+    entry.inert = false;
+    const current = revision;
+    onLogout?.();
+    if (!opened || unlocked || current !== revision) return true;
+    if (animateReturn && motionAllowed() && !content.hidden) {
+      logoutFading = true;
+      play(content, { opacity: [from.content, 0] },
+        { duration: 0.18, ease: [0.23, 1, 0.32, 1] });
+      play(entry, { opacity: [from.entry, 1] },
+        { duration: 0.18, ease: [0.23, 1, 0.32, 1] });
+      settle();
+    } else sync();
+    startIdle();
+    return true;
   }
 
   function close() {
@@ -182,7 +263,10 @@ export function createDeskEntry({
   return {
     open,
     close,
+    logout,
+    setPresentation,
     get ready() { return unlocked; },
+    get commandsVisible() { return unlocked && presentation !== "sidebar"; },
     destroy() {
       close();
       button?.removeEventListener("click", reveal);

@@ -1,4 +1,5 @@
 import { createDeskEntry } from "./desk-entry.js";
+import { createDeskSidecar } from "./desk-sidecar.js";
 
 const defaultGroups = [
   "Workspace",
@@ -24,12 +25,15 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   const status = root.querySelector("[data-command-status]");
   const closeButtons = [...root.querySelectorAll("[data-command-close]")];
   const loginButton = root.querySelector("[data-desk-login]");
+  const dragHandle = root.querySelector("[data-sidecar-handle]");
   const registry = new Map();
   let commandSnapshot = [];
   let visibleCommands = [];
   let activeIndex = -1;
   let previousFocus = null;
   let renderFrame = null;
+  let focusRevision = 0;
+  let closeFocusTarget = null;
   const deskEntry = createDeskEntry({
     entry: root.querySelector("[data-desk-entry]"),
     content: root.querySelector("[data-command-content]"),
@@ -37,8 +41,45 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     reducedMotion,
     onReveal: () => {
       render();
-      input?.focus({ preventScroll: true });
+      focusEntry();
     },
+    onLogout: () => focusEntry(),
+  });
+  const sidecar = root.hasAttribute("data-desk-sidecar") ? createDeskSidecar({
+    root,
+    toggle: document.querySelector("[data-command-open]"),
+    dragHandle,
+    reducedMotion,
+    onOpen({ focus, animateEntrance }) {
+      deskEntry.setPresentation(sidecar.presentation);
+      deskEntry.open({ animateEntrance });
+      commandSnapshot = createCommandSnapshot(registry);
+      render();
+      if (focus) focusEntry();
+    },
+    onClose() {
+      focusRevision++;
+      deskEntry.close();
+    },
+    onClosed() {
+      const target = closeFocusTarget;
+      closeFocusTarget = null;
+      target?.focus({ preventScroll: true });
+    },
+    onDismiss: () => close(),
+    onModeChange({ focus }) { if (focus) focusEntry(); },
+    onPresentationChange({ presentation }) {
+      deskEntry.setPresentation(presentation);
+      refresh();
+    },
+  }) : null;
+
+  if (sidecar) registry.set("workspace.sidebar-presentation", {
+    id: "workspace.sidebar-presentation",
+    title: () => sidecar.presentation === "sidebar" ? "Center menu" : "Show sidebar",
+    keywords: ["Desk", "sidebar", "menu", "dock", "center"],
+    group: "Workspace", order: -10, keepOpen: true, presentationCommand: true,
+    run: () => sidecar.presentation === "sidebar" ? centerMenu() : showSidebar(),
   });
 
   document.addEventListener("keydown", handleGlobalShortcut);
@@ -49,6 +90,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   results?.addEventListener("click", handleResultsClick);
   root.addEventListener("cancel", handleCancel);
   root.addEventListener("click", handleRootClick);
+  root.addEventListener("keydown", handleRootKeydown);
 
   function register(commands) {
     const entries = Array.isArray(commands) ? commands : [commands];
@@ -75,7 +117,18 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   }
 
   function handleRootClick(event) {
-    if (event.target === root) close();
+    if (event.target !== root || (sidecar && !sidecar.modal)) return;
+    const bounds = root.getBoundingClientRect();
+    if (!sidecar || event.clientX < bounds.left || event.clientX > bounds.right ||
+      event.clientY < bounds.top || event.clientY > bounds.bottom) close();
+  }
+
+  function handleRootKeydown(event) {
+    if (event.key !== "Escape" || event.defaultPrevented || event.isComposing ||
+      document.querySelector("dialog[open]:not([data-command-palette])")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    close();
   }
 
   function handleResultsPointerMove(event) {
@@ -108,26 +161,85 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
       return;
     }
     event.preventDefault();
-    root.open ? close() : open();
+    toggle();
   }
 
-  function open({ query = "", returnFocus = null, animateEntrance = false } = {}) {
+  function focusEntry() {
+    const current = ++focusRevision;
+    window.requestAnimationFrame(() => {
+      if (current === focusRevision && (sidecar ? sidecar.isOpen : root.open)) {
+        const target = sidecar?.presentation === "sidebar" ? dragHandle : deskEntry.commandsVisible ? input : loginButton;
+        target?.focus({ preventScroll: true });
+      }
+    });
+  }
+
+  function open({ query = "", returnFocus = null, animateEntrance = false, animate = true, focus = true } = {}) {
+    closeFocusTarget = null;
     root.removeAttribute("data-closing");
-    previousFocus = returnFocus || document.activeElement;
-    deskEntry.open({ animateEntrance });
-    if (!root.open) root.showModal();
+    if (returnFocus || !root.contains(document.activeElement)) previousFocus = returnFocus || document.activeElement;
     if (input) input.value = query;
     commandSnapshot = createCommandSnapshot(registry);
     visibleCommands = [];
     activeIndex = -1;
+    if (sidecar) {
+      const wasOpen = sidecar.isOpen;
+      sidecar.open({ animate, focus, animateEntrance });
+      render();
+      if (wasOpen && focus) focusEntry();
+      return;
+    }
+    deskEntry.open({ animateEntrance });
+    if (!root.open) root.showModal();
     render();
-    window.requestAnimationFrame(() => {
-      if (root.open) (deskEntry.ready ? input : loginButton)?.focus({ preventScroll: true });
-    });
+    if (focus) focusEntry();
+  }
+
+  function toggle(options) {
+    if (sidecar?.presentation === "sidebar") centerMenu();
+    else if (sidecar ? sidecar.isOpen : root.open) close();
+    else open(options);
+  }
+
+  function showSidebar() {
+    if (!sidecar || !deskEntry.ready) return;
+    closeFocusTarget = null;
+    sidecar.showSidebar();
+    refresh();
+    focusEntry();
+  }
+
+  function centerMenu() {
+    if (!sidecar) return open();
+    closeFocusTarget = null;
+    if (!root.contains(document.activeElement)) previousFocus = document.activeElement;
+    sidecar.centerMenu();
+    refresh();
+    focusEntry();
   }
 
   function close({ restoreFocus = true } = {}) {
+    if (sidecar) {
+      if (!sidecar.isOpen) return;
+      const hadFocus = root.contains(document.activeElement);
+      const wasModal = sidecar.modal;
+      window.cancelAnimationFrame(renderFrame);
+      renderFrame = null;
+      let target = null;
+      if (restoreFocus && (hadFocus || wasModal)) {
+        target = previousFocus?.isConnected && previousFocus !== document.body &&
+          !root.contains(previousFocus) && !previousFocus.closest("[hidden], [inert]") &&
+          !previousFocus.matches(":disabled")
+          ? previousFocus : document.querySelector("[data-command-open]");
+      }
+      // The optional sidebar hides the outer controls until its closing spring
+      // finishes, so restore focus only after onClosed has removed that layout.
+      closeFocusTarget = target;
+      sidecar.close();
+      return;
+    }
     if (!root.open || root.hasAttribute("data-closing")) return;
+    focusRevision++;
     window.cancelAnimationFrame(renderFrame);
     renderFrame = null;
     deskEntry.close();
@@ -163,7 +275,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   }
 
   function render() {
-    if (!results || !input || !deskEntry.ready) return;
+    if (!results || !input || !deskEntry.commandsVisible) return;
     const query = createQuery(input.value);
     const previousId = visibleCommands[activeIndex]?.id;
     const matches = commandSnapshot
@@ -322,13 +434,22 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   }
 
   function runCommand(index) {
+    if (!deskEntry.commandsVisible) return;
     const command = visibleCommands[index];
     if (!command || command.disabled) return;
-    if (!command.keepOpen) close({ restoreFocus: false });
+    const desktopSidecar = sidecar?.presentation === "sidebar" && !sidecar.mobile;
+    const mobileSidecar = sidecar?.presentation === "sidebar" && sidecar.mobile;
+    if (!command.presentationCommand && (mobileSidecar || (!desktopSidecar && !command.keepOpen))) close({ restoreFocus: false });
+    if (desktopSidecar && !command.presentationCommand && root.contains(document.activeElement)) focusWorkspace();
     try {
       Promise.resolve(command.run())
         .then(() => {
-          if (command.keepOpen && root.open) input?.focus({ preventScroll: true });
+          if (command.presentationCommand) return;
+          if (!deskEntry.commandsVisible) return;
+          if (desktopSidecar) {
+            refresh();
+            if (root.contains(document.activeElement) && !document.querySelector("dialog[open]:not([data-command-palette])")) focusWorkspace();
+          } else if (!mobileSidecar && command.keepOpen && root.open) input?.focus({ preventScroll: true });
         })
         .catch((error) => {
           console.error(`Desk command failed: ${command.id}`, error);
@@ -338,9 +459,18 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     }
   }
 
+  function focusWorkspace() {
+    const workspace = document.querySelector("[data-desk-workspace]") || document.querySelector(".desk-stage");
+    if (!workspace) return;
+    if (!workspace.hasAttribute("tabindex")) workspace.setAttribute("tabindex", "-1");
+    workspace.focus({ preventScroll: true });
+  }
+
   function destroy() {
+    focusRevision++;
     window.cancelAnimationFrame(renderFrame);
     deskEntry.destroy();
+    sidecar?.destroy();
     document.removeEventListener("keydown", handleGlobalShortcut);
     input?.removeEventListener("input", scheduleRender);
     input?.removeEventListener("keydown", handleInputKeydown);
@@ -349,13 +479,14 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     results?.removeEventListener("click", handleResultsClick);
     root.removeEventListener("cancel", handleCancel);
     root.removeEventListener("click", handleRootClick);
+    root.removeEventListener("keydown", handleRootKeydown);
     if (root.open) root.close();
     registry.clear();
     commandSnapshot = [];
     visibleCommands = [];
   }
 
-  return { close, destroy, open, refresh, register };
+  return { close, destroy, open, toggle, showSidebar, centerMenu, refresh, register, initializeSidecar: () => sidecar?.initialize() };
 }
 
 function createCommandSnapshot(registry) {
@@ -481,6 +612,10 @@ function createNoopPalette() {
     close() {},
     destroy() {},
     open() {},
+    toggle() {},
+    showSidebar() {},
+    centerMenu() {},
+    initializeSidecar() {},
     refresh() {},
     register() {
       return () => {};

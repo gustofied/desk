@@ -1,0 +1,131 @@
+:root {
+  --desk-sidecar-width: clamp(240px, 20vw, 320px);
+  --desk-sidecar-space: 0px;
+  --desk-sidecar-progress: 0;
+}
+
+.desk-command-menu__entry-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.desk-command-menu__entry-actions [hidden],
+.desk-sidecar-handle {
+  display: none;
+}
+
+/* The normal page and centered menu keep their original styles.
+   Only the optional dock changes the available workspace width. */
+:root .desk-command-menu[data-presentation="sidebar"] {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 6;
+  width: var(--desk-sidecar-width);
+  max-width: calc(100vw - 24px);
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  border-width: 0 1px 0 0;
+  overflow: visible;
+}
+
+[data-presentation="sidebar"] .desk-command-menu__stage {
+  height: 100%;
+  max-height: none;
+  overflow: hidden;
+}
+
+[data-presentation="sidebar"] .desk-command-menu__surface,
+[data-presentation="sidebar"] .desk-command-menu__entry-header,
+[data-presentation="sidebar"] [data-desk-login-label],
+[data-presentation="sidebar"] #desk-login-note {
+  display: none;
+}
+
+[data-presentation="sidebar"] .desk-command-menu__entry {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+[data-presentation="sidebar"] .desk-command-menu__login {
+  gap: 0;
+  opacity: 1;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* A quiet workspace in sidebar mode; the original header returns on close. */
+:root[data-desk-sidebar="true"] .desk-corners,
+:root[data-desk-sidebar="true"] .desk-top-controls,
+:root[data-desk-sidebar="true"] .desk-search {
+  visibility: hidden;
+}
+
+.desk-sidecar-handle {
+  position: absolute;
+  inset: 0 -8px 0 auto;
+  z-index: 3;
+  width: 16px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  appearance: none;
+  cursor: grab;
+  touch-action: none;
+  outline: none;
+}
+
+.desk-sidecar-handle::after {
+  position: absolute;
+  inset: 0 auto 0 7px;
+  width: 2px;
+  content: "";
+  background: var(--desk-accent-deep);
+  opacity: 0;
+  transition: opacity 200ms var(--desk-ease-out);
+}
+
+.desk-sidecar-handle:hover::after,
+:root[data-sidecar-dragging="true"] .desk-sidecar-handle::after {
+  opacity: 0.5;
+}
+
+.desk-sidecar-handle:focus-visible::after {
+  opacity: 1;
+}
+
+:root[data-sidecar-dragging="true"] * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
+[data-presentation="sidebar"] .desk-sidecar-handle {
+  display: block;
+}
+
+@media (min-width: 961px) {
+  :root[data-desk-sidebar="true"] body {
+    --desk-page-inset: clamp(20px, 5vw, 72px);
+    padding-left: calc(var(--desk-page-inset) + var(--desk-sidecar-space));
+  }
+
+  :root[data-desk-sidebar="true"] .desk-stage {
+    width: min(80vw, calc(100vw - var(--desk-sidecar-space) - var(--desk-page-inset) * 2), 960px);
+  }
+
+  :root[data-desk-sidebar="true"][data-desk-layout="all"] .desk-stage {
+    --desk-dock-gutter: calc(8vw + (var(--desk-page-inset) * 2 - 8vw) * var(--desk-sidecar-progress));
+    width: min(92vw, calc(100vw - var(--desk-sidecar-space) - var(--desk-dock-gutter)), 1180px);
+  }
+
+  :root[data-desk-sidebar="true"][data-desk-view="monitor"][data-desk-layout="focus"] .desk-stage .gpu-index-detail {
+    height: min(calc(40vw + 33px), calc((100vw - var(--desk-sidecar-space) - var(--desk-page-inset) * 2) / 2 + 33px), 513px);
+  }
+
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desk-sidecar-handle::after {
+    transition: none;
+  }
+}
