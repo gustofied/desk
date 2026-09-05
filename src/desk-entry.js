@@ -14,28 +14,39 @@ export function createDeskEntry({
   let waiting = false;
   let waitTimer = null;
   let idleAnimations = [];
-  let idleEnabled = false;
   const targets = new Set();
-  const ink = [...(button?.querySelectorAll?.("[data-desk-logo-ink]") || [])];
+  const baseInk = button?.querySelector?.("[data-desk-logo-base]");
+  const revealInk = button?.querySelector?.("[data-desk-logo-reveal]");
   const label = button?.querySelector?.("[data-desk-login-label]");
   const motionPreference = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
 
   function stopIdle() {
     idleAnimations.forEach(animation => animation.cancel());
     idleAnimations = [];
-    ink.forEach(stroke => stroke.style.removeProperty("opacity"));
+    for (const layer of [baseInk, revealInk]) {
+      layer?.style.removeProperty("opacity");
+      layer?.style.removeProperty("clip-path");
+    }
   }
 
   function startIdle() {
     stopIdle();
-    if (!idleEnabled || !opened || unlocked || waiting || motionDocument?.hidden || !motionAllowed()) return;
-    // Light only the original ink. The complete mark underneath never moves.
-    ink.forEach((stroke, index) => {
-      idleAnimations.push(animate(stroke, {
-        opacity: [0, 1, 0, 0],
-      }, { duration: 6, times: [0, 0.18, 0.36, 1], delay: index * 0.4,
-        repeat: Infinity, ease: [0.32, 0.72, 0, 1] }));
-    });
+    if (!baseInk || !revealInk || !opened || unlocked || waiting || motionDocument?.hidden || !motionAllowed()) return;
+    // Reveal the actual PNG over its silhouette; never move or redraw the ink.
+    // This decorative loop also runs after shortcut opening, without delaying it.
+    const settle = [0.32, 0.72, 0, 1];
+    // Ease each segment, not the entire loop (which compresses the ink pass).
+    const timing = { duration: 7, times: [0, 0.04, 0.08, 0.36, 0.46, 0.9, 1],
+      repeat: Infinity, ease: [settle, settle, [0.77, 0, 0.175, 1], settle, settle, settle] };
+    const closed = "inset(0 100% 0 0)";
+    const revealed = "inset(0 0% 0 0)";
+    idleAnimations.push(animate(baseInk, {
+      opacity: [1, 0.24, 0.24, 0.24, 1, 1, 1],
+    }, timing));
+    idleAnimations.push(animate(revealInk, {
+      opacity: [0, 0, 1, 1, 0, 0, 0],
+      clipPath: [closed, closed, closed, revealed, revealed, revealed, revealed],
+    }, timing));
   }
 
   function onMotionEnvironmentChange() {
@@ -99,7 +110,6 @@ export function createDeskEntry({
     clearMotion();
     cancelWait();
     opened = true;
-    idleEnabled = animateEntrance;
     sync();
     if (!unlocked && animateEntrance && motionAllowed()) {
       play(entry, { opacity: [0, 1] },
@@ -159,7 +169,6 @@ export function createDeskEntry({
 
   function close() {
     opened = false;
-    idleEnabled = false;
     stopIdle();
     clearMotion();
     cancelWait();

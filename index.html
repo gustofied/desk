@@ -108,7 +108,7 @@
     <link rel="stylesheet" href="./styles/monitor-data.css?v=15">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
     <link rel="stylesheet" href="./styles/deal-view.css?v=40">
-    <link rel="stylesheet" href="./styles/command-palette.css?v=15">
+    <link rel="stylesheet" href="./styles/command-palette.css?v=16">
     <link rel="stylesheet" href="./styles/demo.css?v=26">
   </head>
   <body>
@@ -529,23 +529,10 @@
         <div class="desk-command-menu__entry-body">
           <div class="desk-command-menu__login-motion" data-desk-login-motion>
           <button class="desk-command-menu__login" type="button" aria-describedby="desk-login-note" data-desk-login>
-            <svg class="desk-command-menu__login-mark" viewBox="0 0 1400 637" aria-hidden="true" focusable="false">
-              <defs>
-                <mask id="desk-ink-top" maskUnits="userSpaceOnUse" x="0" y="0" width="1400" height="637">
-                  <path d="M190 330 1315 92" fill="none" stroke="white" stroke-width="40" stroke-linecap="round"/>
-                </mask>
-                <mask id="desk-ink-middle" maskUnits="userSpaceOnUse" x="0" y="0" width="1400" height="637">
-                  <path d="M255 463 1350 280" fill="none" stroke="white" stroke-width="40" stroke-linecap="round"/>
-                </mask>
-                <mask id="desk-ink-bottom" maskUnits="userSpaceOnUse" x="0" y="0" width="1400" height="637">
-                  <path d="M180 555C490 525 965 526 1350 563" fill="none" stroke="white" stroke-width="40" stroke-linecap="round"/>
-                </mask>
-              </defs>
-              <image href="./assets/desk-mark.png" width="1400" height="637" opacity="0.8"/>
-              <image href="./assets/desk-mark.png" width="1400" height="637" mask="url(#desk-ink-top)" opacity="0" data-desk-logo-ink/>
-              <image href="./assets/desk-mark.png" width="1400" height="637" mask="url(#desk-ink-middle)" opacity="0" data-desk-logo-ink/>
-              <image href="./assets/desk-mark.png" width="1400" height="637" mask="url(#desk-ink-bottom)" opacity="0" data-desk-logo-ink/>
-            </svg>
+            <span class="desk-command-menu__login-mark" aria-hidden="true">
+              <img src="./assets/desk-mark.png" width="2848" height="1296" alt="" draggable="false" data-desk-logo-base>
+              <img src="./assets/desk-mark.png" width="2848" height="1296" alt="" draggable="false" data-desk-logo-reveal>
+            </span>
             <span data-desk-login-label aria-live="polite">Log in</span>
           </button>
           </div>
@@ -644,6 +631,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=193"></script>
+    <script type="module" src="./desk.js?v=196"></script>
   </body>
 </html>

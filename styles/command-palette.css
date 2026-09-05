@@ -106,10 +106,22 @@
 }
 
 .desk-command-menu__login-mark {
-  display: block;
+  display: grid;
   width: 128px;
   height: auto;
   pointer-events: none;
+}
+
+.desk-command-menu__login-mark img {
+  grid-area: 1 / 1;
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.desk-command-menu__login-mark [data-desk-logo-reveal] {
+  opacity: 0;
+  clip-path: inset(0 100% 0 0);
 }
 
 :root[data-theme="dark"] .desk-command-menu__login-mark {

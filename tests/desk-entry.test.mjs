@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createDeskEntry } from "../src/desk-entry.js";
 
-function harness({ ink = [], ...options } = {}) {
+function harness({ baseInk = null, revealInk = null, ...options } = {}) {
   const panel = () => ({ hidden: false, inert: false, style: { removeProperty() {} } });
   const entry = panel();
   const content = panel();
@@ -12,8 +12,12 @@ function harness({ ink = [], ...options } = {}) {
   button.setAttribute = (name, value) => attributes.set(name, value);
   button.toggleAttribute = (name, value) => value ? attributes.set(name, "") : attributes.delete(name);
   const label = { textContent: "Log in" };
-  button.querySelector = () => label;
-  button.querySelectorAll = () => ink;
+  button.querySelector = selector => {
+    if (selector === "[data-desk-login-label]") return label;
+    if (selector === "[data-desk-logo-base]") return baseInk;
+    if (selector === "[data-desk-logo-reveal]") return revealInk;
+    return null;
+  };
   const motions = [];
   const waits = new Map();
   let timerId = 0;
@@ -177,75 +181,229 @@ test("destroy while waiting cancels its timer", () => {
   assert.equal(h.reveals, 0);
 });
 
-test("entry motion changes only opacity, keeping the supplied artwork stationary", () => {
-  const ink = Array.from({ length: 3 }, () => ({ style: { removeProperty() {} } }));
-  const h = harness({ ink });
-  h.gate.open({ animateEntrance: true });
-  assert.equal(h.motions.length, 4);
-  assert.ok(h.motions.every(motion => Object.keys(motion.keyframes).join() === "opacity"));
-  assert.ok(h.motions.every(motion => motion.timing.type !== "spring"));
-  const loops = h.motions.filter(motion => motion.timing.repeat === Infinity);
-  assert.deepEqual(loops.map(motion => motion.element), ink);
-  assert.deepEqual(loops.map(motion => motion.timing.delay), [0, 0.4, 0.8]);
-  h.gate.close();
+function logoLayer() {
+  const values = new Map();
+  return {
+    style: {
+      setProperty: (name, value) => values.set(name, String(value)),
+      getPropertyValue: name => values.get(name) || "",
+      removeProperty: name => values.delete(name),
+    },
+  };
+}
+
+function logoHarness(options = {}) {
+  const baseInk = logoLayer();
+  const revealInk = logoLayer();
+  return { ...harness({ baseInk, revealInk, ...options }), baseInk, revealInk };
+}
+
+function assertLogoStylesCleared(h) {
+  for (const layer of [h.baseInk, h.revealInk]) {
+    assert.equal(layer.style.getPropertyValue("opacity"), "");
+    assert.equal(layer.style.getPropertyValue("clip-path"), "");
+  }
+}
+
+test("default keyboard opening starts only the two logo loops without entrance motion or waiting", () => {
+  const h = logoHarness();
+  assert.equal(h.gate.open(), false);
+  assert.equal(h.motions.length, 2);
+  assert.ok(h.motions.every(motion => motion.timing.repeat === Infinity));
+  assert.equal(h.motions.filter(motion => motion.element === h.baseInk).length, 1);
+  assert.equal(h.motions.filter(motion => motion.element === h.revealInk).length, 1);
+  assert.equal(h.waits.size, 0);
+  assert.equal(h.label.textContent, "Log in");
+  assert.equal(h.entry.hidden, false);
+  assert.equal(h.content.hidden, true);
+  h.gate.destroy();
 });
 
-test("reduced motion and keyboard activation keep the supplied mark intact", () => {
-  const ink = Array.from({ length: 3 }, () => ({ style: { removeProperty() {} } }));
-  for (const reducedMotion of [false, true]) {
-    const h = harness({ ink, reducedMotion });
+test("pointer entrance finishes without stopping the logo loops", async () => {
+  const h = logoHarness();
+  h.gate.open({ animateEntrance: true });
+  assert.equal(h.motions.length, 3);
+  const entrance = h.motions.find(motion => motion.element === h.entry);
+  assert.deepEqual(entrance.keyframes, { opacity: [0, 1] });
+  const loops = h.motions.filter(motion => motion.timing.repeat === Infinity);
+  assert.equal(loops.length, 2);
+  entrance.finish();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(loops.every(motion => !motion.animation.cancelled));
+  assert.equal(h.entry.hidden, false);
+  h.gate.destroy();
+});
+
+test("the original PNG reveals left to right and rests with the complete base visible", () => {
+  const h = logoHarness();
+  h.gate.open();
+  const base = h.motions.find(motion => motion.element === h.baseInk);
+  const reveal = h.motions.find(motion => motion.element === h.revealInk);
+  assert.deepEqual(base.keyframes, { opacity: [1, 0.24, 0.24, 0.24, 1, 1, 1] });
+  assert.deepEqual(reveal.keyframes, {
+    opacity: [0, 0, 1, 1, 0, 0, 0],
+    clipPath: [
+      "inset(0 100% 0 0)", "inset(0 100% 0 0)", "inset(0 100% 0 0)",
+      "inset(0 0% 0 0)", "inset(0 0% 0 0)", "inset(0 0% 0 0)", "inset(0 0% 0 0)",
+    ],
+  });
+  for (const motion of [base, reveal]) {
+    assert.equal(motion.timing.duration, 7);
+    assert.equal(motion.timing.repeat, Infinity);
+    assert.deepEqual(motion.timing.times, [0, 0.04, 0.08, 0.36, 0.46, 0.9, 1]);
+    assert.equal(motion.timing.ease.length, 6, "ease each interval without warping the full seven-second timeline");
+    assert.ok(motion.timing.ease.every(easing => Array.isArray(easing) && easing.length === 4));
+    assert.deepEqual(motion.timing.ease[2], [0.77, 0, 0.175, 1], "the reveal interval has its own easing curve");
+    assert.equal(motion.timing.delay || 0, 0);
+  }
+  assert.ok(base.timing.duration * (1 - base.timing.times[4]) >= 3);
+  h.gate.destroy();
+});
+
+test("missing either logo layer keeps the available artwork static and login usable", () => {
+  for (const layers of [{}, { baseInk: logoLayer() }, { revealInk: logoLayer() }]) {
+    const h = harness(layers);
     h.gate.open();
-    h.click(reducedMotion ? 1 : 0);
     assert.equal(h.motions.length, 0);
-    assert.equal(h.waits.size, 0);
+    h.gate.close();
+    h.gate.open({ animateEntrance: true });
+    assert.equal(h.motions.length, 1);
+    assert.equal(h.motions[0].element, h.entry);
+    h.click(0);
     assert.equal(h.gate.ready, true);
-    assert.equal(h.attributes.has("data-opening"), false);
+    assert.equal(h.waits.size, 0);
+    assert.equal(h.content.hidden, false);
+    h.gate.destroy();
   }
 });
 
-test("ink passes continue through loading without restarting, then stop on reveal", () => {
-  const ink = Array.from({ length: 3 }, () => ({ style: { removeProperty() {} } }));
-  const h = harness({ ink });
-  h.gate.open({ animateEntrance: true });
+for (const exit of ["close", "keyboard login", "pointer login", "hidden tab", "destroy"]) {
+  test(`${exit} cancels both logo loops and clears opacity and clipping`, () => {
+    const motionDocument = new EventTarget();
+    motionDocument.hidden = false;
+    const h = logoHarness({ motionDocument });
+    h.gate.open();
+    const loops = h.motions.filter(motion => motion.timing.repeat === Infinity);
+    assert.equal(loops.length, 2);
+    for (const layer of [h.baseInk, h.revealInk]) {
+      layer.style.setProperty("opacity", 0.5);
+      layer.style.setProperty("clip-path", "inset(0 50% 0 0)");
+    }
+    if (exit === "keyboard login") h.click(0);
+    else if (exit === "pointer login") {
+      h.click();
+      assert.ok(loops.every(motion => !motion.animation.cancelled));
+      h.finishWait();
+    } else if (exit === "hidden tab") {
+      motionDocument.hidden = true;
+      motionDocument.dispatchEvent(new Event("visibilitychange"));
+    } else h.gate[exit]();
+    assert.ok(loops.every(motion => motion.animation.cancelled));
+    assertLogoStylesCleared(h);
+    h.gate.destroy();
+  });
+}
+
+test("reduced motion keeps both logo layers static for pointer and keyboard entry", () => {
+  for (const animateEntrance of [false, true]) {
+    const h = logoHarness({ reducedMotion: true });
+    h.gate.open({ animateEntrance });
+    assert.equal(h.motions.length, 0);
+    assertLogoStylesCleared(h);
+    h.click(animateEntrance ? 1 : 0);
+    assert.equal(h.waits.size, 0);
+    assert.equal(h.gate.ready, true);
+    assert.equal(h.attributes.has("data-opening"), false);
+    h.gate.destroy();
+  }
+});
+
+test("logo loops continue through mock loading without restarting, then stop on reveal", () => {
+  const h = logoHarness();
+  h.gate.open();
   const loops = h.motions.filter(motion => motion.timing.repeat === Infinity);
-  assert.equal(loops.length, 3);
-  assert.deepEqual(loops.map(motion => motion.element), ink);
+  assert.equal(loops.length, 2);
   h.click();
   assert.ok(loops.every(motion => !motion.animation.cancelled));
-  assert.equal(h.motions.filter(motion => ink.includes(motion.element)).length, 3);
+  assert.equal(h.motions.length, 2);
+  assert.equal(h.waits.size, 1);
   h.finishWait();
   assert.ok(loops.every(motion => motion.animation.cancelled));
+  assert.equal(h.gate.ready, true);
   h.gate.close();
   assert.ok(h.motions.every(motion => motion.animation.cancelled));
+  const count = h.motions.length;
+  h.gate.open();
+  assert.equal(h.motions.length, count, "an unlocked entry never restarts its decorative loops");
+  h.gate.destroy();
 });
 
-test("hidden tabs stop idle motion and destroy removes the visibility listener", () => {
+test("visibility resumes both logo loops after keyboard opening and destroy removes the listener", () => {
   const motionDocument = new EventTarget();
   motionDocument.hidden = false;
-  const ink = Array.from({ length: 3 }, () => ({ style: { removeProperty() {} } }));
-  const h = harness({ ink, motionDocument });
-  h.gate.open({ animateEntrance: true });
-  const loops = h.motions.filter(motion => motion.timing.repeat === Infinity);
+  const h = logoHarness({ motionDocument });
+  h.gate.open();
+  assert.equal(h.motions.length, 2);
   motionDocument.hidden = true;
   motionDocument.dispatchEvent(new Event("visibilitychange"));
-  assert.ok(loops.every(motion => motion.animation.cancelled));
+  assert.ok(h.motions.every(motion => motion.animation.cancelled));
   motionDocument.hidden = false;
   motionDocument.dispatchEvent(new Event("visibilitychange"));
-  assert.equal(h.motions.filter(motion => motion.timing.repeat === Infinity).length, 6);
+  assert.equal(h.motions.length, 4);
+  assert.ok(h.motions.slice(2).every(motion => !motion.animation.cancelled));
   h.gate.destroy();
-  const count = h.motions.length;
   motionDocument.dispatchEvent(new Event("visibilitychange"));
-  assert.equal(h.motions.length, count);
+  assert.equal(h.motions.length, 4);
   assert.ok(h.motions.every(motion => motion.animation.cancelled));
 });
 
-test("keyboard login cancels idle ink immediately without a waiting state", () => {
-  const ink = Array.from({ length: 3 }, () => ({ style: { removeProperty() {} } }));
-  const h = harness({ ink });
-  h.gate.open({ animateEntrance: true });
+test("close and reopen restart both loops while keyboard login ends them instantly", () => {
+  const h = logoHarness();
+  h.gate.open();
+  h.gate.close();
+  assert.ok(h.motions.every(motion => motion.animation.cancelled));
+  assert.equal(h.gate.open(), false);
+  assert.equal(h.motions.length, 4);
+  assert.ok(h.motions.slice(2).every(motion => !motion.animation.cancelled));
   h.click(0);
   assert.ok(h.motions.every(motion => motion.animation.cancelled));
   assert.equal(h.waits.size, 0);
+  assert.equal(h.motions.length, 4, "keyboard login does not animate the panels");
   assert.equal(h.gate.ready, true);
+  assert.equal(h.content.hidden, false);
+  h.gate.destroy();
+});
+
+test("a live reduced-motion preference cancels both loops and prevents late restarts", () => {
+  const preference = new EventTarget();
+  preference.matches = false;
+  const previousMatchMedia = Object.getOwnPropertyDescriptor(globalThis, "matchMedia");
+  Object.defineProperty(globalThis, "matchMedia", {
+    configurable: true,
+    value: () => preference,
+  });
+  let h;
+  try {
+    h = logoHarness();
+  } finally {
+    if (previousMatchMedia) Object.defineProperty(globalThis, "matchMedia", previousMatchMedia);
+    else delete globalThis.matchMedia;
+  }
+  h.gate.open();
+  assert.equal(h.motions.length, 2);
+  h.baseInk.style.setProperty("opacity", 0.24);
+  h.revealInk.style.setProperty("clip-path", "inset(0 50% 0 0)");
+  preference.matches = true;
+  preference.dispatchEvent(new Event("change"));
+  assert.ok(h.motions.every(motion => motion.animation.cancelled));
+  assertLogoStylesCleared(h);
   h.gate.close();
+  h.gate.open({ animateEntrance: true });
+  assert.equal(h.motions.length, 2);
+  preference.matches = false;
+  preference.dispatchEvent(new Event("change"));
+  assert.equal(h.motions.length, 4);
+  h.gate.destroy();
+  preference.dispatchEvent(new Event("change"));
+  assert.equal(h.motions.length, 4);
 });
