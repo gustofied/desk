@@ -103,13 +103,13 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=88">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=62">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=90">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=63">
     <link rel="stylesheet" href="./styles/monitor-data.css?v=15">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
     <link rel="stylesheet" href="./styles/deal-view.css?v=40">
-    <link rel="stylesheet" href="./styles/command-palette.css?v=5">
-    <link rel="stylesheet" href="./styles/demo.css?v=24">
+    <link rel="stylesheet" href="./styles/command-palette.css?v=15">
+    <link rel="stylesheet" href="./styles/demo.css?v=26">
   </head>
   <body>
     <div class="desk-top-controls">
@@ -178,8 +178,8 @@
         data-card-id="gpu-index"
       >
         <header class="desk-card-rail">
-          <div class="desk-card-tabs" role="tablist" aria-label="Views in this catalog" data-view-tabs></div>
-          <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog views" data-index-gallery-toggle>All</button>
+          <div class="desk-card-tabs" role="tablist" aria-label="Views in this catalog" aria-description="A for the previous view. D for the next view." aria-keyshortcuts="A D" data-view-tabs></div>
+          <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog views" aria-keyshortcuts="Escape" title="Gallery (Esc)" data-index-gallery-toggle>All</button>
         </header>
         <div
           class="desk-card-focus"
@@ -484,7 +484,7 @@
 
         <section class="desk-card-gallery" id="desk-card-gallery" data-card-layout-panel="all" aria-labelledby="desk-catalog-title" hidden inert>
           <h2 class="desk-workspace-heading" id="desk-catalog-title" tabindex="-1">Catalog</h2>
-          <p class="desk-card-gallery__status" id="desk-catalog-reorder-help">Touch and hold a view to move it. With a keyboard, hold Alt and press an arrow key.</p>
+          <p class="desk-card-gallery__status" id="desk-catalog-reorder-help">A and D browse views. W and S move up and down. Hold to keep moving. Enter or Space opens the highlighted view in Monitor. Escape returns to Gallery. Touch and hold to reorder, or hold Alt and press an arrow key.</p>
           <div class="desk-card-gallery__grid" data-card-gallery-grid></div>
           <div class="desk-catalog-empty" data-catalog-empty hidden>
             <p>No views here</p>
@@ -513,14 +513,46 @@
         <strong class="desk-market-clock__time" data-desk-clock-time>00:00:00</strong>
         <span class="desk-market-clock__zone">UTC</span>
       </time>
-      <span class="desk-corner desk-corner--top-right desk-shortcuts">
-        <span><kbd>⌘G</kbd> <span class="desk-shortcuts__label">Search</span></span>
-      </span>
     </aside>
-    <button class="desk-mobile-search" type="button" aria-label="Search Desk" aria-haspopup="dialog" aria-controls="desk-command-menu" data-command-open>Search</button>
+    <button class="desk-search" type="button" aria-label="Desk" aria-haspopup="dialog" aria-controls="desk-command-menu" aria-keyshortcuts="Meta+G" data-command-open>
+      <kbd class="desk-search__shortcut" aria-hidden="true">⌘G</kbd>
+      <span>Desk</span>
+    </button>
     <dialog class="desk-command-menu" id="desk-command-menu" aria-labelledby="desk-command-title" data-command-palette>
-      <section class="desk-command-menu__surface">
-        <h2 class="desk-command-menu__title" id="desk-command-title">Search Desk</h2>
+      <h2 class="desk-command-menu__title" id="desk-command-title">Desk</h2>
+      <div class="desk-command-menu__stage">
+      <section class="desk-command-menu__entry" aria-label="Desk login" data-desk-entry>
+        <header class="desk-command-menu__entry-header">
+          <span>Desk</span>
+          <button class="desk-command-menu__close" type="button" data-command-close>Close</button>
+        </header>
+        <div class="desk-command-menu__entry-body">
+          <div class="desk-command-menu__login-motion" data-desk-login-motion>
+          <button class="desk-command-menu__login" type="button" aria-describedby="desk-login-note" data-desk-login>
+            <svg class="desk-command-menu__login-mark" viewBox="0 0 1400 637" aria-hidden="true" focusable="false">
+              <defs>
+                <mask id="desk-ink-top" maskUnits="userSpaceOnUse" x="0" y="0" width="1400" height="637">
+                  <path d="M190 330 1315 92" fill="none" stroke="white" stroke-width="40" stroke-linecap="round"/>
+                </mask>
+                <mask id="desk-ink-middle" maskUnits="userSpaceOnUse" x="0" y="0" width="1400" height="637">
+                  <path d="M255 463 1350 280" fill="none" stroke="white" stroke-width="40" stroke-linecap="round"/>
+                </mask>
+                <mask id="desk-ink-bottom" maskUnits="userSpaceOnUse" x="0" y="0" width="1400" height="637">
+                  <path d="M180 555C490 525 965 526 1350 563" fill="none" stroke="white" stroke-width="40" stroke-linecap="round"/>
+                </mask>
+              </defs>
+              <image href="./assets/desk-mark.png" width="1400" height="637" opacity="0.8"/>
+              <image href="./assets/desk-mark.png" width="1400" height="637" mask="url(#desk-ink-top)" opacity="0" data-desk-logo-ink/>
+              <image href="./assets/desk-mark.png" width="1400" height="637" mask="url(#desk-ink-middle)" opacity="0" data-desk-logo-ink/>
+              <image href="./assets/desk-mark.png" width="1400" height="637" mask="url(#desk-ink-bottom)" opacity="0" data-desk-logo-ink/>
+            </svg>
+            <span data-desk-login-label aria-live="polite">Log in</span>
+          </button>
+          </div>
+        </div>
+        <p class="desk-command-menu__title" id="desk-login-note">Demo only. No account or password is required.</p>
+      </section>
+      <section class="desk-command-menu__surface" data-command-content hidden inert>
         <header class="desk-command-menu__search">
           <label class="desk-command-menu__title" for="desk-command-input">Search views and commands</label>
           <input
@@ -548,6 +580,7 @@
         </footer>
         <p class="desk-command-menu__status" aria-live="polite" data-command-status></p>
       </section>
+      </div>
     </dialog>
     <dialog
       class="desk-save-dialog"
@@ -611,6 +644,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=181"></script>
+    <script type="module" src="./desk.js?v=193"></script>
   </body>
 </html>

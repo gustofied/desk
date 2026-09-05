@@ -181,31 +181,50 @@
   }
 }
 
-.desk-mobile-search {
+.desk-search {
   position: fixed;
-  top: 8px;
+  top: 12px;
   right: 12px;
   z-index: 4;
-  display: none;
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
   min-height: 40px;
   padding: 8px 12px;
-  place-items: center;
-  color: var(--desk-accent-deep);
-  font: 600 12px/16px "Geist Mono", ui-monospace, monospace;
-  letter-spacing: 0.06em;
+  color: #666;
+  font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
   background: transparent;
   border: 0;
-  opacity: 0.68;
+  opacity: 0.38;
+  white-space: nowrap;
+  transition:
+    color 240ms var(--desk-ease-out),
+    opacity 240ms var(--desk-ease-out);
 }
 
-.desk-mobile-search:active {
+.desk-search__shortcut {
+  font: inherit;
+  font-weight: 600;
+}
+
+:root[data-theme="dark"] .desk-search {
+  color: #9b9b9b;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desk-search:hover {
+    opacity: 1;
+  }
+}
+
+.desk-search:active {
   transform: scale(0.98);
 }
 
-.desk-mobile-search:focus-visible {
-  background: var(--desk-accent-pale);
+.desk-search:focus-visible {
   outline: 2px solid var(--desk-accent-deep);
   outline-offset: -2px;
   opacity: 1;
@@ -590,24 +609,6 @@ button.compute-share-card-frame:focus-visible {
   font-weight: 600;
 }
 
-.desk-shortcuts.desk-corner--top-right {
-  top: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-end;
-  color: #666;
-  opacity: 0.38;
-  text-shadow: none;
-  white-space: nowrap;
-}
-
-.desk-shortcuts kbd {
-  color: inherit;
-  font: inherit;
-  font-weight: 600;
-}
-
 :root[data-theme="dark"] .gpu-index {
   --index-ink: #f5f5f5;
   --index-ink-soft: #b8b8b8;
@@ -644,10 +645,6 @@ button.compute-share-card-frame:focus-visible {
 }
 
 :root[data-theme="dark"] .desk-market-clock {
-  color: #9b9b9b;
-}
-
-:root[data-theme="dark"] .desk-shortcuts {
   color: #9b9b9b;
 }
 
@@ -1619,12 +1616,20 @@ button.compute-share-card-frame:focus-visible {
     z-index: 1;
   }
 
-  .desk-mobile-search {
-    display: grid;
+  .desk-search__shortcut {
+    display: none;
   }
 
-  .desk-shortcuts.desk-corner--top-right {
-    display: none;
+  .desk-search {
+    top: 8px;
+    color: var(--desk-accent-deep);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    opacity: 0.68;
+  }
+
+  :root[data-theme="dark"] .desk-search {
+    color: var(--desk-accent-deep);
   }
 
   .desk-display-controls {
@@ -1795,10 +1800,6 @@ button.compute-share-card-frame:focus-visible {
     right: 12px;
   }
 
-  .desk-shortcuts.desk-corner--top-right {
-    top: 12px;
-  }
-
   .compute-card-skin--market .gpu-benchmark__ranges button {
     min-height: 40px;
   }
@@ -1818,11 +1819,7 @@ button.compute-share-card-frame:focus-visible {
 }
 
 @media (pointer: coarse) and (min-width: 641px) {
-  .desk-mobile-search {
-    display: grid;
-  }
-
-  .desk-shortcuts.desk-corner--top-right {
+  .desk-search__shortcut {
     display: none;
   }
 }
@@ -1862,10 +1859,6 @@ button.compute-share-card-frame:focus-visible {
     width: 24px;
   }
 
-  .desk-shortcuts__label {
-    display: none;
-  }
-
 }
 
 @media (prefers-contrast: more) {
@@ -1880,6 +1873,7 @@ button.compute-share-card-frame:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .desk-search,
   .desk-display-option,
   .desk-view-action,
   .desk-corners,

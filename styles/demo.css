@@ -15,6 +15,7 @@
 }
 
 :root {
+  --desk-gallery-top-space: 80px;
   color-scheme: light;
   font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
   background: var(--desk-canvas, #fff);
@@ -63,8 +64,15 @@ body {
 
 :root[data-desk-layout="all"] body {
   align-items: start;
-  padding-top: 80px;
+  padding-top: var(--desk-gallery-top-space);
   padding-bottom: 96px;
+}
+
+@media (min-width: 641px) {
+  :root[data-display-toolbar="collapsed"] .desk-top-controls {
+    top: var(--desk-toolbar-center, calc(var(--desk-gallery-top-space) / 2));
+    transform: translate(-50%, -50%);
+  }
 }
 
 .desk-stage .gpu-index {

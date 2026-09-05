@@ -31,6 +31,116 @@
   grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
+.desk-command-menu__stage {
+  display: grid;
+  height: min(584px, calc(100dvh - 128px));
+  isolation: isolate;
+}
+
+.desk-command-menu__stage > section {
+  grid-area: 1 / 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.desk-command-menu__stage > [hidden] {
+  display: none;
+}
+
+.desk-command-menu__stage > [inert] {
+  pointer-events: none;
+}
+
+.desk-command-menu__entry {
+  display: grid;
+  grid-template-rows: 64px minmax(0, 1fr) 64px;
+}
+
+.desk-command-menu__entry-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  color: var(--desk-accent-deep);
+  font: 600 12px/16px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.desk-command-menu__entry-body {
+  display: grid;
+  place-items: center;
+  padding: 16px;
+}
+
+.desk-command-menu__login {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  width: 160px;
+  max-width: 100%;
+  align-content: center;
+  padding: 16px;
+  color: inherit;
+  font: 600 12px/16px "Geist Mono", ui-monospace, monospace;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.desk-command-menu__login [data-desk-login-label] {
+  opacity: 1;
+  text-decoration: none;
+  background: transparent;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  transition: opacity 240ms var(--desk-ease-out);
+}
+
+.desk-command-menu__login-mark {
+  display: block;
+  width: 128px;
+  height: auto;
+  pointer-events: none;
+}
+
+:root[data-theme="dark"] .desk-command-menu__login-mark {
+  filter: brightness(0) invert(1);
+}
+
+.desk-command-menu__login:not([data-opening]):active [data-desk-login-label] {
+  opacity: 0.6;
+}
+
+.desk-command-menu__login:focus-visible {
+  outline: none;
+}
+
+.desk-command-menu__login:focus-visible [data-desk-login-label] {
+  opacity: 1;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+
+.desk-command-menu__login[data-opening] {
+  cursor: progress;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .desk-command-menu__login:not([data-opening]):hover:not(:active) [data-desk-login-label] {
+    opacity: 0.72;
+  }
+}
+
 .desk-command-menu__title,
 .desk-command-menu__status {
   position: absolute;
@@ -118,8 +228,7 @@
 }
 
 .desk-command-menu__results {
-  min-height: 96px;
-  max-height: min(480px, calc(100dvh - 240px));
+  min-height: 0;
   overflow: auto;
   contain: layout paint;
   overscroll-behavior: contain;
@@ -260,12 +369,16 @@
     max-height: calc(100dvh - 64px - env(safe-area-inset-bottom));
   }
 
+  .desk-command-menu__stage {
+    height: min(584px, calc(100dvh - 96px - env(safe-area-inset-bottom)));
+  }
+
   .desk-command-menu::backdrop {
     backdrop-filter: none;
   }
 
-  .desk-command-menu__results {
-    max-height: calc(100dvh - 240px);
+  .desk-command-menu__surface {
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .desk-command-menu__shortcut {
@@ -286,10 +399,13 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .desk-command-menu__login,
+  .desk-command-menu__login [data-desk-login-label],
   .desk-command-menu,
   .desk-command-menu::backdrop,
   .desk-command-menu__close,
   .desk-command-menu__option {
     transition: none;
   }
+
 }

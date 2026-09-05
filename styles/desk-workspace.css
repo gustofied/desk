@@ -500,7 +500,8 @@
   background: transparent;
 }
 
-.desk-gallery-card:focus-visible {
+.desk-gallery-card:focus-visible,
+.desk-gallery-card[data-keyboard-focus="true"]:focus {
   z-index: 2;
   outline: 2px solid var(--desk-accent-deep);
   outline-offset: 4px;

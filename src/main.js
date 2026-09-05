@@ -76,6 +76,8 @@ import {
   positionSvgTooltip,
 } from "./chart-pointer.js";
 import { copyTextToClipboard } from "./card-transitions.js";
+import { createHeldKeyNavigation, nextGalleryIndex } from "./view-key-navigation.js";
+import { alignWorkspaceToolbar } from "./toolbar-alignment.js";
 import {
   chartYDomain,
   comparisonStrokeOpacity,
@@ -429,6 +431,9 @@ if (root) {
   let activePanelIntent = null;
   let queuedPanelIntent = null;
   let cardEntryIntent = 0;
+  let galleryNavigationColumn = null;
+  let galleryNavigationKey = null;
+  const viewKeyNavigation = createHeldKeyNavigation({ step: stepViewShortcut });
   let unregisterCoreCommands = () => {};
   let unregisterSavedCatalogCommands = () => {};
   let unregisterCatalogCollectionCommands = () => {};
@@ -456,6 +461,11 @@ if (root) {
         : true);
     configureWorkspaceControls();
     setInitialPanel();
+    alignWorkspaceToolbar({
+      stage: document.querySelector(".desk-stage"),
+      toolbar: document.querySelector(".desk-top-controls"),
+      mobileViewport,
+    });
     setShareReady(false);
     configureAppearanceControls();
     configureCraftStartControls();
@@ -497,7 +507,9 @@ if (root) {
         else switchWorkspaceMode(mode, false);
       });
     }
-    nodes.commandOpen?.addEventListener("click", () => commandPalette.open());
+    nodes.commandOpen?.addEventListener("click", event => {
+      commandPalette.open({ returnFocus: nodes.commandOpen, animateEntrance: event.detail !== 0 });
+    });
     mobileViewport.addEventListener("change", handleMobileViewportChange);
     nodes.galleryToggle?.addEventListener("click", (event) => {
       showPanel("share", true, "all", event.detail === 0, "catalog");
@@ -506,6 +518,19 @@ if (root) {
       switchWorkspaceMode("monitor", false);
     });
     nodes.cardRail?.addEventListener("keydown", handleCardRailKeydown, true);
+    document.addEventListener("keydown", handleGalleryReturnShortcut);
+    document.addEventListener("keydown", handleViewShortcut);
+    document.addEventListener("keyup", (event) => {
+      viewKeyNavigation.release(event.key.toLowerCase());
+    });
+    window.addEventListener("blur", viewKeyNavigation.stop);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) viewKeyNavigation.stop();
+    });
+    document.addEventListener("pointerdown", viewKeyNavigation.stop, true);
+    document.addEventListener("focusin", (event) => {
+      if (viewShortcutTargetBlocked(event.target)) viewKeyNavigation.stop();
+    });
     nodes.compareToggle?.addEventListener("click", (event) => {
       setCompareOpen(!state.compareOpen, event.detail === 0);
     });
@@ -2743,6 +2768,12 @@ if (root) {
       button.dataset.catalogId = entry.key;
       button.dataset.catalogKind = entry.kind;
       button.setAttribute("aria-label", `Monitor ${catalogEntryTitle(entry)}`);
+      button.addEventListener("blur", () => {
+        delete button.dataset.keyboardFocus;
+      });
+      button.addEventListener("pointerdown", () => {
+        delete button.dataset.keyboardFocus;
+      });
       if (entryCard.renderer === "deal") {
         const dealHost = document.createElement("div");
         dealHost.className = "deal-view-host deal-view-host--catalog";
@@ -3395,7 +3426,7 @@ if (root) {
       item.setAttribute("aria-setsize", String(total));
       card.button.setAttribute(
         "aria-keyshortcuts",
-        "Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown Alt+Home Alt+End",
+        "A D W S Enter Space Alt+ArrowLeft Alt+ArrowRight Alt+ArrowUp Alt+ArrowDown Alt+Home Alt+End",
       );
       card.button.setAttribute("aria-describedby", "desk-catalog-reorder-help");
     });
@@ -3805,6 +3836,166 @@ if (root) {
           ? tabs.length - 1
           : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) %
             tabs.length;
+    focusCardRailTab(tabs, nextIndex);
+  }
+
+  function handleViewShortcut(event) {
+    const key = event.key.toLowerCase();
+    if (
+      !["a", "d", "w", "s"].includes(key) ||
+      event.defaultPrevented ||
+      event.isComposing ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey
+    ) {
+      viewKeyNavigation.stop();
+      return;
+    }
+    const target = event.composedPath()[0] || event.target;
+    if (!viewShortcutAvailable(key, target)) {
+      viewKeyNavigation.stop();
+      return;
+    }
+    event.preventDefault();
+    // Native repeat events must not double-step or restart a stopped hold.
+    if (!event.repeat) viewKeyNavigation.start(key);
+  }
+
+  function handleGalleryReturnShortcut(event) {
+    if (
+      event.key !== "Escape" || event.defaultPrevented || event.repeat ||
+      event.isComposing || event.metaKey || event.ctrlKey || event.altKey ||
+      event.shiftKey || document.hidden || document.querySelector("dialog[open]")
+    ) return;
+
+    // Nested menus and dialogs own Escape before workspace navigation does.
+    if (state.catalogMenuOpen) {
+      event.preventDefault();
+      setCatalogMenuOpen(false);
+      nodes.catalogSwitcher?.focus({ preventScroll: true });
+      return;
+    }
+    if (document.documentElement.dataset.displayToolbar === "expanded") {
+      event.preventDefault();
+      setDisplayToolbarCollapsed(true);
+      nodes.modeButtons.find((button) => button.dataset.deskMode === state.mode)
+        ?.focus({ preventScroll: true });
+      return;
+    }
+    const workspace = intendedWorkspaceState();
+    if (
+      workspace.mode === "craft" || workspace.layout !== "focus" ||
+      !state.shareReady || catalogPointerDrag ||
+      viewShortcutTargetBlocked(event.composedPath()[0] || event.target)
+    ) return;
+
+    event.preventDefault();
+    viewKeyNavigation.stop();
+    returnToGallery();
+  }
+
+  async function returnToGallery() {
+    const intent = advanceCardEntryIntent();
+    await showPanel("share", true, "all", false, "catalog");
+    if (intent !== cardEntryIntent || state.layout !== "all" || state.mode !== "catalog") return;
+    const card = catalogCards.get(activeCatalogKey());
+    if (!card || card.item.hidden || card.button.disabled) return;
+    galleryNavigationKey = card.entry.key;
+    galleryNavigationColumn = null;
+    focusGalleryButton(card.button);
+  }
+
+  function viewShortcutTargetBlocked(eventTarget) {
+    const target = eventTarget instanceof Element
+      ? eventTarget
+      : document.activeElement;
+    return !target || target.isContentEditable || Boolean(target.closest(
+      'input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="textbox"], [role="combobox"], [role="listbox"], [role="menu"], [role="slider"], [role="spinbutton"]',
+    ));
+  }
+
+  function viewShortcutAvailable(key, target = document.activeElement) {
+    if (
+      document.hidden ||
+      state.mode === "craft" ||
+      state.catalogMenuOpen ||
+      catalogPointerDrag ||
+      document.querySelector("dialog[open]") ||
+      viewShortcutTargetBlocked(target)
+    ) return false;
+    if (state.mode === "catalog" && state.layout === "all") {
+      return Boolean(nodes.galleryGrid && !nodes.galleryGrid.hidden);
+    }
+    return ["a", "d"].includes(key) && state.layout === "focus" &&
+      Boolean(nodes.cardRail && !nodes.cardRail.hidden);
+  }
+
+  function stepViewShortcut(key, { repeat }) {
+    if (!viewShortcutAvailable(key)) return false;
+    if (state.mode === "catalog" && state.layout === "all") {
+      return focusGalleryCard(key, repeat);
+    }
+
+    const tabs = nodes.cardRailButtons.filter(
+      (button) => button.isConnected && !button.disabled,
+    );
+    if (tabs.length < 2) return false;
+    const current = Math.max(0, tabs.indexOf(activeCardRailButton()));
+    const direction = key === "d" ? 1 : -1;
+    if (repeat && (current + direction < 0 || current + direction >= tabs.length)) {
+      return false;
+    }
+    const nextTab = tabs[(current + direction + tabs.length) % tabs.length];
+    const entry = nodes.cardRailEntries.get(nextTab.dataset.catalogEntryKey);
+    if (!entry) return false;
+    // Open directly: view selection must not depend on browser button focus.
+    openCardRailEntry(entry, true, false);
+    return true;
+  }
+
+  function focusGalleryCard(key, repeat) {
+    const cards = catalogDomItems()
+      .map((item) => catalogCards.get(item.dataset.catalogId))
+      .filter((card) => card && !card.button.disabled && !card.item.hidden);
+    if (!cards.length) return false;
+    const focusedIndex = cards.findIndex(
+      (card) => card.button === document.activeElement,
+    );
+    const current = focusedIndex >= 0
+      ? focusedIndex
+      : cards.findIndex((card) => card.entry.key === activeCatalogKey());
+    const rects = cards.map((card) => card.item.getBoundingClientRect());
+    if (key === "a" || key === "d" || cards[current]?.entry.key !== galleryNavigationKey) {
+      galleryNavigationColumn = null;
+    }
+    if ((key === "w" || key === "s") && galleryNavigationColumn === null && rects[current]) {
+      galleryNavigationColumn = rects[current].left + rects[current].width / 2;
+    }
+    const nextIndex = nextGalleryIndex(rects, current, key, {
+      repeat,
+      columnX: galleryNavigationColumn,
+    });
+    if (nextIndex < 0 || nextIndex === focusedIndex) return false;
+    const nextCard = cards[nextIndex].button;
+    galleryNavigationKey = cards[nextIndex].entry.key;
+    focusGalleryButton(nextCard);
+    return true;
+  }
+
+  function focusGalleryButton(nextCard) {
+    // Native Enter/Space activation opens this card; browsing does not load it.
+    // Safari can move focus without applying :focus-visible to the new button.
+    nextCard.dataset.keyboardFocus = "true";
+    nextCard.focus({ preventScroll: true });
+    const bounds = nextCard.getBoundingClientRect();
+    if (bounds.top < 8 || bounds.bottom > innerHeight - 8 || bounds.left < 8 || bounds.right > innerWidth - 8) {
+      nextCard.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "instant" });
+    }
+  }
+
+  function focusCardRailTab(tabs, nextIndex) {
     const nextTab = tabs[nextIndex];
     tabs.forEach((tab) => {
       tab.tabIndex = tab === nextTab ? 0 : -1;
@@ -3871,12 +4062,12 @@ if (root) {
     }
   }
 
-  function openCardRailEntry(entry, moveFocus) {
+  function openCardRailEntry(entry, moveFocus, drawAnimation = true) {
     if (intendedWorkspaceState().mode === "monitor") {
-      monitorCatalogEntry(entry, moveFocus);
+      monitorCatalogEntry(entry, moveFocus, drawAnimation);
       return;
     }
-    openCatalogRailEntry(entry, moveFocus);
+    openCatalogRailEntry(entry, moveFocus, drawAnimation);
   }
 
   function advanceCardEntryIntent() {
@@ -4003,7 +4194,7 @@ if (root) {
     configureCardRail();
   }
 
-  async function openCatalogRailEntry(entry, moveFocus) {
+  async function openCatalogRailEntry(entry, moveFocus, drawAnimation = true) {
     if (!entry) return;
     const intent = advanceCardEntryIntent();
     preserveCraftDraft();
@@ -4031,7 +4222,7 @@ if (root) {
     if (cardChanged) finishCardDefinitionChange(moveFocus ? entry.key : "");
     syncControls();
     if (alreadyFocused) {
-      render(true);
+      render(drawAnimation);
       updateLocation();
       announceWorkspaceView();
       if (moveFocus) activeCardRailButton()?.focus({ preventScroll: true });
@@ -4101,7 +4292,7 @@ if (root) {
     await showPanel("share", true, "focus", moveFocus, "catalog");
   }
 
-  async function monitorCatalogEntry(entry, focusNavigation) {
+  async function monitorCatalogEntry(entry, focusNavigation, drawAnimation = true) {
     if (!entry) return;
     const intent = advanceCardEntryIntent();
     preserveCraftDraft();
@@ -4131,7 +4322,7 @@ if (root) {
     }
     syncControls();
     if (alreadyMonitoring) {
-      render(true);
+      render(drawAnimation);
       updateLocation();
       announceWorkspaceView();
       if (focusNavigation) {

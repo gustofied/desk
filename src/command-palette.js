@@ -1,3 +1,5 @@
+import { createDeskEntry } from "./desk-entry.js";
+
 const defaultGroups = [
   "Workspace",
   "Catalog",
@@ -20,18 +22,29 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   const input = root.querySelector("[data-command-input]");
   const results = root.querySelector("[data-command-results]");
   const status = root.querySelector("[data-command-status]");
-  const closeButton = root.querySelector("[data-command-close]");
+  const closeButtons = [...root.querySelectorAll("[data-command-close]")];
+  const loginButton = root.querySelector("[data-desk-login]");
   const registry = new Map();
   let commandSnapshot = [];
   let visibleCommands = [];
   let activeIndex = -1;
   let previousFocus = null;
   let renderFrame = null;
+  const deskEntry = createDeskEntry({
+    entry: root.querySelector("[data-desk-entry]"),
+    content: root.querySelector("[data-command-content]"),
+    button: loginButton,
+    reducedMotion,
+    onReveal: () => {
+      render();
+      input?.focus({ preventScroll: true });
+    },
+  });
 
   document.addEventListener("keydown", handleGlobalShortcut);
   input?.addEventListener("input", scheduleRender);
   input?.addEventListener("keydown", handleInputKeydown);
-  closeButton?.addEventListener("click", handleCloseClick);
+  closeButtons.forEach(button => button.addEventListener("click", handleCloseClick));
   results?.addEventListener("pointermove", handleResultsPointerMove);
   results?.addEventListener("click", handleResultsClick);
   root.addEventListener("cancel", handleCancel);
@@ -98,22 +111,26 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     root.open ? close() : open();
   }
 
-  function open({ query = "", returnFocus = null } = {}) {
+  function open({ query = "", returnFocus = null, animateEntrance = false } = {}) {
     root.removeAttribute("data-closing");
     previousFocus = returnFocus || document.activeElement;
+    deskEntry.open({ animateEntrance });
     if (!root.open) root.showModal();
     if (input) input.value = query;
     commandSnapshot = createCommandSnapshot(registry);
     visibleCommands = [];
     activeIndex = -1;
     render();
-    window.requestAnimationFrame(() => input?.focus({ preventScroll: true }));
+    window.requestAnimationFrame(() => {
+      if (root.open) (deskEntry.ready ? input : loginButton)?.focus({ preventScroll: true });
+    });
   }
 
   function close({ restoreFocus = true } = {}) {
     if (!root.open || root.hasAttribute("data-closing")) return;
     window.cancelAnimationFrame(renderFrame);
     renderFrame = null;
+    deskEntry.close();
     root.setAttribute("data-closing", "");
     const finish = () => {
       root.close();
@@ -146,7 +163,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   }
 
   function render() {
-    if (!results || !input) return;
+    if (!results || !input || !deskEntry.ready) return;
     const query = createQuery(input.value);
     const previousId = visibleCommands[activeIndex]?.id;
     const matches = commandSnapshot
@@ -323,10 +340,11 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
 
   function destroy() {
     window.cancelAnimationFrame(renderFrame);
+    deskEntry.destroy();
     document.removeEventListener("keydown", handleGlobalShortcut);
     input?.removeEventListener("input", scheduleRender);
     input?.removeEventListener("keydown", handleInputKeydown);
-    closeButton?.removeEventListener("click", handleCloseClick);
+    closeButtons.forEach(button => button.removeEventListener("click", handleCloseClick));
     results?.removeEventListener("pointermove", handleResultsPointerMove);
     results?.removeEventListener("click", handleResultsClick);
     root.removeEventListener("cancel", handleCancel);
