@@ -45,6 +45,39 @@ test("indexed equities retain source attribution without exposing SQL", () => {
   assert.doesNotMatch(model.description, /gpu|\blower\b|\bupper\b/i);
 });
 
+test("mixed market source details use the common chart date and identify demo GPUs", () => {
+  const mixedState = { ...state, symbol: "NVDA", layers: ["NVDA", "H100", "H200"], scale: "index", range: "90d" };
+  const common = new Date("2026-08-28T00:00:00Z");
+  const mixedSeries = mixedState.layers.map(id => ({
+    layer: card.layers.find(layer => layer.id === id),
+    rows: [{ date: common, value: 100, plotValue: 100 }],
+  }));
+  const model = createMonitorDataModel({ card, cardState: mixedState,
+    series: mixedSeries, runtimePayload: runtime,
+    runtimePayloads: new Map([["gpu-index", { dataset: { kind: "scenario" } }]]),
+  });
+  assert.equal(model.asOf.toISOString(), common.toISOString());
+  assert.equal(model.summary, "Compared through 2026-08-28");
+  assert.equal(model.label, "EODHD + Desk");
+  assert.equal(model.description, "Data by EODHD · GPU demo data");
+  assert.equal(model.unit, "percent change");
+  assert.equal(model.priceBasis, "relative-change");
+  assert.equal(model.accessKind, "source");
+  assert.equal(model.command, undefined);
+  assert.equal(model.sql, undefined);
+  assert.equal(model.endpoint, undefined);
+  const queryModel = createMonitorDataModel({ card,
+    cardState: { ...mixedState, layers: mixedState.layers.join(",") },
+    series: mixedSeries, runtimePayload: runtime,
+    runtimePayloads: new Map([["gpu-index", { dataset: { kind: "scenario" } }]]),
+  });
+  assert.equal(queryModel.key, model.key);
+  const missing = createMonitorDataModel({ card, cardState: mixedState, runtimePayload: runtime });
+  assert.equal(missing.summary, "No shared data");
+  assert.equal(missing.asOf, null);
+  assert.equal(missing.status, "unavailable");
+});
+
 test("equity attribution links exclude credentials and unsafe protocols", () => {
   for (const url of ["file:///private/data", "javascript:alert(1)", "https://user:password@example.com"]) {
     const model = createMonitorDataModel({ card, cardState: state, series, runtimePayload: {

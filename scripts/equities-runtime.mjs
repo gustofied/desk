@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { EQUITIES_PRICE_BASIS } from "../src/equities-data.js";
+import { EQUITIES_PRICE_BASIS, EQUITIES_TICKERS } from "../src/equities-data.js";
 
 export async function readEquitiesSource(projectRoot, sourceFile) {
   const cachedFile = join(projectRoot, ".cache", "equities-source.json");
@@ -39,7 +39,15 @@ export function buildEquitiesRuntime(source, card, {
   // Never persist this deployment-only override back into the provider cache.
   if (publicDisplayRights === "confirmed") provenance.publicDisplayRights = "confirmed";
   const priceBasisLabel = requireText(source.priceBasisLabel, "price basis label");
-  const symbols = card.layers.map(layer => layer.id);
+  // Cross-market comparison layers keep their data in the originating runtime.
+  const symbols = card.layers
+    .filter(layer => !layer.sourceCardId || layer.sourceCardId === card.id)
+    .map(layer => layer.id);
+  if (symbols.length !== EQUITIES_TICKERS.length ||
+      new Set(symbols).size !== EQUITIES_TICKERS.length ||
+      symbols.some(symbol => !EQUITIES_TICKERS.includes(symbol))) {
+    throw new Error("The equities card must register exactly the nine equity source symbols");
+  }
   if (!source.series || typeof source.series !== "object" || Array.isArray(source.series) ||
       Object.keys(source.series).some(symbol => !symbols.includes(symbol))) {
     throw new Error("Equities series must contain only registered symbols");

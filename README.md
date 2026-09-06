@@ -33,9 +33,22 @@ Up to 32 views are supported; oversized links are rejected rather than truncated
 ## Equities
 
 The **Equities** catalog includes MSFT, AMZN, GOOGL, ORCL, CRWV, NBIS, NVDA,
-AMD and TSM (the US-listed depositary share). Cards support **7D, 90D, 1Y,
-ALL**, adjusted close or percentage change, comparisons, saved views and desk
-sharing. ALL means the history currently loaded, initially one year.
+AMD and TSM (the US-listed depositary share). Cards support **7D, 90D and 1Y**,
+adjusted close or percentage change, comparisons, saved views and desk sharing.
+**1Y** is the default and supports drag-to-zoom. Older equities links and saved
+views using ALL open as 1Y.
+
+To compare stocks with GPU rental prices, choose **Compare with compute** in
+Desk, or add **H100 / H200** under **Craft → Data → Compute**. Mixed views use
+percentage change from the same shared starting day. The chart keeps only dates
+present in every selected series and uses the last recorded GPU price per UTC
+day. Hover shows the original dollars per share or GPU hour; the source panel
+identifies the current GPU demo history. Saved views, pins and shared desks keep
+the comparison settings.
+
+The current GPU sample covers about 90 days. A 1Y stock/GPU comparison can only
+show their shared dates, which are shown at the ends of the chart; it does not
+invent the missing months of GPU history.
 
 Connect an [EODHD historical-data account](https://eodhd.com/financial-apis/api-for-historical-data-and-volumes)
 by setting `EODHD_API_TOKEN` securely in your environment, then run:

@@ -213,6 +213,19 @@ export const EQUITY_LAYERS = Object.freeze([
   views: Object.freeze(["price", "index"]),
 })));
 
+const EQUITY_COMPARISON_LAYERS = Object.freeze(
+  GPU_LAYERS.filter((layer) => ["H100", "H200"].includes(layer.id)).map((layer) =>
+    Object.freeze({
+      ...layer,
+      primary: false,
+      sourceCardId: GPU_INDEX_ID,
+      group: "compute",
+      groupLabel: "Compute",
+      views: Object.freeze(["index"]),
+    }),
+  ),
+);
+
 export const CARD_REGISTRY = Object.freeze([
   Object.freeze({
     id: GPU_INDEX_ID,
@@ -559,9 +572,9 @@ export const CARD_REGISTRY = Object.freeze([
       palette: DEFAULT_PALETTE,
       theme: DEFAULT_THEME,
     }),
-    ranges: Object.freeze(["7d", "90d", "1y", "all"]),
+    ranges: Object.freeze(["7d", "90d", "1y"]),
     allowComparisons: true,
-    layers: EQUITY_LAYERS,
+    layers: Object.freeze([...EQUITY_LAYERS, ...EQUITY_COMPARISON_LAYERS]),
     catalogPresets: Object.freeze(EQUITY_LAYERS.map((layer) => Object.freeze({
       id: layer.id.toLowerCase(),
       label: layer.label,
@@ -670,7 +683,11 @@ export function normalizeCardState(cardId, stateParams = {}) {
     ? requestedScaleId
     : card.defaults.scale;
   const requiresIndex = requestedLayers.some(
-    (layerId) => getLayerDefinition(card, layerId)?.unit === "index",
+    (layerId) => {
+      const layer = getLayerDefinition(card, layerId);
+      return layer?.unit === "index" ||
+        Boolean(layer?.sourceCardId && layer.sourceCardId !== card.id);
+    },
   );
   let scale = requiresIndex ? "index" : requestedScale;
   let normalizedLayers = compatibleLayerIds(

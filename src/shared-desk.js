@@ -8,6 +8,7 @@ import {
 } from "./card-registry.js";
 import {
   MAX_CARD_DOCUMENT_NAME_LENGTH,
+  migrateCardVisualizationState,
   normalizeCardDocumentName,
   normalizeCardVisualization,
 } from "./card-document.js";
@@ -135,11 +136,12 @@ function normalizeState(card, value, strict) {
     ? ["layers", "scale", "range"]
     : card.primaryParam && card.primaryParam !== "gpu" ? ["gpu"] : [];
   requireKeys(value, strict ? canonicalKeys : [...canonicalKeys, ...extraKeys], strict ? canonicalKeys : []);
+  const compatible = migrateCardVisualizationState(card.id, value);
   const input = {};
   const layerIds = card.layers.map((layer) => layer.id);
   const primaryIds = card.layers.filter((layer) => layer.primary !== false).map((layer) => layer.id);
   const primaryKey = card.primaryParam || "gpu";
-  for (const [key, item] of Object.entries(value)) {
+  for (const [key, item] of Object.entries(compatible)) {
     const option = card.stateOptions?.find((candidate) => candidate.id === key);
     if (option) input[key] = optionValue(item, option);
     else if (key === "layers") {
@@ -160,7 +162,7 @@ function normalizeState(card, value, strict) {
   }
   const normalized = normalizeCardVisualization(card.id, input);
   if (strict) {
-    if (canonicalKeys.some((key) => JSON.stringify(value[key]) !== JSON.stringify(normalized[key]))) {
+    if (canonicalKeys.some((key) => JSON.stringify(compatible[key]) !== JSON.stringify(normalized[key]))) {
       throw new TypeError("Shared desk chart state is not canonical.");
     }
   } else {

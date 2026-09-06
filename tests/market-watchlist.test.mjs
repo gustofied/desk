@@ -52,6 +52,79 @@ function assertBlocked(watchlist, storage, pinValue = quote()) {
   assert.equal(storage.writes.length, writes);
 }
 
+function legacyEquityPin(range, id = `equity-${range}`, label = `Equities ${range}`) {
+  return {
+    id, label, cardId: "equities",
+    state: { ...normalizeCardVisualization("equities", {
+      symbol: "NVDA", layers: ["NVDA", "H100", "H200"], scale: "index", range: "1y",
+    }), range },
+  };
+}
+
+test("an All equity pin migrates without read writes and persists canonically on an explicit edit", () => {
+  const old = legacyEquityPin("all");
+  const raw = envelope([old]);
+  const { storage, watchlist } = harness(raw);
+  const expected = { ...old, state: { ...old.state, range: "1y" } };
+  assert.deepEqual(watchlist.list(), [expected]);
+  assert.deepEqual(watchlist.reload(), [expected]);
+  assert.equal(storage.raw, raw);
+  assert.equal(storage.writes.length, 0);
+  watchlist.pin(quote());
+  assert.deepEqual(JSON.parse(storage.raw).items[0], expected);
+  assert.deepEqual(watchlist.reload()[0], expected);
+});
+
+test("legacy All and one-year pin collisions retain both IDs, labels and order across edit and reload", () => {
+  for (const ranges of [["all", "1y"], ["1y", "all"]]) {
+    for (const removedRange of ["all", "1y"]) {
+      const old = ranges.map(range => legacyEquityPin(range));
+      const expected = old.map(item => ({ ...item, state: { ...item.state, range: "1y" } }));
+      const raw = envelope(old);
+      const { storage, watchlist } = harness(raw);
+      assert.deepEqual(watchlist.list(), expected);
+      assert.deepEqual(watchlist.reload(), expected);
+      assert.equal(storage.raw, raw);
+      assert.equal(storage.writes.length, 0);
+      assert.equal(watchlist.pin({ cardId: "equities", state: expected[0].state, label: "Do not replace" }).id, expected[0].id);
+      assert.equal(storage.writes.length, 0);
+      watchlist.pin(quote());
+      assert.equal(storage.writes.length, 1);
+      assert.deepEqual(JSON.parse(storage.raw).items.slice(0, 2), old, "only the colliding legacy pin retains its stored alias witness");
+      const fresh = createMarketWatchlist({ storage });
+      assert.deepEqual(fresh.list().slice(0, 2), expected);
+      assert.equal(storage.writes.length, 1);
+      fresh.remove(`equity-${removedRange}`);
+      const survivor = expected.find(item => item.id !== `equity-${removedRange}`);
+      assert.deepEqual(createMarketWatchlist({ storage }).list()[0], survivor);
+      assert.deepEqual(JSON.parse(storage.raw).items[0], survivor, "the witness is no longer needed after the collision is removed");
+    }
+  }
+});
+
+test("the equity All pin compatibility case cannot admit arbitrary duplicate or malformed pins", () => {
+  for (const items of [
+    [legacyEquityPin("1y", "a"), legacyEquityPin("1y", "b")],
+    [legacyEquityPin("all", "a"), legacyEquityPin("all", "b")],
+    [legacyEquityPin("all", "a"), legacyEquityPin("1y", "b"), legacyEquityPin("1y", "c")],
+    [legacyEquityPin("all", "same"), legacyEquityPin("1y", "same")],
+  ]) {
+    const { storage, watchlist } = harness(envelope(items));
+    assert.deepEqual(watchlist.list().map(item => item.id), DEFAULT_IDS);
+    assertBlocked(watchlist, storage);
+  }
+  for (const mutate of [
+    state => { delete state.symbol; }, state => { state.symbol = "nvda"; },
+    state => { state.layers.reverse(); }, state => { state.extra = true; },
+    state => { state.scale = "price"; }, state => { state.range = "ALL"; },
+  ]) {
+    const old = legacyEquityPin("all");
+    mutate(old.state);
+    const { storage, watchlist } = harness(envelope([old]));
+    assertBlocked(watchlist, storage);
+  }
+});
+
 test("initial defaults are five frozen in-memory views and never write storage", () => {
   assert.equal(MARKET_WATCHLIST_STORAGE_KEY, "desk.market-watchlist.v1");
   const { storage, watchlist } = harness();

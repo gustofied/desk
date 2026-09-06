@@ -1,4 +1,5 @@
 import {
+  migrateCardVisualizationState,
   normalizeCardDocumentName,
   normalizeCardVisualization,
 } from "./card-document.js";
@@ -453,15 +454,16 @@ function normalizeEmbeddedViews(views) {
       throw new TypeError("Invalid embedded Catalog view");
     }
     seen.add(key);
-    const state = normalizeCardVisualization(value.cardId, value.state);
+    const compatible = migrateCardVisualizationState(value.cardId, value.state);
+    const state = normalizeCardVisualization(value.cardId, compatible);
     const fields = Object.keys(state);
     // Persisted views are complete snapshots, not partial edit inputs. Reject
     // damaged or newer state instead of silently replacing it with defaults.
     if (
-      Object.keys(value.state).length !== fields.length ||
+      Object.keys(compatible).length !== fields.length ||
       fields.some((field) =>
-        !Object.hasOwn(value.state, field) ||
-        JSON.stringify(state[field]) !== JSON.stringify(value.state[field]))
+        !Object.hasOwn(compatible, field) ||
+        JSON.stringify(state[field]) !== JSON.stringify(compatible[field]))
     ) {
       throw new TypeError("Invalid embedded Catalog state");
     }

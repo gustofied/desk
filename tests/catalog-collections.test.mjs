@@ -620,3 +620,54 @@ test("an embedded equities comparison copies its full state and survives owner d
   assert.equal(h.stored().version, 7);
   assert.equal(h.values.get(SAVED_CATALOG_STORAGE_KEY), h.savedSentinel);
 });
+
+test("stored All equity collections migrate in memory and retain their keys and names on the next edit", t => {
+  const canonical = normalizeCardVisualization("equities", {
+    symbol: "NVDA", layers: ["NVDA", "H100", "H200"], scale: "index", range: "1y",
+  });
+  const legacy = { ...collection("legacy-equities", "My equities"),
+    keys: ["desk-legacy-equities-0"],
+    views: [{ key: "desk-legacy-equities-0", cardId: "equities", name: "Stocks and compute", state: { ...canonical, range: "all" } }],
+  };
+  const h = harness(t, envelope([legacy]));
+  const before = h.raw();
+  for (const readOnly of [true, false]) {
+    const loaded = loadCatalogCollections({ readOnly });
+    assert.equal(loaded.unavailable, false);
+    assert.equal(loaded.activeId, legacy.id);
+    assert.deepEqual(loaded.collections[0], { ...legacy, views: [{ ...legacy.views[0], state: canonical }] });
+    assert.equal(h.raw(), before);
+    assert.equal(h.storage.writes.length, 0);
+  }
+  renameCatalogCollection(legacy.id, "Renamed equities");
+  assert.equal(h.storage.writes.length, 1);
+  const reloaded = loadCatalogCollections({ readOnly: true }).collections[0];
+  assert.equal(reloaded.id, legacy.id);
+  assert.equal(reloaded.name, "Renamed equities");
+  assert.deepEqual(reloaded.keys, legacy.keys);
+  assert.deepEqual(reloaded.views, [{ ...legacy.views[0], state: canonical }]);
+  assert.deepEqual(h.stored().collections[0].views, reloaded.views);
+  assert.equal(h.values.get(SAVED_CATALOG_STORAGE_KEY), h.savedSentinel);
+});
+
+test("the All equity collection alias does not repair other malformed embedded fields", t => {
+  const canonical = normalizeCardVisualization("equities", { symbol: "NVDA", range: "1y" });
+  const h = harness(t);
+  for (const mutate of [
+    state => { delete state.symbol; }, state => { state.symbol = "nvda"; },
+    state => { state.layers = ["FAKE"]; }, state => { state.extra = true; },
+    state => { state.scale = "bad"; }, state => { state.range = "ALL"; },
+  ]) {
+    const state = { ...canonical, range: "all" };
+    mutate(state);
+    const legacy = { ...collection(), keys: ["desk-legacy-0"],
+      views: [{ key: "desk-legacy-0", cardId: "equities", name: "Legacy", state }],
+    };
+    h.values.set(CATALOG_COLLECTIONS_STORAGE_KEY, JSON.stringify(envelope([legacy])));
+    const before = h.raw();
+    assert.equal(loadCatalogCollections({ readOnly: true }).unavailable, true);
+    assert.equal(h.raw(), before);
+    assertSaveBlocked(h);
+  }
+  assert.equal(h.storage.writes.length, 0);
+});

@@ -869,6 +869,15 @@ button.compute-share-card-frame:focus-visible {
   grid-template-columns: 20px 52px minmax(48px, auto) minmax(52px, auto);
 }
 
+.gpu-index[data-cross-market="true"] .gpu-benchmark__tooltip-row {
+  grid-template-columns: 20px 40px minmax(48px, auto) minmax(0, 1fr);
+}
+
+.gpu-index[data-cross-market="true"] .gpu-benchmark__tooltip-row small {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .gpu-benchmark__tooltip-row i {
   width: 20px;
   height: 2px;
@@ -1896,6 +1905,12 @@ button.compute-share-card-frame:focus-visible {
 
   .gpu-benchmark__data-row[data-card-layer-row] .gpu-benchmark__layers::after {
     display: none;
+  }
+
+  .gpu-benchmark__layer-section {
+    grid-column: 1 / -1;
+    min-height: 28px;
+    margin-top: 4px;
   }
 
   .gpu-benchmark__data-row[data-card-layer-row] .gpu-benchmark__layers button {

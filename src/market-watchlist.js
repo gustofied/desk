@@ -1,5 +1,6 @@
 import { CARD_REGISTRY, cardStateParamIds } from "./card-registry.js";
 import {
+  migrateCardVisualizationState,
   normalizeCardDocumentName,
   normalizeCardVisualization,
 } from "./card-document.js";
@@ -9,6 +10,7 @@ const VERSION = 1;
 const MAX_ITEMS = 32;
 const ID_PATTERN = /^[a-zA-Z0-9_-]{1,96}$/;
 const cards = new Map(CARD_REGISTRY.map((card) => [card.id, card]));
+const legacyEquityAllEntries = new WeakSet();
 let idSequence = 0;
 
 const defaults = Object.freeze([
@@ -68,8 +70,22 @@ export function createMarketWatchlist(options = {}) {
       throw new Error("Market watchlist storage is unavailable");
     }
     const snapshot = Object.freeze(next);
+    const counts = new Map();
+    for (const item of snapshot) {
+      const key = watchlistKey(item.cardId, item.state);
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
     store.setItem(MARKET_WATCHLIST_STORAGE_KEY, JSON.stringify({
-      version: VERSION, items: snapshot,
+      version: VERSION,
+      items: snapshot.map(item => {
+        // Preserve the old range only as a stored witness for an existing
+        // All/1Y collision. Both visible pins stay canonical, with their IDs
+        // and labels intact, and arbitrary duplicate pins remain invalid.
+        const collision = counts.get(watchlistKey(item.cardId, item.state)) > 1;
+        return collision && legacyEquityAllEntries.has(item)
+          ? { ...item, state: { ...item.state, range: "all" } }
+          : item;
+      }),
     }));
     items = snapshot;
   }
@@ -133,25 +149,30 @@ function parseEnvelope(text) {
   ) throw new TypeError("Market watchlist data is invalid");
 
   const ids = new Set();
-  const keys = new Set();
+  const keys = new Map();
   const items = value.items.map((value) => {
     const normalized = entry(value);
+    const compatible = migrateCardVisualizationState(normalized.cardId, value.state);
+    const legacyAll = compatible !== value.state;
     const stateKeys = Object.keys(normalized.state);
     // Stored entries are complete snapshots. Do not repair missing/unknown
     // fields or invalid state by overwriting them with normalizer defaults.
     if (
       Object.keys(value).some((key) => !["id", "cardId", "state", "label"].includes(key)) ||
       value.label !== normalized.label ||
-      Object.keys(value.state).length !== stateKeys.length ||
-      stateKeys.some((key) => !Object.hasOwn(value.state, key) ||
-        JSON.stringify(value.state[key]) !== JSON.stringify(normalized.state[key]))
+      Object.keys(compatible).length !== stateKeys.length ||
+      stateKeys.some((key) => !Object.hasOwn(compatible, key) ||
+        JSON.stringify(compatible[key]) !== JSON.stringify(normalized.state[key]))
     ) throw new TypeError("Market watchlist entry is invalid");
     const key = watchlistKey(normalized.cardId, normalized.state);
-    if (ids.has(normalized.id) || keys.has(key)) {
+    const previous = keys.get(key);
+    if (ids.has(normalized.id) ||
+      (previous && (previous.count !== 1 || previous.legacyAll === legacyAll))) {
       throw new TypeError("Market watchlist entries must be unique");
     }
     ids.add(normalized.id);
-    keys.add(key);
+    keys.set(key, { count: (previous?.count || 0) + 1, legacyAll });
+    if (legacyAll) legacyEquityAllEntries.add(normalized);
     return normalized;
   });
   return Object.freeze(items);

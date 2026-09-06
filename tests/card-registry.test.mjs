@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CARD_REGISTRY, EQUITY_LAYERS, RANGES, cardStateParamIds,
-  getCardDefinition, normalizeCardState, publishedCardSharePath,
+  getCardDefinition, normalizeCardState, publishedCardSharePath, serializeLayerIds,
 } from "../src/card-registry.js";
-import { normalizeCardVisualization } from "../src/card-document.js";
+import { createCardDocument, normalizeCardDocument, normalizeCardVisualization } from "../src/card-document.js";
 
 const SYMBOLS = ["MSFT", "AMZN", "GOOGL", "ORCL", "CRWV", "NBIS", "NVDA", "AMD", "TSM"];
 
@@ -42,6 +42,28 @@ test("all nine equity layers retain company and group metadata in the requested 
   assert(Object.isFrozen(EQUITY_LAYERS));
 });
 
+test("H100 and H200 are styled, index-only external comparison layers, never equity primaries", () => {
+  const card = getCardDefinition("equities");
+  assert.deepEqual(card.layers.filter(layer => layer.primary !== false).map(layer => layer.id), SYMBOLS);
+  assert.deepEqual(card.layers.map(layer => layer.id), [...SYMBOLS, "H100", "H200"]);
+  for (const layer of card.layers.filter(layer => layer.primary === false)) {
+    const original = getCardDefinition("gpu-index").layers.find(candidate => candidate.id === layer.id);
+    assert.equal(layer.sourceCardId, "gpu-index");
+    assert.equal(layer.unit, "usd-hour");
+    assert.equal(layer.group, "compute");
+    assert.equal(layer.groupLabel, "Compute");
+    assert.deepEqual(layer.views, ["index"]);
+    assert.equal(layer.strokeDasharray, original.strokeDasharray);
+    assert.equal(layer.strokeOpacity, original.strokeOpacity);
+    assert.notEqual(layer, original);
+    assert(Object.isFrozen(layer));
+    assert(Object.isFrozen(layer.views));
+    assert.equal(original.primary, undefined);
+    assert.equal(original.sourceCardId, undefined);
+    assert.deepEqual(original.views, ["price", "index", "spread"]);
+  }
+});
+
 test("Equities defaults to NVDA price over one year and stores symbol canonically", () => {
   const state = normalizeCardState("equities");
   assert.deepEqual(state, {
@@ -67,18 +89,81 @@ test("equity comparison states normalize case/order while preserving the selecte
   assert.equal(normalizeCardState("equities", { gpu: "TSM" }).symbol, "TSM", "existing renderer alias remains compatible");
 });
 
-test("equities cannot inherit GPU spread or accelerator layers and old cards keep their ranges", () => {
+test("equities cannot select compute as the primary or use spread, and old cards keep their ranges", () => {
   const state = normalizeCardState("equities", {
     symbol: "H100", layers: ["H100", "TOKEN"], scale: "spread", range: "1d",
   });
-  assert.deepEqual([state.symbol, state.layers, state.scale, state.range], ["NVDA", ["NVDA"], "price", "1y"]);
+  assert.deepEqual([state.symbol, state.layers, state.scale, state.range], ["NVDA", ["NVDA", "H100"], "index", "1y"]);
   assert.deepEqual(getCardDefinition("gpu-index").ranges, ["1d", "7d", "all"]);
   assert.equal(normalizeCardState("gpu-index", { range: "1y" }).range, "7d");
   assert.equal(normalizeCardState("power-basis", { range: "90d" }).range, "1d");
-  assert.deepEqual(getCardDefinition("equities").ranges, ["7d", "90d", "1y", "all"]);
+  assert.deepEqual(getCardDefinition("equities").ranges, ["7d", "90d", "1y"]);
+  assert.equal(normalizeCardState("equities", { range: "all" }).range, "1y");
   assert.equal(RANGES["90d"].milliseconds, 90 * 86400000);
   assert.equal(RANGES["1y"].milliseconds, 365 * 86400000);
   assert.equal(RANGES.all.milliseconds, null);
+});
+
+test("legacy All equity URLs retain the comparison and use the one-year window", () => {
+  const previous = { symbol: "AMD", layers: ["AMD", "H100", "H200"], scale: "index", range: "all", palette: "azure", theme: "dark" };
+  const current = normalizeCardState("equities", previous);
+  assert.equal(current.range, "1y");
+  assert.equal(current.symbol, "AMD");
+  assert.deepEqual(current.layers, ["AMD", "H100", "H200"]);
+  assert.equal(current.scale, "index");
+  assert.equal(current.palette, "azure");
+  assert.equal(current.theme, "dark");
+});
+
+test("mixed equity query and saved states force index and retain a canonical stock primary", () => {
+  const card = getCardDefinition("equities");
+  const query = new URLSearchParams("symbol=amd&gpu=H200&layers=H200,msft,AMD,H100,H200,B200,TOKEN&scale=price&range=90d");
+  const state = normalizeCardState(card.id, Object.fromEntries(query));
+  assert.equal(state.symbol, "AMD");
+  assert.equal(state.gpu, "AMD");
+  assert.equal(state.scale, "index");
+  assert.deepEqual(state.layers, ["MSFT", "AMD", "H100", "H200"]);
+  assert.equal(serializeLayerIds(state.layers, card), "MSFT,AMD,H100,H200");
+  const saved = createCardDocument({
+    id: "mixed-equities", cardId: card.id, name: "Cloud and compute", state,
+    createdAt: "2026-09-06T00:00:00.000Z",
+  });
+  assert.equal(Object.hasOwn(saved.visualization, "gpu"), false);
+  assert.deepEqual(saved.visualization, {
+    symbol: "AMD", layers: ["MSFT", "AMD", "H100", "H200"], scale: "index",
+    range: "90d", palette: "linen", theme: "dark",
+  });
+  assert.deepEqual(normalizeCardDocument(JSON.parse(JSON.stringify(saved))), saved);
+  const canonicalQuery = new URLSearchParams(Object.entries(saved.visualization).map(([key, value]) => [
+    key, key === "layers" ? serializeLayerIds(value, card) : value,
+  ]));
+  assert.equal(canonicalQuery.has("gpu"), false);
+  assert.deepEqual(normalizeCardState(card.id, Object.fromEntries(canonicalQuery)), state);
+  assert.equal(normalizeCardState(card.id, { ...saved.visualization, scale: "price" }).scale, "index");
+  assert.equal(normalizeCardState(card.id, { symbol: "AMD", layers: ["AMD"], scale: "price" }).scale, "price");
+  for (const symbol of ["H100", "H200"]) {
+    const invalidPrimary = normalizeCardState(card.id, { symbol, layers: [symbol], scale: "price" });
+    assert.equal(invalidPrimary.symbol, "NVDA");
+    assert.deepEqual(invalidPrimary.layers, ["NVDA", symbol]);
+    assert.equal(invalidPrimary.scale, "index");
+  }
+});
+
+test("equity comparison metadata and selections cannot spill into other cards", () => {
+  const gpu = getCardDefinition("gpu-index");
+  assert.deepEqual(gpu.layers.map(layer => layer.id), ["H100", "H200", "B200", "B300", "TOKEN"]);
+  assert.deepEqual(normalizeCardState(gpu.id, {
+    gpu: "H200", symbol: "NVDA", layers: ["NVDA", "H100", "H200"], scale: "price",
+  }).layers, ["H100", "H200"]);
+  assert.equal(normalizeCardState(gpu.id, { layers: ["H100", "H200"], scale: "price" }).scale, "price");
+  assert.equal(normalizeCardState(gpu.id, { gpu: "H100", layers: ["H100", "H200"], scale: "spread" }).scale, "spread");
+  assert.deepEqual(normalizeCardState("power-basis", {
+    symbol: "NVDA", layers: ["NVDA", "H100", "H200"], scale: "index",
+  }).layers, ["PJM-WEST"]);
+  for (const card of CARD_REGISTRY.filter(candidate => candidate.id !== "equities")) {
+    assert(card.layers.every(layer => layer.sourceCardId !== "gpu-index"));
+    assert(card.layers.every(layer => !SYMBOLS.includes(layer.id)));
+  }
 });
 
 test("each equity preset selects exactly its symbol and retains the one-year price view", () => {

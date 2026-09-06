@@ -28,6 +28,7 @@ import { createGpuPriceBarModel } from "./gpu-price-bar-model.js";
 import { paintGpuPriceBarChart } from "./gpu-price-bar-presentation.js";
 import { createGpuSpreadSeries } from "./gpu-spread-model.js";
 import { alignIndexedPriceSeries, createPriceSeriesIndex, priceRowsForRange } from "./price-series.js";
+import { createCrossMarketSeries, hasCrossMarketLayers } from "./cross-market-series.js";
 import { createGpuMarketDepthModel } from "./gpu-market-depth-model.js";
 import { paintGpuMarketDepthChart } from "./gpu-market-depth-presentation.js";
 import { createPowerBasisModel } from "./power-basis-model.js";
@@ -910,7 +911,13 @@ if (root) {
         button.addEventListener("click", () => toggleLayer(layer.id));
         return button;
       });
-      nodes.layerGroup.replaceChildren(...nodes.layerButtons);
+      const firstCompute = nodes.layerButtons.findIndex(button =>
+        getLayerDefinition(cardDefinition, button.dataset.cardLayer)?.sourceCardId === "gpu-index");
+      const section = document.createElement("span");
+      section.className = "gpu-benchmark__compare-label gpu-benchmark__layer-section";
+      section.textContent = "Compute";
+      nodes.layerGroup.replaceChildren(...nodes.layerButtons.flatMap((button, index) =>
+        index === firstCompute ? [section, button] : [button]));
     }
 
     if (nodes.scaleGroup) {
@@ -2618,7 +2625,23 @@ if (root) {
           state.selected === family,
         run: () => selectCardTab(family, { detail: 0 }),
       })),
-      ...getCardDefinition("equities").layers.map((layer, index) => ({
+      {
+        id: "equity.compare-compute",
+        group: "Equities",
+        order: -1,
+        title: "Compare with compute",
+        subtitle: () => `${cardId === "equities" ? state.selected : "NVDA"} + H100 + H200`,
+        hint: "Change",
+        keywords: ["equities", "stocks", "GPU", "rental", "H100", "H200", "compare"],
+        disabled: () => !state.runtimePayloads.has("equities"),
+        run: () => {
+          const symbol = cardId === "equities" ? state.selected : "NVDA";
+          openCardPreset("equities", "monitor", true, {
+            symbol, layers: [symbol, "H100", "H200"], scale: "index", range: "90d",
+          });
+        },
+      },
+      ...getCardDefinition("equities").layers.filter(layer => layer.primary !== false).map((layer, index) => ({
         id: `equity.${layer.id.toLowerCase()}`,
         group: "Equities",
         order: index,
@@ -5276,6 +5299,7 @@ if (root) {
       );
     }
     root.dataset.cardScale = state.scale;
+    root.dataset.crossMarket = String(hasCrossMarketLayers(cardDefinition, [...state.layers]));
     root.dataset.comparisonCount = String(comparisonCount);
     root.dataset.craftEmpty = String(empty);
     root.dataset.craftDirty = String(editing && state.craftDirty);
@@ -5326,6 +5350,8 @@ if (root) {
           ? `${labels} latest hourly benchmark prices. Each wider band shows the quoted price range.`
           : state.scale === "spread"
           ? `${spreadLabel}. The line shows the difference in price change, in percentage points. Positive values mean ${orderedLabels[0]} has risen more; negative values mean ${orderedLabels[1]} has risen more.`
+          : hasCrossMarketLayers(cardDefinition, [...state.layers])
+          ? `${labels} percentage change from the same first shared date. Equity adjusted closes and the last recorded GPU rental price on each shared UTC day. GPU history is currently demo data. Hover shows original prices in dollars per share or GPU hour.`
           : state.scale === "index"
           ? `${labels} percentage change from the start of the selected range.`
           : cardId === "equities"
@@ -5668,6 +5694,7 @@ if (root) {
       return getLayerDefinition(cardDefinition, state.selected)?.label || cardDefinition.title;
     }
     if (cardDefinition.renderer !== "line") return cardDefinition.title;
+    if (hasCrossMarketLayers(cardDefinition, [...state.layers])) return `${state.selected} + compute`;
     if (state.scale === "spread") {
       const labels = orderedLayerLabels(currentCardState());
       if (labels.length === 2) return `${labels[0]} − ${labels[1]}`;
@@ -5985,7 +6012,7 @@ if (root) {
       `${formatCardHeadline(latest.plotValue, state.scale)}`;
     if (nodes.shareObserved) {
       nodes.shareObserved.textContent = cardId === "equities"
-        ? `Close ${d3.utcFormat("%d %b %Y")(latest.date)}`
+        ? `${isCrossMarketSeries(renderedSeries) ? "Through" : "Close"} ${d3.utcFormat("%d %b %Y")(latest.date)}`
         : formatUtcDateTime(latest.date);
       nodes.shareObserved.setAttribute("datetime", latest.date.toISOString());
     }
@@ -6082,6 +6109,7 @@ if (root) {
         card: cardDefinition,
         cardState: currentCardState(),
         runtimePayload: state.runtimePayload,
+        runtimePayloads: state.runtimePayloads,
         ...context,
       });
       monitorDataRail.setModel(model);
@@ -6659,6 +6687,12 @@ if (root) {
     { zoom = false, definition = cardDefinition } = {},
   ) {
     const normalized = normalizeCardState(definition.id, cardState);
+    if (hasCrossMarketLayers(definition, normalized.layers)) {
+      return createCrossMarketSeries(state.priceSeries, definition, normalized, {
+        milliseconds: ranges[normalized.range]?.milliseconds,
+        zoomWindow: zoom && supportsChartZoom(normalized.range, definition) ? state.zoomWindow : null,
+      });
+    }
     const layerIds = normalized.layers;
     const orderedLayerIds = [
       normalized.gpu,
@@ -6667,7 +6701,7 @@ if (root) {
     const memberSeries = orderedLayerIds
       .map((layerId) => createLayerSeries(layerId, {
         scale: normalized.scale === "spread" ? "price" : normalized.scale,
-        zoom: normalized.scale === "spread" ? false : zoom,
+        zoom: normalized.scale === "spread" || definition.id === "equities" ? false : zoom,
         range: normalized.range,
         primaryLayerId: normalized.gpu,
         definition,
@@ -6676,7 +6710,11 @@ if (root) {
 
     if (definition.id === "equities") {
       if (!memberSeries.some(candidate => candidate.primary)) return [];
-      return normalized.scale === "index" ? alignIndexedPriceSeries(memberSeries) : memberSeries;
+      const aligned = normalized.scale === "index" ? alignIndexedPriceSeries(memberSeries) : memberSeries;
+      // Zoom changes the visible dates, never the comparison's return baseline.
+      return zoom ? aligned.map(candidate => ({
+        ...candidate, rows: customZoomRows(candidate.rows),
+      })) : aligned;
     }
     if (normalized.scale !== "spread") return memberSeries;
     if (memberSeries.length !== 2) return [];
@@ -6744,7 +6782,7 @@ if (root) {
     drawShareArtifact(nodes.shareArtifactSvg, series, state.selected, {
       compact: true,
       scale: state.scale,
-      title: state.catalogName || undefined,
+      title: state.catalogName || (isCrossMarketSeries(series) ? workspaceLabel() : undefined),
       reveal: revealShareArtifact(motion),
     });
   }
@@ -6887,7 +6925,7 @@ if (root) {
         .attr("aria-hidden", "true");
     }
     if (
-      series.length === 1 &&
+      (series.length === 1 || isCrossMarketSeries(series)) &&
       (scale === "index" || scale === "spread")
     ) {
       svg
@@ -6946,7 +6984,7 @@ if (root) {
         .attr("stroke-linejoin", "round")
         .attr("stroke-width", strokeWidth);
     });
-    if (hasComparisons && !compact) {
+    if (hasComparisons && (!compact || isCrossMarketSeries(series))) {
       appendShareEndpointLabels(svg, series, palette, chart, x, y, isPrimary);
     }
     if (options.reveal) {
@@ -7102,7 +7140,7 @@ if (root) {
       const baseline = state.scale === "spread"
         ? SPREAD_BASELINE
         : INDEX_BASELINE;
-      if (series.length === 1) {
+      if (series.length === 1 || isCrossMarketSeries(series)) {
         const relativeArea = d3
           .area()
           .x((row) => x(row.date))
@@ -7212,7 +7250,7 @@ if (root) {
           .attr("dominant-baseline", "middle")
           .attr("text-anchor", "end")
           .attr("fill", color)
-          .text(candidate.layer.shortLabel || candidate.layer.label);
+          .text(seriesEndpointLabel(candidate, series));
       });
     }
 
@@ -7298,7 +7336,7 @@ if (root) {
         showPoint();
       });
     const zoomEnabled =
-      state.range === "all" &&
+      supportsChartZoom() &&
       window.matchMedia("(hover: hover) and (pointer: fine)").matches;
     let zoomDrag = null;
     if (zoomEnabled) {
@@ -7368,6 +7406,11 @@ if (root) {
         return;
       }
       const nextZoomWindow = [x.invert(left), x.invert(right)];
+      if (isCrossMarketSeries(series) && selectedRows.filter(row =>
+        row.date >= nextZoomWindow[0] && row.date <= nextZoomWindow[1]).length < 2) {
+        zoomSelection.style("display", "none").style("opacity", 1);
+        return;
+      }
       const commitZoom = () => {
         state.zoomWindow = nextZoomWindow;
         syncControls();
@@ -7467,8 +7510,9 @@ if (root) {
 
   function renderTooltip(dateValue, rows) {
     const date = document.createElement("time");
+    const crossMarket = hasCrossMarketLayers(cardDefinition, [...state.layers]);
     date.textContent = cardId === "equities"
-      ? `${d3.utcFormat("%d %b %Y")(dateValue)} · close`
+      ? `${d3.utcFormat("%d %b %Y")(dateValue)}${crossMarket ? "" : " · close"}`
       : formatDateTime(dateValue);
     if (state.scale === "spread" && rows[0]) {
       const row = rows[0];
@@ -7502,6 +7546,7 @@ if (root) {
       const value = document.createElement("strong");
       const range = document.createElement("small");
       entry.className = "gpu-benchmark__tooltip-row";
+      entry.dataset.layer = row.layer.id;
       if (row.primary) entry.dataset.selected = "true";
       const lineColor = row.primary
         ? currentLineColor()
@@ -7525,7 +7570,9 @@ if (root) {
       label.textContent = row.layer.shortLabel || row.layer.label;
       value.textContent = formatPlotValue(row.plotValue, state.scale);
       range.textContent =
-        state.scale === "index"
+        crossMarket
+          ? `${formatUsd(row.value, row.layer.unit)} ${row.layer.unit === "usd-share" ? "/share" : "/GPU-h"}`
+        : state.scale === "index"
           ? row.primary
             ? formatUsd(row.value, row.layer.unit)
             : ""
@@ -7601,8 +7648,12 @@ if (root) {
       : before;
   }
 
+  function supportsChartZoom(range = state.range, definition = cardDefinition) {
+    return range === "all" || (definition.id === "equities" && range === "1y");
+  }
+
   function customZoomRows(rows) {
-    if (state.range !== "all" || !state.zoomWindow || !rows.length) {
+    if (!supportsChartZoom() || !state.zoomWindow || !rows.length) {
       return rows;
     }
     const [start, end] = state.zoomWindow;
@@ -7697,7 +7748,7 @@ if (root) {
       appendShareText(svg, {
         x: chartRight - 12,
         y: labelY + 6,
-        text: candidate.layer.shortLabel || candidate.layer.label,
+        text: seriesEndpointLabel(candidate, series),
         fill: color,
         size: 18,
         weight: candidateIsPrimary ? 600 : 500,
@@ -7712,6 +7763,18 @@ if (root) {
         .attr("stroke-linejoin", "round")
         .attr("aria-hidden", "true");
     }
+  }
+
+  function isCrossMarketSeries(series) {
+    return series.some(candidate => candidate.layer.unit === "usd-share") &&
+      series.some(candidate => candidate.layer.unit === "usd-hour");
+  }
+
+  function seriesEndpointLabel(candidate, series) {
+    const label = candidate.layer.shortLabel || candidate.layer.label;
+    return isCrossMarketSeries(series)
+      ? `${label} ${formatPlotValue(candidate.rows.at(-1).plotValue, "index")}`
+      : label;
   }
 
   function formatUsd(value, unit) {

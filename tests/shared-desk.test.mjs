@@ -71,6 +71,50 @@ test("normalizes partial and full renderer state without retaining redundant fie
   assert.deepEqual(createSharedDesk(created), created);
 });
 
+test("equity and compute comparisons preserve their layers, common scale and name in shared desks", () => {
+  const created = createSharedDesk(input([
+    view("equities", {
+      symbol: "NVDA", layers: ["NVDA", "H100", "H200"], scale: "price", range: "90d",
+    }, "NVDA + compute"),
+  ]));
+  const entry = roundTrip(created).entries[0];
+  assert.equal(entry.name, "NVDA + compute");
+  assert.equal(entry.state.symbol, "NVDA");
+  assert.deepEqual(entry.state.layers, ["NVDA", "H100", "H200"]);
+  assert.equal(entry.state.scale, "index");
+  assert.equal(entry.state.range, "90d");
+});
+
+test("legacy All equity links migrate exactly to one year without relaxing strict state validation", () => {
+  const canonical = createSharedDesk(input([
+    view("equities", { symbol: "NVDA", layers: ["NVDA", "H100", "H200"], scale: "index", range: "1y" }, "Stocks and compute"),
+    view("gpu-index", { range: "all" }, "GPU history"),
+  ]));
+  const legacy = structuredClone(canonical);
+  legacy.entries[0].state.range = "all";
+  const before = structuredClone(legacy);
+  assert.deepEqual(decodeSharedDesk(rawToken(legacy)), canonical);
+  assert.deepEqual(roundTrip(legacy), canonical);
+  assert.deepEqual(createSharedDesk(legacy), canonical);
+  assert.equal(canonical.entries[1].state.range, "all");
+  assert.deepEqual(legacy, before);
+  for (const mutate of [
+    state => { state.symbol = "nvda"; },
+    state => { delete state.symbol; },
+    state => { state.scale = "price"; },
+    state => { state.layers.reverse(); },
+    state => { state.layers.push("H100"); },
+    state => { state.extra = "unknown"; },
+    state => { state.palette = "bad"; },
+    state => { state.range = "ALL"; },
+    state => { state.range = "invalid"; },
+  ]) {
+    const invalid = structuredClone(legacy);
+    mutate(invalid.entries[0].state);
+    assert.throws(() => decodeSharedDesk(rawToken(invalid)), mutate.toString());
+  }
+});
+
 test("UTF-8 Unicode and HTML-like names are inert data and round-trip exactly", () => {
   const created = createSharedDesk(input([view("gpu-index", {}, "東京 • GPU 🚀 <b>one</b>")], {
     name: "Café — مرحباً 🧪 <script>x</script>",

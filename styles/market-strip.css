@@ -121,6 +121,21 @@
 .desk-market-preview__artifact .deal-view__label { font-size: 14px; line-height: 18px; }
 .desk-market-preview__artifact .deal-view__status { font-size: 9px; line-height: 14px; }
 .desk-market-preview__artifact .deal-view__quote { font-size: 26px; line-height: 30px; }
+/* Keep the quote's header clear without reserving a second, oversized row in
+   the small preview. The existing step geometry then uses the full frame. */
+.desk-market-preview__artifact .deal-view--quote .deal-view__surface { display: block; }
+.desk-market-preview__artifact .deal-view--quote .deal-view__head {
+  position: absolute;
+  inset: 0 0 auto;
+  padding: 8px 12px 0;
+}
+.desk-market-preview__artifact .deal-view--quote .deal-view__history {
+  position: absolute;
+  inset: 32px 0 0;
+}
+.desk-market-preview__artifact .deal-view--quote .deal-view__negotiation-line { stroke-width: 2px; }
+.desk-market-preview__artifact .quote-view__flow-signal line { stroke-width: 1px; }
+.desk-market-preview__artifact .quote-view__flow-signal circle { stroke-width: 1px; }
 .desk-market-preview__actions { display: flex; justify-content: flex-end; padding: 4px 12px; }
 .desk-market-preview__actions button {
   padding: 4px 0;
@@ -132,6 +147,18 @@
   opacity: .65;
 }
 .desk-market-preview__actions button:hover { opacity: 1; }
+
+/* Quote stems meet the card's bottom edge; Unpin floats over the chart rather
+   than reserving an empty footer beneath it. */
+.desk-market-preview:has(.deal-view--quote) .desk-market-preview__actions {
+  position: absolute;
+  inset: auto 0 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.desk-market-preview:has(.deal-view--quote) .desk-market-preview__actions button {
+  pointer-events: auto;
+}
 
 /* Keep the original header and card geometry; leave room to scroll past the footer. */
 body {

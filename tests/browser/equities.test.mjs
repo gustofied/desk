@@ -280,7 +280,7 @@ for (const width of [1440, 390]) {
       assert.equal(observation.detail, "USD / share");
       assert.match(observation.time, /close/);
     };
-    for (const [range, seconds] of [["7d", 7 * day], ["90d", 90 * day], ["1y", 365 * day], ["all", null]]) {
+    for (const [range, seconds] of [["7d", 7 * day], ["90d", 90 * day], ["1y", 365 * day]]) {
       await expectRange(range, seconds);
     }
     await expectRange("1y", 365 * day);
@@ -333,11 +333,11 @@ for (const width of [1440, 390]) {
   });
 
   for (const scale of ["price", "index"]) {
-    test(`TEST FIXTURE equity ${scale} respects all four ranges and clean per-share tooltips (${engine}, ${width})`, async t => {
+    test(`TEST FIXTURE equity ${scale} respects all three ranges and clean per-share tooltips (${engine}, ${width})`, async t => {
       const page = await makePage(t, { width, url: urlFor({ scale }) });
       await monitorReady(page);
       const points = fixture.series.NVDA;
-      for (const [range, seconds] of [["7d", 7 * day], ["90d", 90 * day], ["1y", 365 * day], ["all", null]]) {
+      for (const [range, seconds] of [["7d", 7 * day], ["90d", 90 * day], ["1y", 365 * day]]) {
         await page.locator(`[data-gpu-range="${range}"]`).click();
         await page.waitForFunction(range => new URL(location.href).searchParams.get("range") === range, range);
         const expected = seconds === null ? points : points.filter(point => point[0] >= fixture.asOf - seconds);
@@ -356,7 +356,7 @@ for (const width of [1440, 390]) {
           assert.match(first.value, /^(?:[+−-])?0(?:\.0+)?%$/);
         }
       }
-      await capture(page, `TEST-FIXTURE-${scale}-all`);
+      await capture(page, `TEST-FIXTURE-${scale}-1y`);
     });
   }
 

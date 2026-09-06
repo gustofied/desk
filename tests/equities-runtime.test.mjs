@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { getCardDefinition } from "../src/card-registry.js";
-import { createUnavailableEquitiesSource } from "../src/equities-data.js";
+import { createUnavailableEquitiesSource, EQUITIES_TICKERS } from "../src/equities-data.js";
 import {
   assertEquitiesPublicDisplay, buildEquitiesRuntime, readEquitiesSource,
 } from "../scripts/equities-runtime.mjs";
@@ -19,8 +19,8 @@ function observedSource() {
   source.source.code = null;
   source.source.message = "Observed historical daily closes.";
   source.asOf = last;
-  source.series = Object.fromEntries(card.layers.map((layer, index) => [
-    layer.id, [[first, 100.1234567 + index], [last, 101.1234567 + index]],
+  source.series = Object.fromEntries(EQUITIES_TICKERS.map((symbol, index) => [
+    symbol, [[first, 100.1234567 + index], [last, 101.1234567 + index]],
   ]));
   return source;
 }
@@ -32,7 +32,7 @@ test("equities runtime preserves observed prices and trading-day gaps without in
   assert.equal(runtime.version, 2);
   assert.equal(runtime.cardId, "equities");
   assert.deepEqual(runtime.columns, ["timestamp", "value"]);
-  assert.deepEqual(Object.keys(runtime.series), card.layers.map(layer => layer.id));
+  assert.deepEqual(Object.keys(runtime.series), EQUITIES_TICKERS);
   assert.deepEqual(runtime.series, source.series);
   assert.deepEqual(source, before);
   assert.equal(runtime.asOf, last);
@@ -51,6 +51,27 @@ test("equities runtime preserves observed prices and trading-day gaps without in
   assert.equal(buildEquitiesRuntime(source, card).revision, runtime.revision);
   source.series.NVDA[1][1] += 0.01;
   assert.notEqual(buildEquitiesRuntime(source, card).revision, runtime.revision);
+});
+
+test("cross-market card layers do not expand the nine-symbol equity source contract", () => {
+  assert.deepEqual(card.layers.filter(layer => layer.sourceCardId).map(layer => layer.id), ["H100", "H200"]);
+  for (const source of [observedSource(), createUnavailableEquitiesSource()]) {
+    const runtime = buildEquitiesRuntime(source, card);
+    assert.deepEqual(Object.keys(runtime.series), EQUITIES_TICKERS);
+    assert.equal(Object.hasOwn(runtime.series, "H100"), false);
+    assert.equal(Object.hasOwn(runtime.series, "H200"), false);
+    for (const symbol of ["H100", "H200"]) {
+      const contaminated = structuredClone(source);
+      contaminated.series[symbol] = source.source.status === "ready" ? [[last, 2]] : [];
+      assert.throws(() => buildEquitiesRuntime(contaminated, card), /only registered symbols/);
+    }
+  }
+  assert.throws(() => buildEquitiesRuntime(observedSource(), {
+    ...card, layers: card.layers.filter(layer => layer.id !== "NVDA"),
+  }), /exactly the nine equity source symbols/);
+  assert.throws(() => buildEquitiesRuntime(observedSource(), {
+    ...card, layers: [...card.layers, { id: "EXTRA", unit: "usd-share" }],
+  }), /exactly the nine equity source symbols/);
 });
 
 test("explicit millisecond source timestamps become Unix seconds without changing prices", () => {

@@ -68,7 +68,8 @@ export function normalizeCardDocument(value) {
 
 export function normalizeCardVisualization(cardId, state = {}) {
   const card = requireCardDefinition(cardId);
-  const normalized = normalizeCardState(card.id, isRecord(state) ? state : {});
+  const normalized = normalizeCardState(card.id,
+    migrateCardVisualizationState(card.id, isRecord(state) ? state : {}));
   const visualization = {};
 
   for (const paramId of cardStateParamIds(card)) {
@@ -81,6 +82,13 @@ export function normalizeCardVisualization(cardId, state = {}) {
   }
 
   return visualization;
+}
+
+// This retired range is the only legacy value that strict saved states repair.
+export function migrateCardVisualizationState(cardId, state) {
+  return cardId === "equities" && isRecord(state) && state.range === "all"
+    ? { ...state, range: "1y" }
+    : state;
 }
 
 export function normalizeCardDocumentName(value) {

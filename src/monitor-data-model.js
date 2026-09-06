@@ -1,4 +1,5 @@
 import { SITE_ORIGIN } from "./card-registry.js";
+import { hasCrossMarketLayers } from "./cross-market-series.js";
 
 export function createMonitorDataModel({
   card,
@@ -8,9 +9,10 @@ export function createMonitorDataModel({
   depthModel = null,
   powerModel = null,
   runtimePayload = null,
+  runtimePayloads = new Map(),
 }) {
   if (card?.id === "equities") {
-    return createEquityHistoryModel(card, cardState, series, runtimePayload);
+    return createEquityHistoryModel(card, cardState, series, runtimePayload, runtimePayloads);
   }
   if (!card?.dataAdapter || !card?.dataTable?.file) return null;
   if (card.dataAdapter === "series") {
@@ -28,9 +30,11 @@ export function createMonitorDataModel({
   return null;
 }
 
-function createEquityHistoryModel(card, state, series, runtime) {
+function createEquityHistoryModel(card, state, series, runtime, runtimes) {
   const selected = series.filter(candidate => candidate?.rows?.length);
-  const requested = Array.isArray(state.layers) ? state.layers : [state.symbol];
+  const requested = Array.isArray(state.layers) ? state.layers
+    : String(state.layers || state.symbol || "").split(",");
+  const crossMarket = hasCrossMarketLayers(card, requested);
   const symbols = selected.length
     ? selected.map(candidate => candidate.layer.id)
     : requested.filter(symbol => card.layers.some(layer => layer.id === symbol));
@@ -41,22 +45,27 @@ function createEquityHistoryModel(card, state, series, runtime) {
   const lastObservation = selected.length
     ? new Date(Math.max(...selected.map(candidate => candidate.rows.at(-1).date.getTime())))
     : null;
-  const asOf = unavailable ? null
+  const asOf = unavailable ? null : crossMarket ? lastObservation
     : Number.isFinite(runtime?.asOf) && runtime.asOf > 0
       ? new Date(runtime.asOf * 1000)
       : lastObservation;
   const range = String(state.range).toUpperCase();
   const seriesLabel = symbols.join(" + ") || "Equities";
   const sourceName = source?.name || "Source unavailable";
+  const computeSource = runtimes.get("gpu-index")?.dataset;
+  const computeAttribution = !computeSource ? "GPU data unavailable"
+    : computeSource.kind === "scenario" ? "GPU demo data" : "GPU prices by Desk";
+  const label = crossMarket ? `${sourceName} + Desk` : sourceName;
   const provenance = [
-    sourceName,
+    label,
     asOf ? `as of ${asOf.toISOString().slice(0, 10)}` : "no observations",
   ].join(" · ");
   return finalizeModel(card, {
     id: "equities-source",
-    label: sourceName,
-    summary: unavailable ? "Not connected" : `Close ${asOf.toISOString().slice(0, 10)}`,
-    description: `Data by ${sourceName}`,
+    label,
+    summary: unavailable ? crossMarket && dataset.status === "ready" ? "No shared data" : "Not connected"
+      : `${crossMarket ? "Compared through" : "Close"} ${asOf.toISOString().slice(0, 10)}`,
+    description: `Data by ${sourceName}${crossMarket ? ` · ${computeAttribution}` : ""}`,
     sourceUrl: equitySourceUrl(source?.url),
     breadcrumbs: [sourceName, seriesLabel, range],
     rowCount,
@@ -65,8 +74,8 @@ function createEquityHistoryModel(card, state, series, runtime) {
     provenance,
     source,
     status: unavailable ? "unavailable" : "ready",
-    priceBasis: dataset.priceBasis || "close",
-    unit: "USD per share",
+    priceBasis: crossMarket ? "relative-change" : dataset.priceBasis || "close",
+    unit: crossMarket ? "percent change" : "USD per share",
   });
 }
 
