@@ -169,6 +169,7 @@ test("pin supports partial state for every registered chart family", () => {
     "quote-view": { gpu: "h200", quantity: "64.6", quote: "4.567", rfs: "2027-02" },
     "deal-view": { gpu: "b300", quantity: 512, quote: 8.765, rfs: "2028-06" },
     equities: { symbol: "amd", layers: ["NVDA", "amd"], scale: "index", range: "90d" },
+    "sandbox-cost": { provider: "DAYTONA-VM", layers: ["DAYTONA-VM", "novita"], range: "7d" },
   };
   assert.deepEqual(Object.keys(states), CARD_REGISTRY.map(card => card.id));
   for (const card of CARD_REGISTRY) {

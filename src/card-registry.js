@@ -22,6 +22,20 @@ const DEAL_VIEW_SLUG = "deal-041";
 const DEAL_VIEW_DATA_FILE = "data/deal-041.json";
 const EQUITIES_ID = "equities";
 const EQUITIES_DATA_FILE = "data/equities.json";
+const SANDBOX_COST_ID = "sandbox-cost";
+const SANDBOX_COST_DATA_FILE = "data/sandbox-cost.json";
+
+export const SANDBOX_PROVIDER_LAYERS = Object.freeze([
+  ["novita", "Novita"],
+  ["daytona-vm", "Daytona VM"],
+  ["blaxel", "Blaxel"],
+  ["e2b", "E2B"],
+  ["modal-vm", "Modal VM"],
+  ["modal-gvisor", "Modal gVisor"],
+].map(([id, label]) => Object.freeze({
+  id, label, shortLabel: label, unit: "usd-job", views: Object.freeze(["price"]),
+})));
+const SANDBOX_PROVIDER_IDS = Object.freeze(SANDBOX_PROVIDER_LAYERS.map(layer => layer.id));
 
 const PRIVATE_CAPACITY_MODELS = Object.freeze(["H100", "H200", "B200", "B300"]);
 
@@ -620,6 +634,42 @@ export const CARD_REGISTRY = Object.freeze([
       Object.freeze({ id: "index", label: "Change", unit: "index" }),
     ]),
   }),
+  Object.freeze({
+    id: SANDBOX_COST_ID,
+    slug: SANDBOX_COST_ID,
+    hash: "gpu-benchmark-card",
+    renderer: "sandbox-cost",
+    primaryParam: "provider",
+    title: "Sandbox cost",
+    craftLabel: "Sandbox cost",
+    description: "CPU and memory job cost estimates from HPC Sandbox Benchmarks.",
+    sourceFile: "api/dashboard-snapshots/sandbox-cost.json",
+    dataFile: SANDBOX_COST_DATA_FILE,
+    dataUrl: `./${SANDBOX_COST_DATA_FILE}`,
+    dataAdapter: "sandbox",
+    publishable: false,
+    sharePath: `/cards/${SANDBOX_COST_ID}`,
+    previewImageDir: `assets/social/${SANDBOX_COST_ID}`,
+    previewPageDir: `cards/${SANDBOX_COST_ID}`,
+    defaults: Object.freeze({
+      layer: "novita", layers: SANDBOX_PROVIDER_IDS,
+      range: "now", scale: "price", palette: DEFAULT_PALETTE, theme: DEFAULT_THEME,
+    }),
+    ranges: Object.freeze(["now", "7d", "all"]),
+    allowComparisons: true,
+    layers: SANDBOX_PROVIDER_LAYERS,
+    catalogPresets: Object.freeze([
+      Object.freeze({ id: "cost", label: "Sandbox cost", state: Object.freeze({
+        provider: "novita", layers: SANDBOX_PROVIDER_IDS, range: "now", scale: "price",
+      }) }),
+      Object.freeze({ id: "history", label: "Sandbox cost", state: Object.freeze({
+        provider: "novita", layers: SANDBOX_PROVIDER_IDS, range: "7d", scale: "price",
+      }) }),
+    ]),
+    visualizations: Object.freeze([
+      Object.freeze({ id: "price", label: "Cost", unit: "usd-job" }),
+    ]),
+  }),
 ]);
 
 const cardsById = new Map(CARD_REGISTRY.map((card) => [card.id, card]));
@@ -660,13 +710,13 @@ export function parseLayerIds(
   card = getCardDefinition(),
   fallback = card.defaults.layers,
 ) {
-  const allowed = new Set(card.layers.map((layer) => layer.id));
+  const canonical = new Map(card.layers.map((layer) => [layer.id.toLowerCase(), layer.id]));
   const values = String(value || "")
     .split(",")
-    .map((layer) => layer.trim().toUpperCase())
+    .map((layer) => canonical.get(layer.trim().toLowerCase()))
     .filter(
       (layer, index, entries) =>
-        allowed.has(layer) && entries.indexOf(layer) === index,
+        layer !== undefined && entries.indexOf(layer) === index,
     );
   return values.length ? values : [...fallback];
 }
@@ -692,10 +742,9 @@ export function normalizeCardState(cardId, stateParams = {}) {
   const primaryParam = card.primaryParam || "gpu";
   const requestedGpu = String(
     stateParams[primaryParam] ?? stateParams.gpu ?? "",
-  ).toUpperCase();
-  const gpu = primaryLayers.some((layer) => layer.id === requestedGpu)
-    ? requestedGpu
-    : card.defaults.layer;
+  ).toLowerCase();
+  const gpu = primaryLayers.find((layer) => layer.id.toLowerCase() === requestedGpu)?.id
+    || card.defaults.layer;
   const fallbackLayers = (stateParams[primaryParam] ?? stateParams.gpu)
     ? [gpu]
     : card.defaults.layers;

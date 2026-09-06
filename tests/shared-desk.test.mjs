@@ -37,6 +37,7 @@ test("all registered chart families preserve their canonical state and entry ord
     { gpu: "H200", quantity: 1024, quote: 5.23, rfs: "2027-06" },
     { gpu: "B300", quantity: 2048, quote: 9.75, rfs: "2030-12" },
     { symbol: "NVDA", layers: ["MSFT", "NVDA", "AMD"], scale: "index", range: "1y" },
+    { provider: "daytona-vm", layers: ["novita", "daytona-vm", "modal-gvisor"], scale: "price", range: "7d" },
   ];
   const entries = CARD_REGISTRY.map((card, index) => view(card.id, states[index], card.title));
   const created = createSharedDesk(input(entries, { palette: "sage", theme: "light" }), { includePrivate: true });

@@ -8,9 +8,13 @@ export function createMonitorDataModel({
   barModel = null,
   depthModel = null,
   powerModel = null,
+  sandboxModel = null,
   runtimePayload = null,
   runtimePayloads = new Map(),
 }) {
+  if (card?.dataAdapter === "sandbox") {
+    return createSandboxDataModel(card, cardState, sandboxModel);
+  }
   if (card?.id === "equities") {
     return createEquityHistoryModel(card, cardState, series, runtimePayload, runtimePayloads);
   }
@@ -28,6 +32,37 @@ export function createMonitorDataModel({
     return createPowerBasisDataModel(card, cardState, powerModel);
   }
   return null;
+}
+
+function createSandboxDataModel(card, state = {}, model) {
+  const providers = Array.isArray(model?.providers) ? model.providers : [];
+  const asOf = providers.length && Number.isFinite(model?.asOf) && model.asOf > 0
+    ? new Date(model.asOf) : null;
+  const range = model?.range || state.range || "now";
+  const history = range !== "now";
+  const sourceName = "HPC Sandbox Benchmarks";
+  const sourceUrl = "https://github.com/starslingdev/hpc-sandbox-benchmarks";
+  const available = asOf !== null && Number.isFinite(+asOf);
+  const date = available ? asOf.toISOString().slice(0, 10) : null;
+  return finalizeModel(card, {
+    id: "sandbox-source",
+    label: sourceName,
+    summary: available ? date : "No observations",
+    breadcrumbs: [sourceName, history ? "Daily batch medians" : "Latest batch", String(range).toUpperCase()],
+    rowCount: Array.isArray(model?.rows) ? model.rows.length : providers.length,
+    asOf: available ? asOf : null,
+    accessKind: "source",
+    provenance: available ? `Benchmark snapshot · ${String(range).toUpperCase()} · as of ${date}` : "Benchmark observations unavailable",
+    source: { name: sourceName, url: sourceUrl },
+    status: available ? "ready" : "unavailable",
+    unit: "USD per job",
+    priceBasis: "cpu-memory-job-estimate",
+    description: "Estimated CPU + memory cost per job. " +
+      (history
+        ? "Daily batch medians; independent scales. Methodology varies across runs."
+        : "Median and range across 12 runs."),
+    sourceUrl,
+  });
 }
 
 function createEquityHistoryModel(card, state, series, runtime, runtimes) {

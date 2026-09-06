@@ -33,6 +33,8 @@ import { createGpuMarketDepthModel } from "./gpu-market-depth-model.js";
 import { paintGpuMarketDepthChart } from "./gpu-market-depth-presentation.js";
 import { createPowerBasisModel } from "./power-basis-model.js";
 import { paintPowerBasisChart } from "./power-basis-presentation.js";
+import { createSandboxCostModel } from "./sandbox-cost-model.js";
+import { paintSandboxCostChart } from "./sandbox-cost-presentation.js";
 import { createDealViewModel } from "./deal-view-model.js";
 import { mountDealView } from "./deal-view-presentation.js";
 import { createCommandPalette } from "./command-palette.js";
@@ -127,6 +129,7 @@ if (root) {
   let isBarCard = cardDefinition.renderer === "categorical-bar";
   let isDepthCard = cardDefinition.renderer === "cumulative-depth";
   let isPowerCard = cardDefinition.renderer === "power-basis";
+  let isSandboxCard = cardDefinition.renderer === "sandbox-cost";
   let isDealCard = cardDefinition.renderer === "deal";
   let isQuoteCard = cardDefinition.viewKind === "quote";
   let isTransactionCard = isDealCard && !isQuoteCard;
@@ -490,6 +493,11 @@ if (root) {
   let dealCraftListenersConfigured = false;
   const catalogCards = new Map();
   const catalogReflowAnimations = new Map();
+  const pendingSandboxGalleryCards = new Set();
+  let sandboxGalleryResizeFrame = 0;
+  const sandboxGalleryResizeObserver = typeof window.ResizeObserver === "function"
+    ? new window.ResizeObserver(queueSandboxGalleryResize)
+    : null;
   let catalogPointerDrag = null;
   let suppressedCatalogClickKey = null;
   let loadCardsPromise = Promise.resolve();
@@ -552,7 +560,12 @@ if (root) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("aria-hidden", "true");
     host.append(svg);
-    if (definition.renderer === "power-basis") {
+    if (definition.renderer === "sandbox-cost") {
+      paintSandboxCostChart(svg, createSandboxModel(display, marketEntryPayload(entry)), {
+        colors: palette, compact: true, artifact: true, title: entry.label,
+        reducedMotion: true, interactive: false, decorative: true,
+      });
+    } else if (definition.renderer === "power-basis") {
       paintPowerBasisChart(svg, createPowerModel(display, marketEntryPayload(entry)), {
         colors: palette, compact: true, artifact: true, minimal: true,
         title: entry.label, mode: display.scale, reducedMotion: true,
@@ -673,6 +686,12 @@ if (root) {
           displayValue = low === high ? formatUsd(low) : `${formatUsd(low)}–${formatUsd(high)}`;
           displayUnit = "/GPU-h";
           timestamp = model.asOf;
+        } else if (definition.renderer === "sandbox-cost") {
+          const model = createSandboxModel(cardState, payload);
+          const point = model.primary.history.at(-1);
+          displayValue = formatSandboxCost(model.range === "now" ? model.primary.median : point?.value);
+          displayUnit = "/job";
+          timestamp = (model.range === "now" ? model.asOf : point?.time) / 1000;
         } else if (definition.renderer === "power-basis") {
           const model = createPowerModel(cardState, payload);
           displayValue = cardState.scale === "basis"
@@ -1969,6 +1988,7 @@ if (root) {
   }
 
   function suggestedCatalogName() {
+    if (isSandboxCard) return "Sandbox cost";
     if (isBarCard) return "Latest prices";
     if (isDepthCard) return `H100 depth ${state.options.target} nodes`;
     if (isPowerCard) {
@@ -2937,6 +2957,9 @@ if (root) {
   }
 
   function describeCatalogState(cardState, definition = cardDefinition) {
+    if (definition.renderer === "sandbox-cost") {
+      return `${cardState.layers.length} providers · ${cardState.range === "now" ? "Latest run" : ranges[cardState.range].label}`;
+    }
     if (definition.renderer === "deal") {
       if (definition.viewKind === "quote") {
         return `Agreed ${formatUsd(cardState.quote)}`;
@@ -3172,6 +3195,10 @@ if (root) {
 
   function configureWorkspaceControls() {
     if (!nodes.galleryGrid) return;
+    sandboxGalleryResizeObserver?.disconnect();
+    window.cancelAnimationFrame(sandboxGalleryResizeFrame);
+    sandboxGalleryResizeFrame = 0;
+    pendingSandboxGalleryCards.clear();
     cancelCatalogReorder();
     state.catalogDirty = true;
     catalogCards.clear();
@@ -3244,6 +3271,11 @@ if (root) {
     syncCatalogCollectionControls();
     syncCatalogCardPositions();
     configureCardRail();
+    for (const cardNodes of catalogCards.values()) {
+      if (getCardDefinition(cardNodes.entry.cardId || cardId).renderer === "sandbox-cost") {
+        sandboxGalleryResizeObserver?.observe(cardNodes.button);
+      }
+    }
   }
 
   function configureCardRail() {
@@ -3252,7 +3284,8 @@ if (root) {
     const focusedKey = nodes.cardTabs.contains(document.activeElement)
       ? document.activeElement?.dataset.catalogEntryKey || ""
       : "";
-    const restoreKey = pendingRailFocusKey || focusedKey;
+    const requestedFocusKey = pendingRailFocusKey;
+    const restoreKey = requestedFocusKey || focusedKey;
     const entries = cardRailCatalogEntries();
     const existingButtons = new Map(
       nodes.cardRailButtons
@@ -3298,8 +3331,14 @@ if (root) {
     const restoreButton = buttons.find(
       (button) => button.dataset.catalogEntryKey === restoreKey,
     ) || activeCardRailButton();
+    const focusAfterUpdate = document.activeElement;
+    if (!requestedFocusKey && !structureChanged && focusAfterUpdate === restoreButton) return;
     window.requestAnimationFrame(() => {
       if (!restoreButton?.isConnected) return;
+      // A late rail update must not pull focus back from a chart or input the
+      // user has entered since this restoration was queued.
+      const active = document.activeElement;
+      if (active !== focusAfterUpdate && active !== document.body && active !== document.documentElement) return;
       restoreButton.focus({ preventScroll: true });
       revealCardRailTab(restoreButton);
     });
@@ -4161,6 +4200,13 @@ if (root) {
     ) {
       throw new Error(`Unsupported card data at ${url}`);
     }
+    if (definition.renderer === "sandbox-cost") {
+      if (payload.cardId !== definition.id || !Array.isArray(payload.providers) || !payload.providers.length) {
+        throw new Error(`Unsupported sandbox data at ${url}`);
+      }
+      createSandboxCostModel(payload, definition);
+      return;
+    }
     if (definition.renderer === "deal") {
       if (
         payload.cardId !== definition.id ||
@@ -4581,6 +4627,7 @@ if (root) {
     isBarCard = nextCard.renderer === "categorical-bar";
     isDepthCard = nextCard.renderer === "cumulative-depth";
     isPowerCard = nextCard.renderer === "power-basis";
+    isSandboxCard = nextCard.renderer === "sandbox-cost";
     isDealCard = nextCard.renderer === "deal";
     isQuoteCard = nextCard.viewKind === "quote";
     isTransactionCard = isDealCard && !isQuoteCard;
@@ -5020,6 +5067,12 @@ if (root) {
   }
 
   function syncMobileSummary() {
+    if (isSandboxCard) {
+      if (nodes.mobileSummaryLabel) nodes.mobileSummaryLabel.textContent = "Sandbox cost";
+      if (nodes.mobileSummaryValue) nodes.mobileSummaryValue.textContent = `${state.layers.size} providers`;
+      if (nodes.mobileSummaryRange) nodes.mobileSummaryRange.textContent = rangeControlLabel(state.range);
+      return;
+    }
     if (isDealCard) {
       const payload = state.runtimePayload;
       let model = null;
@@ -5131,14 +5184,14 @@ if (root) {
       nodes.primaryGroup.setAttribute("aria-required", String(empty));
     }
     if (nodes.primaryLabel) {
-      nodes.primaryLabel.textContent = isPowerCard
+      nodes.primaryLabel.textContent = isSandboxCard ? "Highlight" : isPowerCard
         ? "Market"
         : isBarCard
           ? "Highlight"
           : "Main";
       nodes.primaryLabel.hidden = families.length <= 1;
     }
-    if (nodes.layerLabel) nodes.layerLabel.textContent = isBarCard ? "Bars" : "Compare";
+    if (nodes.layerLabel) nodes.layerLabel.textContent = isSandboxCard ? "Providers" : isBarCard ? "Bars" : "Compare";
     if (nodes.primaryRow) nodes.primaryRow.hidden = isDepthCard || isDealCard;
     if (nodes.primaryGroup) nodes.primaryGroup.hidden = families.length <= 1;
     if (nodes.layerRow) {
@@ -5213,7 +5266,7 @@ if (root) {
       button.setAttribute(
         "aria-label",
         button.dataset.cardScale === "price"
-          ? cardId === "equities" ? "Show adjusted close in USD per share" : "Show hourly price"
+          ? isSandboxCard ? "Show estimated cost per job" : cardId === "equities" ? "Show adjusted close in USD per share" : "Show hourly price"
           : button.dataset.cardScale === "index"
             ? "Show percentage change from the range start"
             : "Show the relative change between two series",
@@ -5330,7 +5383,9 @@ if (root) {
         : labels;
       nodes.svg?.setAttribute(
         "aria-label",
-        isPowerCard
+        isSandboxCard
+          ? `${labels}, estimated sandbox cost per job, ${rangeControlLabel(state.range)}`
+        : isPowerCard
           ? `${workspaceLabel()}, real-time and day-ahead power prices, ${visualizationLabel(state.scale)} view`
         : isDepthCard
           ? `${cardDefinition.title}, ${visualizationLabel(state.scale)} chart mode, ${state.options.target} node target`
@@ -5343,7 +5398,11 @@ if (root) {
           : `${labels} price history`,
       );
       nodes.chartDescription.textContent =
-        isPowerCard
+        isSandboxCard
+          ? state.range === "now"
+            ? "Estimated cost per benchmark job. Whiskers show minimum to maximum, bars show the middle half, and ticks mark the median."
+            : "Sandbox cost history. Each line connects recorded daily batch medians on its own vertical scale."
+        : isPowerCard
           ? state.scale === "basis"
             ? `${workspaceLabel()} real-time price minus its day-ahead reference. The zero line separates positive and negative spreads.`
             : `${workspaceLabel()} real-time power price with its day-ahead reference and the spread between them.`
@@ -5709,10 +5768,12 @@ if (root) {
   }
 
   function rangeControlLabel(range) {
+    if (isSandboxCard && range === "now") return "LATEST";
     return ranges[range]?.label || String(range || "").toUpperCase();
   }
 
   function rangeControlAriaLabel(range) {
+    if (range === "now") return isSandboxCard ? "Show latest run" : "Show current profile";
     if (range === "1d") return "Show one day";
     if (range === "7d") return "Show seven days";
     if (range === "90d") return "Show ninety days";
@@ -5950,6 +6011,10 @@ if (root) {
   }
 
   function syncShareStatus() {
+    if (isSandboxCard && state.runtimePayload) {
+      try { syncSandboxShareStatus(createSandboxModel()); } catch {}
+      return;
+    }
     if (isDealCard && state.runtimePayload) {
       const observed = new Date(state.runtimePayload.asOf * 1000);
       if (nodes.shareStatus) {
@@ -6088,6 +6153,19 @@ if (root) {
     );
   }
 
+  function formatSandboxCost(value) {
+    return Number.isFinite(value) ? `${(value * 100).toFixed(2)}¢` : "—";
+  }
+
+  function syncSandboxShareStatus(model) {
+    const observed = new Date(model.asOf);
+    if (nodes.shareStatus) nodes.shareStatus.textContent = `${model.providers.length} sandbox providers · estimated cost per job`;
+    if (nodes.shareObserved) {
+      nodes.shareObserved.textContent = `Snapshot ${d3.utcFormat("%d %b %Y")(observed)}`;
+      nodes.shareObserved.setAttribute("datetime", observed.toISOString());
+    }
+  }
+
   function setShareReady(ready) {
     state.shareReady = ready;
     syncControls();
@@ -6156,6 +6234,10 @@ if (root) {
     }
     if (isPowerCard) {
       renderPowerBasisWorkspace(motion);
+      return;
+    }
+    if (isSandboxCard) {
+      renderSandboxWorkspace(motion);
       return;
     }
     const rangeSeries = activeSeries({ zoom: false });
@@ -6312,6 +6394,45 @@ if (root) {
       range: normalized.range,
       mode: normalized.scale,
     });
+  }
+
+  function createSandboxModel(cardState = currentCardState(), payload = null) {
+    const definition = getCardDefinition("sandbox-cost");
+    const normalized = normalizeCardState(definition.id, cardState);
+    return createSandboxCostModel(payload || state.runtimePayloads.get(definition.id), definition, {
+      range: normalized.range, primaryId: normalized.gpu, layerIds: normalized.layers,
+    });
+  }
+
+  function renderSandboxWorkspace(motion) {
+    if (!state.runtimePayload) return;
+    let model;
+    try { model = createSandboxModel(); } catch (error) {
+      console.error("Sandbox costs could not render", error);
+      showFailure("Sandbox costs are temporarily unavailable.");
+      return;
+    }
+    nodes.chartState.hidden = true;
+    nodes.tooltip.hidden = true;
+    updateRangeDates(model.rows.map((row) => ({ date: new Date(row.time) })));
+    if (state.range === "now" && nodes.rangeStart) {
+      nodes.rangeStart.textContent = "Latest run";
+      nodes.rangeStart.removeAttribute("datetime");
+    }
+    const options = { colors: cardPalette(currentCardState()), title: state.catalogName || "Sandbox cost" };
+    paintSandboxCostChart(nodes.shareArtifactSvg, model, {
+      ...options, compact: true, artifact: true,
+      reducedMotion: !revealShareArtifact(motion), interactive: false,
+    });
+    syncMonitorDataModel({ sandboxModel: model });
+    syncSandboxShareStatus(model);
+    state.catalogDirty = true;
+    if (state.layout === "all") renderWorkspaceGallery();
+    if (state.layout === "focus" && state.panel === "detail" && nodes.chart.clientWidth > 0) {
+      paintSandboxCostChart(nodes.svg, model, {
+        ...options, reducedMotion: reducedMotion || motion === "none", interactive: true,
+      });
+    }
   }
 
   function renderPowerBasisWorkspace(motion) {
@@ -6472,6 +6593,65 @@ if (root) {
     }
   }
 
+  function sandboxGallerySize(cardNodes) {
+    if (
+      state.layout !== "all" ||
+      catalogCards.get(cardNodes.entry.key) !== cardNodes ||
+      !cardNodes.button.isConnected ||
+      cardNodes.button.closest("[hidden]") ||
+      !cardNodes.artifact
+    ) return null;
+    const width = cardNodes.artifact.clientWidth;
+    const height = cardNodes.artifact.clientHeight;
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
+  function sandboxGallerySizeChanged(cardNodes) {
+    const size = sandboxGallerySize(cardNodes);
+    const painted = cardNodes.sandboxPaintSize;
+    return Boolean(size && (!painted || painted.width !== size.width || painted.height !== size.height));
+  }
+
+  function queueSandboxGalleryResize(entries) {
+    for (const { target } of entries) {
+      const cardNodes = catalogCards.get(target.dataset.catalogId);
+      if (cardNodes?.button === target && sandboxGallerySizeChanged(cardNodes)) {
+        pendingSandboxGalleryCards.add(cardNodes);
+      }
+    }
+    if (!pendingSandboxGalleryCards.size || sandboxGalleryResizeFrame) return;
+    sandboxGalleryResizeFrame = window.requestAnimationFrame(() => {
+      sandboxGalleryResizeFrame = 0;
+      const cards = [...pendingSandboxGalleryCards];
+      pendingSandboxGalleryCards.clear();
+      for (const cardNodes of cards) {
+        if (sandboxGallerySizeChanged(cardNodes)) renderSandboxGalleryCard(cardNodes);
+      }
+    });
+  }
+
+  function renderSandboxGalleryCard(cardNodes) {
+    const size = sandboxGallerySize(cardNodes);
+    if (!size) return;
+    const { entry } = cardNodes;
+    const entryCard = getCardDefinition(entry.cardId || cardId);
+    const payload = state.runtimePayloads.get(entryCard.id);
+    if (entryCard.renderer !== "sandbox-cost" || !payload) return;
+    const cardState = catalogEntryState(entry);
+    const displayState = catalogEntryDisplayState(entry);
+    const title = catalogEntryTitle(entry);
+    const model = createSandboxModel(cardState, payload);
+    paintSandboxCostChart(cardNodes.artifact, model, {
+      colors: cardPalette(displayState), compact: true, artifact: true, gallery: true, title,
+      reducedMotion: true, interactive: false, decorative: true,
+    });
+    const averageSummary = cardNodes.artifact.querySelector("[data-sandbox-average]")?.dataset.summary || "";
+    cardNodes.button.setAttribute("aria-label", `Monitor ${title}, ${describeCatalogState(cardState, entryCard)}. ${averageSummary}`.trim());
+    // Cache the same untransformed CSS dimensions used by the renderer. A first
+    // observer delivery, a FLIP translation, or an unchanged size needs no paint.
+    cardNodes.sandboxPaintSize = size;
+  }
+
   function renderWorkspaceGallery() {
     if (
       state.layout !== "all" ||
@@ -6574,6 +6754,11 @@ if (root) {
           interactive: false,
           decorative: true,
         });
+        continue;
+      }
+
+      if (entryCard.renderer === "sandbox-cost") {
+        renderSandboxGalleryCard(cardNodes);
         continue;
       }
 

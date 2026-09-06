@@ -8,6 +8,7 @@ import {
 } from "../src/card-registry.js";
 import { createGpuMarketDepthModel } from "../src/gpu-market-depth-model.js";
 import { createPowerBasisModel } from "../src/power-basis-model.js";
+import { buildSandboxRuntime } from "./sandbox-runtime.mjs";
 import {
   buildEquitiesRuntime,
   readEquitiesSource,
@@ -23,6 +24,7 @@ const depthCard = getCardDefinition("gpu-market-depth");
 const powerCard = getCardDefinition("power-basis");
 const dealCard = getCardDefinition("deal-view");
 const equitiesCard = getCardDefinition("equities");
+const sandboxCard = getCardDefinition("sandbox-cost");
 const gpuLayers = GPU_LAYERS.filter((layer) => layer.unit === "usd-hour");
 const tokenLayer = GPU_LAYERS.find((layer) => layer.id === "TOKEN");
 
@@ -74,6 +76,11 @@ const dealSource = await readJson(dealSourceFile);
 const dealRuntime = buildDealRuntime(dealSource, dealSourceFile);
 const equitiesSource = await readEquitiesSource(projectRoot, equitiesCard.sourceFile);
 const equitiesRuntime = buildEquitiesRuntime(equitiesSource, equitiesCard);
+const sandboxSource = await readJson(join(projectRoot, sandboxCard.sourceFile));
+const sandboxRuntime = buildSandboxRuntime(sandboxSource, sandboxCard);
+// Existing manifest clocks are Unix seconds; Sandbox preserves precise
+// milliseconds inside its independent runtime/model contract.
+const sandboxManifestAsOf = Math.floor(sandboxRuntime.asOf / 1000);
 
 // Keep the build contract tied to the browser model instead of allowing the
 // source and renderer to drift apart unnoticed.
@@ -123,6 +130,7 @@ const dataManifest = {
     powerRuntime.asOf,
     dealRuntime.asOf,
     equitiesRuntime.asOf || 0,
+    sandboxManifestAsOf,
   ),
   cards: {
     [priceCard.id]: {
@@ -151,6 +159,11 @@ const dataManifest = {
       asOf: equitiesRuntime.asOf,
       status: equitiesRuntime.dataset.status,
     },
+    [sandboxCard.id]: {
+      file: sandboxCard.dataFile,
+      revision: sandboxRuntime.revision,
+      asOf: sandboxManifestAsOf,
+    },
   },
   exports: Object.fromEntries(
     publicDataExports.map((dataExport) => [
@@ -167,7 +180,8 @@ if (buildOptions.check) {
       `${depthCard.id} (${depthRuntime.revision}) and ` +
       `${powerCard.id} (${powerRuntime.revision}) and ` +
       `${dealCard.id} (${dealRuntime.revision}) and ` +
-      `${equitiesCard.id} (${equitiesRuntime.revision}) source contracts, plus ` +
+      `${equitiesCard.id} (${equitiesRuntime.revision}) and ` +
+      `${sandboxCard.id} (${sandboxRuntime.revision}) source contracts, plus ` +
       `${publicDataExports.length} public data exports.`,
   );
 } else {
@@ -177,6 +191,7 @@ if (buildOptions.check) {
     writeJson(join(projectRoot, powerCard.dataFile), powerRuntime),
     writeJson(join(projectRoot, dealCard.dataFile), dealRuntime),
     writeJson(join(projectRoot, equitiesCard.dataFile), equitiesRuntime),
+    writeJson(join(projectRoot, sandboxCard.dataFile), sandboxRuntime),
     writeJson(join(projectRoot, "data", "manifest.json"), dataManifest),
     ...publicDataExports.map((dataExport) =>
       writeJson(join(projectRoot, dataExport.file), dataExport.records),
@@ -187,7 +202,8 @@ if (buildOptions.check) {
       `${depthCard.dataFile} (${depthRuntime.revision}), ` +
       `${powerCard.dataFile} (${powerRuntime.revision}), ` +
       `${dealCard.dataFile} (${dealRuntime.revision}), ` +
-      `${equitiesCard.dataFile} (${equitiesRuntime.revision}), and data/manifest.json ` +
+      `${equitiesCard.dataFile} (${equitiesRuntime.revision}), ` +
+      `${sandboxCard.dataFile} (${sandboxRuntime.revision}), and data/manifest.json ` +
       `(${dataManifest.revision}), plus ${publicDataExports.length} public ` +
       "data exports.",
   );

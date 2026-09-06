@@ -17,6 +17,40 @@ const series = state.layers.map((id, index) => ({
   rows: [{ date: first, value: 100 + index }, { date: latest, value: 101 + index }],
 }));
 
+test("Sandbox detail attributes the dated benchmark without a Desk API or billing claim", () => {
+  const sandbox = getCardDefinition("sandbox-cost");
+  const asOf = Date.parse("2026-08-06T12:34:56.789Z");
+  const sandboxModel = { providers: sandbox.layers.map(layer => ({ id: layer.id, label: layer.label })), primary: "novita", range: "now", asOf };
+  const model = createMonitorDataModel({ card: sandbox, cardState: { range: "now" }, sandboxModel });
+  assert.equal(model.label, "HPC Sandbox Benchmarks");
+  assert.equal(model.accessKind, "source");
+  assert.equal(model.sourceUrl, "https://github.com/starslingdev/hpc-sandbox-benchmarks");
+  assert.equal(+model.asOf, asOf, "Model milliseconds must not become seconds or the current clock");
+  assert.equal(model.status, "ready");
+  assert.equal(model.unit, "USD per job");
+  assert.equal(model.summary, "2026-08-06");
+  assert.equal(model.description, "Estimated CPU + memory cost per job. Median and range across 12 runs.");
+  for (const field of ["endpoint", "command", "sql"]) assert.equal(model[field], undefined);
+  assert(Object.isFrozen(model));
+});
+
+test("Sandbox history describes batch medians and makes no cross-methodology trend claim", () => {
+  const sandbox = getCardDefinition("sandbox-cost");
+  const base = { providers: [{ id: "novita" }], primary: "novita", asOf: Date.parse("2026-08-06T00:00:00Z"), rows: [{ date: new Date("2026-08-05") }, { date: new Date("2026-08-06") }] };
+  const week = createMonitorDataModel({ card: sandbox, sandboxModel: { ...base, range: "7d" } });
+  const all = createMonitorDataModel({ card: sandbox, sandboxModel: { ...base, range: "all" } });
+  assert.equal(week.rowCount, 2);
+  assert.equal(week.summary, "2026-08-06");
+  assert.equal(week.description, "Estimated CPU + memory cost per job. Daily batch medians; independent scales. Methodology varies across runs.");
+  assert.notEqual(week.key, all.key, "Range changes must update details even when observation counts match");
+  assert.equal(week.breadcrumbs.at(-1), "7D");
+  const missing = createMonitorDataModel({ card: sandbox });
+  assert.equal(missing.asOf, null);
+  assert.equal(missing.summary, "No observations");
+  assert.equal(missing.status, "unavailable");
+  assert.equal(missing.sourceUrl, week.sourceUrl);
+});
+
 test("latest-price details say GPU or GPUs without renaming the card or API", () => {
   const snapshot = getCardDefinition("gpu-price-snapshot");
   for (const ids of [["H100"], ["H100", "H200", "B200", "B300"]]) {

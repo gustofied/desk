@@ -101,6 +101,34 @@ and schedules in public repositories are disabled after 60 days without activity
 this is a daily best-effort refresh, not a guaranteed market-data service. See
 [GitHub's schedule documentation](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
+## Sandbox cost
+
+The **Sandbox** catalog has a latest-run distribution and cost history lines
+for Novita, Daytona VM, Blaxel, E2B, Modal VM and Modal gVisor. Both are available
+in Craft, Monitor, focused cards, pins and shared desks. The chart carries over
+the original AdamSioud Sandbox card's distribution marks, stacked history lanes
+and anchored inspection, adapted to Desk's colors and sizing. Focus and Monitor
+keep the row labels and prices, without the original top summary tiles. Gallery
+uses unlabeled, full-width graphics and one cost headline: the unweighted mean
+of the displayed providers' medians (their last available batch medians for history).
+
+This is the archived **6 August 2026** snapshot from
+[HPC Sandbox Benchmarks](https://github.com/starslingdev/hpc-sandbox-benchmarks),
+not a live price feed. Costs are estimated CPU/memory charges per completed
+benchmark job, displayed in cents. Latest-run whiskers show min/max, the bar
+shows P25–P75, and the tick shows the median of 12 replicates.
+
+Latest rows show replicate medians. History lanes are sorted by their latest
+daily batch median, shown at the right of each lane. Their
+monotone lines connect recorded observations without adding samples; null values
+break the line. Each provider has an independent vertical scale. The narrow
+shading beneath each history line is decorative, not an uncertainty interval.
+Methodology varies across runs and is retained in the source data. Costs exclude
+startup, teardown, retries, storage, networking, plan fees and credits.
+
+The compact source is `api/dashboard-snapshots/sandbox-cost.json`; `npm run build:data`
+validates and generates `data/sandbox-cost.json`. No external API calls are needed.
+
 ## Run locally
 
 ```bash

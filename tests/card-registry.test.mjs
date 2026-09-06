@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  CARD_REGISTRY, EQUITY_LAYERS, POWER_BASIS_LAYERS, RANGES, cardStateParamIds,
+  CARD_REGISTRY, EQUITY_LAYERS, POWER_BASIS_LAYERS, SANDBOX_PROVIDER_LAYERS, RANGES, cardStateParamIds,
   getCardDefinition, normalizeCardState, publishedCardSharePath, serializeLayerIds,
 } from "../src/card-registry.js";
 import { createCardDocument, normalizeCardDocument, normalizeCardVisualization } from "../src/card-document.js";
@@ -237,4 +237,60 @@ test("new Power presets round-trip strict documents, shared desks and persisted 
     ["PJM-DOMINION", "price"], ["ERCOT-NORTH", "price"], ["PJM-DOMINION", "energy"],
   ]);
   assert.throws(() => createSharedDesk({ ...shared, entries: [{ ...entries[2], state: { ...entries[2].state, pue: 1.2 } }] }));
+});
+
+test("Sandbox is a source-only six-provider card with two canonical catalog presets", () => {
+  const card = getCardDefinition("sandbox-cost");
+  const ids = ["novita", "daytona-vm", "blaxel", "e2b", "modal-vm", "modal-gvisor"];
+  assert.equal(card.renderer, "sandbox-cost");
+  assert.equal(card.dataAdapter, "sandbox");
+  assert.equal(card.primaryParam, "provider");
+  assert.equal(card.title, "Sandbox cost");
+  assert.equal(card.craftLabel, "Sandbox cost");
+  assert.equal(card.sourceFile, "api/dashboard-snapshots/sandbox-cost.json");
+  assert.equal(card.dataFile, "data/sandbox-cost.json");
+  assert.equal(card.publishable, false);
+  assert.equal(card.dataTable, undefined);
+  assert.equal(card.allowComparisons, true);
+  assert.deepEqual(card.ranges, ["now", "7d", "all"]);
+  assert.deepEqual(SANDBOX_PROVIDER_LAYERS.map(layer => layer.id), ids);
+  assert.deepEqual(card.layers.map(layer => layer.label), ["Novita", "Daytona VM", "Blaxel", "E2B", "Modal VM", "Modal gVisor"]);
+  assert.deepEqual(card.visualizations, [{ id: "price", label: "Cost", unit: "usd-job" }]);
+  assert.deepEqual(card.layers.map(layer => layer.unit), ids.map(() => "usd-job"));
+  assert.deepEqual(normalizeCardState(card.id).layers, ids);
+  assert.equal(normalizeCardState(card.id).provider, "novita");
+  assert.equal(normalizeCardState(card.id).range, "now");
+  assert.deepEqual(card.catalogPresets.map(preset => [preset.id, preset.label, preset.state.range]), [
+    ["cost", "Sandbox cost", "now"], ["history", "Sandbox cost", "7d"],
+  ]);
+  for (const preset of card.catalogPresets) {
+    assert.deepEqual(normalizeCardState(card.id, preset.state).layers, ids);
+    assert(Object.isFrozen(preset.state));
+    assert(Object.isFrozen(preset.state.layers));
+  }
+});
+
+test("Sandbox lower-case IDs normalize query aliases and survive strict save, share and pin round trips", () => {
+  const card = getCardDefinition("sandbox-cost");
+  const state = normalizeCardState(card.id, { provider: "DAYTONA-VM", layers: ["MODAL-GVISOR", "Daytona-VM", "NOVITA", "novita"], scale: "index", range: "7D" });
+  assert.equal(state.gpu, "daytona-vm");
+  assert.equal(state.provider, "daytona-vm");
+  assert.deepEqual(state.layers, ["novita", "daytona-vm", "modal-gvisor"]);
+  assert.equal(state.scale, "price");
+  assert.equal(state.range, "7d");
+  assert.equal(serializeLayerIds(state.layers, card), "novita,daytona-vm,modal-gvisor");
+  const canonical = normalizeCardVisualization(card.id, state);
+  assert.deepEqual(Object.keys(canonical), ["provider", "layers", "scale", "range", "palette", "theme"]);
+  const doc = createCardDocument({ id: "sandbox-save", cardId: card.id, name: "Sandbox history", state: canonical, createdAt: "2026-08-06T00:00:00Z" });
+  assert.deepEqual(normalizeCardDocument(JSON.parse(JSON.stringify(doc))), doc);
+  assert.equal(doc.name, "Sandbox history", "Preset naming updates do not rename existing saved views");
+  const shared = createSharedDesk({ name: "Sandbox", entries: [{ cardId: card.id, name: "Providers", state: canonical }] });
+  assert.deepEqual(decodeSharedDesk(encodeSharedDesk(shared)), shared);
+  let raw = null;
+  const storage = { getItem: () => raw, setItem: (_key, value) => { raw = value; } };
+  const pin = createMarketWatchlist({ storage }).pin({ cardId: card.id, label: "Sandbox", state: canonical });
+  assert.deepEqual(createMarketWatchlist({ storage }).list().find(item => item.id === pin.id).state, canonical);
+  assert.equal(normalizeCardState("gpu-index", { gpu: "h200" }).gpu, "H200");
+  assert.equal(normalizeCardState("power-basis", { location: "pjm-dominion" }).location, "PJM-DOMINION");
+  assert.equal(normalizeCardState("equities", { symbol: "nvda" }).symbol, "NVDA");
 });
