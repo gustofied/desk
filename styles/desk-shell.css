@@ -56,9 +56,13 @@
 
 /* A quiet workspace in sidebar mode; the original header returns on close. */
 :root[data-desk-sidebar="true"] .desk-corners,
-:root[data-desk-sidebar="true"] .desk-top-controls,
-:root[data-desk-sidebar="true"] .desk-search {
+:root[data-desk-sidebar="true"] .desk-top-controls {
   visibility: hidden;
+}
+
+/* Keep the same Desk trigger reachable above the optional panel on phones. */
+:root[data-desk-sidebar="true"] .desk-search {
+  z-index: 7;
 }
 
 .desk-sidecar-handle {
@@ -104,8 +108,12 @@
 }
 
 @media (min-width: 961px) {
-  :root[data-desk-sidebar="true"] body {
+  :root[data-desk-sidebar="true"] {
     --desk-page-inset: clamp(20px, 5vw, 72px);
+    --desk-monitor-chart-height: min(calc(40vw + 33px), calc((100vw - var(--desk-sidecar-space) - var(--desk-page-inset) * 2) / 2 + 33px), 513px);
+  }
+
+  :root[data-desk-sidebar="true"] body {
     padding-left: calc(var(--desk-page-inset) + var(--desk-sidecar-space));
   }
 
@@ -117,11 +125,6 @@
     --desk-dock-gutter: calc(8vw + (var(--desk-page-inset) * 2 - 8vw) * var(--desk-sidecar-progress));
     width: min(92vw, calc(100vw - var(--desk-sidecar-space) - var(--desk-dock-gutter)), 1180px);
   }
-
-  :root[data-desk-sidebar="true"][data-desk-view="monitor"][data-desk-layout="focus"] .desk-stage .gpu-index-detail {
-    height: min(calc(40vw + 33px), calc((100vw - var(--desk-sidecar-space) - var(--desk-page-inset) * 2) / 2 + 33px), 513px);
-  }
-
 }
 
 @media (prefers-reduced-motion: reduce) {

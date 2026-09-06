@@ -103,16 +103,22 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=90">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=63">
-    <link rel="stylesheet" href="./styles/monitor-data.css?v=15">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=92">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=65">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=16">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
-    <link rel="stylesheet" href="./styles/deal-view.css?v=40">
+    <link rel="stylesheet" href="./styles/deal-view.css?v=43">
     <link rel="stylesheet" href="./styles/command-palette.css?v=16">
-    <link rel="stylesheet" href="./styles/demo.css?v=26">
-    <link rel="stylesheet" href="./styles/desk-shell.css?v=8">
+    <link rel="stylesheet" href="./styles/demo.css?v=27">
+    <link rel="stylesheet" href="./styles/desk-shell.css?v=10">
+    <link rel="stylesheet" href="./styles/market-strip.css?v=9">
   </head>
   <body>
+    <aside class="desk-market-strip" aria-label="Market prices" data-market-strip data-state="loading">
+      <div class="desk-market-strip__viewport" aria-label="Prices, scroll for more" data-market-strip-viewport>
+        <div class="desk-market-strip__track" data-market-strip-track><span class="desk-market-strip__empty">Waiting for data</span></div>
+      </div>
+    </aside>
     <div class="desk-top-controls">
       <nav class="desk-display-controls" id="desk-display-toolbar" role="toolbar" aria-label="Desk appearance" aria-hidden="true" inert>
         <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Azure palette" aria-pressed="false" data-palette-value="azure">
@@ -519,9 +525,21 @@
       <kbd class="desk-search__shortcut" aria-hidden="true">⌘G</kbd>
       <span>Desk</span>
     </button>
-    <dialog class="desk-command-menu" id="desk-command-menu" aria-labelledby="desk-command-title" data-command-palette data-desk-sidecar data-presentation="menu">
+    <dialog class="desk-command-menu desk-sidebar" id="desk-sidebar" aria-label="Sidebar" data-desk-sidecar data-presentation="menu">
+      <button class="desk-sidecar-handle" type="button" aria-label="Hide sidebar" title="Drag left to close" aria-controls="desk-sidebar" data-sidecar-handle></button>
+      <div class="desk-command-menu__stage">
+        <section class="desk-command-menu__entry" aria-label="Desk">
+          <div class="desk-command-menu__entry-body">
+            <span class="desk-command-menu__login-mark" aria-hidden="true" data-sidebar-logo>
+              <img src="./assets/desk-mark.png" width="2848" height="1296" alt="" draggable="false" data-desk-logo-base>
+              <img src="./assets/desk-mark.png" width="2848" height="1296" alt="" draggable="false" data-desk-logo-reveal>
+            </span>
+          </div>
+        </section>
+      </div>
+    </dialog>
+    <dialog class="desk-command-menu" id="desk-command-menu" aria-labelledby="desk-command-title" data-command-palette>
       <h2 class="desk-command-menu__title" id="desk-command-title">Desk</h2>
-      <button class="desk-sidecar-handle" type="button" aria-label="Close sidebar" title="Drag left to close" aria-controls="desk-command-menu" data-sidecar-handle></button>
       <div class="desk-command-menu__stage">
       <section class="desk-command-menu__entry" aria-label="Desk login" data-desk-entry>
         <header class="desk-command-menu__entry-header">
@@ -598,7 +616,8 @@
           data-save-name
         >
         <p class="desk-save-dialog__error" id="desk-save-error" aria-live="polite" data-save-error></p>
-        <footer>
+        <footer class="desk-save-dialog__view-actions">
+          <button type="button" data-card-market-pin disabled>Pin to strip</button>
           <button type="button" data-save-cancel>Cancel</button>
           <button type="submit" data-save-submit>Save</button>
         </footer>
@@ -635,6 +654,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=204"></script>
+    <script type="module" src="./desk.js?v=216"></script>
   </body>
 </html>

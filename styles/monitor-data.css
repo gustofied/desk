@@ -5,10 +5,9 @@
 .desk-data-rail {
   --desk-data-surface: var(--desk-canvas);
   --desk-data-rule: color-mix(in srgb, var(--desk-accent-deep) 16%, transparent);
-  position: absolute;
-  top: calc(100% + 12px);
-  right: 0;
-  left: 0;
+  position: relative;
+  margin-top: 24px;
+  scroll-margin-block: 24px;
   z-index: 1;
   overflow: hidden;
   color: var(--index-ink);
@@ -293,7 +292,8 @@
 
 @media (max-width: 640px) {
   .desk-data-rail {
-    top: calc(100% + 8px);
+    margin-top: 16px;
+    scroll-margin-block: 16px;
   }
 
   .desk-data-rail__toggle {

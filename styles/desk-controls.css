@@ -428,7 +428,7 @@ button.compute-share-card-frame:focus-visible {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  :is(.desk-theme-option, .desk-view-action:not([aria-current="page"])):hover {
+  :is(.desk-theme-option, .desk-view-action:not([aria-current="page"])):not(:disabled):hover {
     background: color-mix(in srgb, var(--desk-accent) 16%, transparent);
     opacity: 0.84;
   }
@@ -437,13 +437,13 @@ button.compute-share-card-frame:focus-visible {
     background: color-mix(in srgb, var(--desk-accent) 16%, transparent);
   }
 
-  .desk-view-action[aria-current="page"]:hover {
+  .desk-view-action[aria-current="page"]:not(:disabled):hover {
     background: color-mix(in srgb, var(--desk-accent) 60%, var(--desk-canvas));
   }
 }
 
 .desk-display-option:active,
-.desk-view-action:active {
+.desk-view-action:not(:disabled):active {
   transform: scale(0.98);
 }
 
@@ -459,7 +459,8 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .desk-view-action:disabled {
-  cursor: wait;
+  /* Unavailable is not loading (for example Monitor in an empty Craft view). */
+  cursor: default;
   opacity: 0.42;
   transform: none;
 }
@@ -665,11 +666,11 @@ button.compute-share-card-frame:focus-visible {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  :root[data-theme="dark"] .desk-view-action:not([aria-current="page"]):hover {
+  :root[data-theme="dark"] .desk-view-action:not([aria-current="page"]):not(:disabled):hover {
     background: rgb(255 255 255 / 8%);
   }
 
-  :root[data-theme="dark"] .desk-view-action[aria-current="page"]:hover {
+  :root[data-theme="dark"] .desk-view-action[aria-current="page"]:not(:disabled):hover {
     background: color-mix(in srgb, var(--desk-accent) 24%, #272727);
   }
 }
@@ -1537,6 +1538,21 @@ button.compute-share-card-frame:focus-visible {
   display: flex;
   gap: 4px;
   justify-content: flex-end;
+}
+
+.desk-save-dialog__view-actions [data-card-market-pin] {
+  margin-right: auto;
+}
+
+@media (max-width: 360px) {
+  .desk-save-dialog__view-actions {
+    flex-wrap: wrap;
+  }
+
+  .desk-save-dialog__view-actions [data-card-market-pin] {
+    flex-basis: 100%;
+    text-align: left;
+  }
 }
 
 .desk-save-dialog__form button {

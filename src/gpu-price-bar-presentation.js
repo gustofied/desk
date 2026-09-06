@@ -1,9 +1,8 @@
 import { viewArtifactHeaderMarkup } from "./view-artifact-header.js";
+import { animateChartDraw, animateChartSupport, cancelChartMotion } from "./chart-motion.js";
 import {
   VIEW_DETAIL_DURATION,
-  VIEW_EASE,
   VIEW_REVEAL_DELAY,
-  VIEW_REVEAL_DURATION,
   VIEW_STAGGER,
 } from "./view-motion.js";
 
@@ -32,6 +31,7 @@ export function paintGpuPriceBarChart(
   } = {},
 ) {
   if (!svgNode) return;
+  cancelChartMotion(svgNode);
   const focusedLayer = svgNode.querySelector("[data-price-bar-row]:focus")
     ?.dataset.layer;
   const { inner, ariaLabel } = gpuPriceBarMarkup(model, options);
@@ -90,43 +90,27 @@ export function paintGpuPriceBarChart(
 
   if (reducedMotion) return;
   const priceRail = svgNode.querySelector("[data-price-ladder-rail]");
-  priceRail?.animate(
-    [
-      { strokeDashoffset: 1, opacity: 0.42 },
-      { strokeDashoffset: 0, opacity: 1 },
-    ],
-    {
-      duration: VIEW_REVEAL_DURATION,
-      easing: VIEW_EASE,
-      fill: "both",
-    },
-  );
+  animateChartDraw(priceRail);
   svgNode.querySelectorAll("[data-price-bar-row]").forEach((row, index) => {
     const endpoint = row.querySelector("[data-price-bar-marker]");
     const copy = row.querySelector("[data-price-ladder-copy]");
-    endpoint?.animate(
+    animateChartSupport(endpoint, {
+      delay: VIEW_REVEAL_DELAY + index * VIEW_STAGGER,
+      duration: VIEW_DETAIL_DURATION,
+    },
       [
         { transform: "scale(0.4)", opacity: 0 },
         { transform: "scale(1)", opacity: 1 },
       ],
-      {
-        delay: VIEW_REVEAL_DELAY + index * VIEW_STAGGER,
-        duration: VIEW_DETAIL_DURATION,
-        easing: VIEW_EASE,
-        fill: "both",
-      },
     );
-    copy?.animate(
+    animateChartSupport(copy, {
+      delay: VIEW_REVEAL_DELAY + 48 + index * VIEW_STAGGER,
+      duration: VIEW_DETAIL_DURATION,
+    },
       [
         { transform: "translateY(5px)", opacity: 0 },
         { transform: "translateY(0)", opacity: 1 },
       ],
-      {
-        delay: VIEW_REVEAL_DELAY + 48 + index * VIEW_STAGGER,
-        duration: VIEW_DETAIL_DURATION,
-        easing: VIEW_EASE,
-        fill: "both",
-      },
     );
   });
 }

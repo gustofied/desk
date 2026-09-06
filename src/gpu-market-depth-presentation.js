@@ -1,11 +1,9 @@
 import { viewArtifactHeaderMarkup } from "./view-artifact-header.js";
+import { animateChartDraw, animateChartSupport, cancelChartMotion } from "./chart-motion.js";
 import {
   VIEW_DETAIL_DURATION,
-  VIEW_EASE,
   VIEW_REVEAL_DELAY,
-  VIEW_REVEAL_DURATION,
   VIEW_STAGGER,
-  VIEW_SUPPORT_DURATION,
 } from "./view-motion.js";
 
 const SVG_WIDTH = 1200;
@@ -38,6 +36,7 @@ export function paintGpuMarketDepthChart(
   } = {},
 ) {
   if (!svgNode) return;
+  cancelChartMotion(svgNode);
   const interactionTarget = svgNode.parentElement;
   const focusedPrice = interactionTarget?.dataset.depthActivePrice;
   const focusedHistoryTimestamp =
@@ -76,60 +75,26 @@ export function paintGpuMarketDepthChart(
   if (reducedMotion) return;
 
   if (view === "history") {
-    svgNode.querySelector("[data-depth-history-heatmap]")?.animate?.(
-      [{ opacity: 0 }, { opacity: 1 }],
-      {
-        duration: VIEW_SUPPORT_DURATION,
-        easing: VIEW_EASE,
-        fill: "both",
-      },
-    );
-    svgNode.querySelector("[data-depth-history-clearing]")?.animate?.(
-      [
-        { strokeDashoffset: 1, opacity: 0.42 },
-        { strokeDashoffset: 0, opacity: 1 },
-      ],
-      {
-        delay: 48,
-        duration: VIEW_REVEAL_DURATION,
-        easing: VIEW_EASE,
-        fill: "both",
-      },
-    );
+    animateChartSupport(svgNode.querySelector("[data-depth-history-heatmap]"));
+    animateChartDraw(svgNode.querySelector("[data-depth-history-clearing]"));
     return;
   }
 
   svgNode.querySelectorAll("[data-depth-shelf-band]").forEach((shelf, index) => {
-    shelf.animate?.([{ opacity: 0 }, { opacity: 1 }], {
+    animateChartSupport(shelf, {
       delay: Math.min(index * 14, 180),
-      duration: VIEW_SUPPORT_DURATION,
-      easing: VIEW_EASE,
-      fill: "both",
     });
   });
-  svgNode.querySelector("[data-depth-current-profile]")?.animate?.(
-    [
-      { strokeDashoffset: 1, opacity: 0.42 },
-      { strokeDashoffset: 0, opacity: 1 },
-    ],
-    {
-      duration: VIEW_REVEAL_DURATION,
-      easing: VIEW_EASE,
-      fill: "both",
-    },
-  );
+  animateChartDraw(svgNode.querySelector("[data-depth-current-profile]"));
   svgNode.querySelectorAll("[data-depth-anchor]").forEach((anchor, index) => {
-    anchor.animate?.(
+    animateChartSupport(anchor, {
+      delay: VIEW_REVEAL_DELAY + index * VIEW_STAGGER,
+      duration: VIEW_DETAIL_DURATION,
+    },
       [
         { transform: "scale(0.62)", opacity: 0 },
         { transform: "scale(1)", opacity: 1 },
       ],
-      {
-        delay: VIEW_REVEAL_DELAY + index * VIEW_STAGGER,
-        duration: VIEW_DETAIL_DURATION,
-        easing: VIEW_EASE,
-        fill: "both",
-      },
     );
   });
 }

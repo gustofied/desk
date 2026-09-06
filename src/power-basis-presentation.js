@@ -3,11 +3,7 @@ import {
   viewArtifactHeaderLayout,
   viewArtifactHeaderMarkup,
 } from "./view-artifact-header.js";
-import {
-  VIEW_EASE,
-  VIEW_REVEAL_DURATION,
-  VIEW_SUPPORT_DURATION,
-} from "./view-motion.js";
+import { animateChartDraw, animateChartSupport, cancelChartMotion } from "./chart-motion.js";
 
 const SVG_WIDTH = 1200;
 const SVG_HEIGHT = 600;
@@ -39,6 +35,7 @@ export function paintPowerBasisChart(
   } = {},
 ) {
   if (!svgNode) return;
+  cancelChartMotion(svgNode);
   const interactionTarget = svgNode.parentElement;
   const wasFocused =
     interactionTarget === interactionTarget?.ownerDocument.activeElement;
@@ -73,38 +70,11 @@ export function paintPowerBasisChart(
   }
 
   if (reducedMotion) return;
-  svgNode.querySelector("[data-power-basis-area]")?.animate?.(
-    [{ opacity: 0 }, { opacity: 1 }],
-    {
-      duration: VIEW_SUPPORT_DURATION,
-      easing: VIEW_EASE,
-      fill: "both",
-    },
-  );
-  svgNode.querySelector('[data-power-basis-line="day-ahead"]')?.animate?.(
-    [{ opacity: 0 }, { opacity: 1 }],
-    {
-      duration: VIEW_SUPPORT_DURATION,
-      easing: VIEW_EASE,
-      fill: "both",
-    },
-  );
-  svgNode
-    .querySelector(
+  animateChartSupport(svgNode.querySelector("[data-power-basis-area]"));
+  animateChartSupport(svgNode.querySelector('[data-power-basis-line="day-ahead"]'));
+  animateChartDraw(svgNode.querySelector(
       '[data-power-basis-line="real-time"], [data-power-basis-line="basis"]',
-    )
-    ?.animate?.(
-      [
-        { strokeDashoffset: 1, opacity: 0.18 },
-        { strokeDashoffset: 0, opacity: 1 },
-      ],
-      {
-        delay: 48,
-        duration: VIEW_REVEAL_DURATION,
-        easing: VIEW_EASE,
-        fill: "both",
-      },
-    );
+  ));
 }
 
 function powerBasisMarkup(

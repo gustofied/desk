@@ -8,7 +8,7 @@ export function resolveSidecarWidth(viewportWidth, mobile = viewportWidth <= 960
 
 // Owns presentation only. The command registry, chart, and login state stay mounted.
 export function createDeskSidecar({
-  root, toggle, dragHandle, reducedMotion = false,
+  root, toggle, dragHandle, reducedMotion = false, modalOnMobile = true,
   onOpen, onClose, onClosed, onDismiss, onModeChange, onPresentationChange,
   document: ownerDocument = root.ownerDocument,
   window: ownerWindow = ownerDocument.defaultView,
@@ -38,7 +38,7 @@ export function createDeskSidecar({
   }
 
   function wantsModal() {
-    return presentation === "menu" || mobile;
+    return presentation === "menu" || (mobile && modalOnMobile);
   }
 
   function draw(value) {
@@ -182,7 +182,7 @@ export function createDeskSidecar({
     stopAnimation();
     const closing = !desiredOpen && root.open;
     const nextMobile = viewport.matches;
-    const changedMode = presentation === "sidebar" && mobile !== nextMobile;
+    const changedMode = presentation === "sidebar" && modalOnMobile && mobile !== nextMobile;
     const focused = ownerDocument.activeElement;
     if (changedMode && root.open) root.close();
     mobile = nextMobile;

@@ -1,5 +1,6 @@
 import { createDeskEntry } from "./desk-entry.js";
 import { createDeskSidecar } from "./desk-sidecar.js";
+import { createDeskLogoMotion } from "./desk-logo.js";
 
 const defaultGroups = [
   "Workspace",
@@ -25,7 +26,10 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   const status = root.querySelector("[data-command-status]");
   const closeButtons = [...root.querySelectorAll("[data-command-close]")];
   const loginButton = root.querySelector("[data-desk-login]");
-  const dragHandle = root.querySelector("[data-sidecar-handle]");
+  const sidebarRoot = document.querySelector("[data-desk-sidecar]");
+  const dragHandle = sidebarRoot?.querySelector("[data-sidecar-handle]");
+  const trigger = document.querySelector("[data-command-open]");
+  const sidebarLogo = createDeskLogoMotion({ root: sidebarRoot, reducedMotion });
   const registry = new Map();
   let commandSnapshot = [];
   let visibleCommands = [];
@@ -33,7 +37,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   let previousFocus = null;
   let renderFrame = null;
   let focusRevision = 0;
-  let closeFocusTarget = null;
+  let sidebarReturnFocus = null;
   const deskEntry = createDeskEntry({
     entry: root.querySelector("[data-desk-entry]"),
     content: root.querySelector("[data-command-content]"),
@@ -45,41 +49,27 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     },
     onLogout: () => focusEntry(),
   });
-  const sidecar = root.hasAttribute("data-desk-sidecar") ? createDeskSidecar({
-    root,
-    toggle: document.querySelector("[data-command-open]"),
+  const sidecar = sidebarRoot ? createDeskSidecar({
+    root: sidebarRoot,
     dragHandle,
     reducedMotion,
-    onOpen({ focus, animateEntrance }) {
-      deskEntry.setPresentation(sidecar.presentation);
-      deskEntry.open({ animateEntrance });
-      commandSnapshot = createCommandSnapshot(registry);
-      render();
-      if (focus) focusEntry();
-    },
-    onClose() {
-      focusRevision++;
-      deskEntry.close();
-    },
+    modalOnMobile: false,
+    onOpen() { sidebarLogo.start(); },
     onClosed() {
-      const target = closeFocusTarget;
-      closeFocusTarget = null;
-      target?.focus({ preventScroll: true });
+      sidebarLogo.stop();
+      const target = sidebarReturnFocus;
+      sidebarReturnFocus = null;
+      if (!root.open && !otherModalOpen()) target?.focus({ preventScroll: true });
     },
-    onDismiss: () => close(),
-    onModeChange({ focus }) { if (focus) focusEntry(); },
-    onPresentationChange({ presentation }) {
-      deskEntry.setPresentation(presentation);
-      refresh();
-    },
+    onDismiss: () => hideSidebar(),
   }) : null;
 
   if (sidecar) registry.set("workspace.sidebar-presentation", {
     id: "workspace.sidebar-presentation",
-    title: () => sidecar.presentation === "sidebar" ? "Center menu" : "Show sidebar",
-    keywords: ["Desk", "sidebar", "menu", "dock", "center"],
+    title: () => sidecar.isOpen ? "Hide sidebar" : "Show sidebar",
+    keywords: ["Desk", "sidebar", "menu", "dock", "hide", "show"],
     group: "Workspace", order: -10, keepOpen: true, presentationCommand: true,
-    run: () => sidecar.presentation === "sidebar" ? centerMenu() : showSidebar(),
+    run: () => sidecar.isOpen ? hideSidebar() : showSidebar(),
   });
 
   document.addEventListener("keydown", handleGlobalShortcut);
@@ -91,6 +81,11 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   root.addEventListener("cancel", handleCancel);
   root.addEventListener("click", handleRootClick);
   root.addEventListener("keydown", handleRootKeydown);
+  sidebarRoot?.addEventListener("keydown", handleSidebarKeydown);
+
+  function otherModalOpen() {
+    return Boolean(document.querySelector("dialog[open]:not([data-command-palette]):not([data-desk-sidecar])"));
+  }
 
   function register(commands) {
     const entries = Array.isArray(commands) ? commands : [commands];
@@ -117,18 +112,25 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   }
 
   function handleRootClick(event) {
-    if (event.target !== root || (sidecar && !sidecar.modal)) return;
+    if (event.target !== root) return;
     const bounds = root.getBoundingClientRect();
-    if (!sidecar || event.clientX < bounds.left || event.clientX > bounds.right ||
+    if (event.clientX < bounds.left || event.clientX > bounds.right ||
       event.clientY < bounds.top || event.clientY > bounds.bottom) close();
   }
 
   function handleRootKeydown(event) {
     if (event.key !== "Escape" || event.defaultPrevented || event.isComposing ||
-      document.querySelector("dialog[open]:not([data-command-palette])")) return;
+      otherModalOpen()) return;
     event.preventDefault();
     event.stopPropagation();
     close();
+  }
+
+  function handleSidebarKeydown(event) {
+    if (event.key !== "Escape" || event.defaultPrevented || event.isComposing || root.open || otherModalOpen()) return;
+    event.preventDefault();
+    event.stopPropagation();
+    hideSidebar();
   }
 
   function handleResultsPointerMove(event) {
@@ -151,7 +153,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     if (
       event.defaultPrevented ||
       event.isComposing ||
-      document.querySelector("dialog[open]:not([data-command-palette])") ||
+      otherModalOpen() ||
       !event.metaKey ||
       event.ctrlKey ||
       event.altKey ||
@@ -167,88 +169,72 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   function focusEntry() {
     const current = ++focusRevision;
     window.requestAnimationFrame(() => {
-      if (current === focusRevision && (sidecar ? sidecar.isOpen : root.open)) {
-        const target = sidecar?.presentation === "sidebar" ? dragHandle : deskEntry.commandsVisible ? input : loginButton;
+      if (current === focusRevision && root.open) {
+        const target = deskEntry.commandsVisible ? input : loginButton;
         target?.focus({ preventScroll: true });
       }
     });
   }
 
-  function open({ query = "", returnFocus = null, animateEntrance = false, animate = true, focus = true } = {}) {
-    closeFocusTarget = null;
+  function open({ query = "", returnFocus = null, animateEntrance = false, focus = true } = {}) {
+    if (otherModalOpen()) return;
     root.removeAttribute("data-closing");
     if (returnFocus || !root.contains(document.activeElement)) previousFocus = returnFocus || document.activeElement;
     if (input) input.value = query;
     commandSnapshot = createCommandSnapshot(registry);
     visibleCommands = [];
     activeIndex = -1;
-    if (sidecar) {
-      const wasOpen = sidecar.isOpen;
-      sidecar.open({ animate, focus, animateEntrance });
-      render();
-      if (wasOpen && focus) focusEntry();
-      return;
-    }
     deskEntry.open({ animateEntrance });
     if (!root.open) root.showModal();
+    trigger?.setAttribute("aria-expanded", "true");
     render();
+    if (results) results.scrollTop = 0;
     if (focus) focusEntry();
   }
 
   function toggle(options) {
-    if (sidecar?.presentation === "sidebar") centerMenu();
-    else if (sidecar ? sidecar.isOpen : root.open) close();
+    if (root.open) close();
     else open(options);
   }
 
   function showSidebar() {
     if (!sidecar || !deskEntry.ready) return;
-    closeFocusTarget = null;
-    sidecar.showSidebar();
+    sidebarReturnFocus = null;
+    close({ restoreFocus: false });
+    sidecar.showSidebar({ focus: false });
     refresh();
-    focusEntry();
+    dragHandle?.focus({ preventScroll: true });
   }
 
   function centerMenu() {
-    if (!sidecar) return open();
-    closeFocusTarget = null;
-    if (!root.contains(document.activeElement)) previousFocus = document.activeElement;
-    sidecar.centerMenu();
+    open();
+  }
+
+  function hideSidebar() {
+    if (!sidecar?.isOpen) return;
+    sidebarReturnFocus = sidebarRoot.contains(document.activeElement) ? trigger : null;
+    sidecar.close();
     refresh();
-    focusEntry();
+    if (root.open) focusEntry();
   }
 
   function close({ restoreFocus = true } = {}) {
-    if (sidecar) {
-      if (!sidecar.isOpen) return;
-      const hadFocus = root.contains(document.activeElement);
-      const wasModal = sidecar.modal;
-      window.cancelAnimationFrame(renderFrame);
-      renderFrame = null;
-      let target = null;
-      if (restoreFocus && (hadFocus || wasModal)) {
-        target = previousFocus?.isConnected && previousFocus !== document.body &&
-          !root.contains(previousFocus) && !previousFocus.closest("[hidden], [inert]") &&
-          !previousFocus.matches(":disabled")
-          ? previousFocus : document.querySelector("[data-command-open]");
-      }
-      // The optional sidebar hides the outer controls until its closing spring
-      // finishes, so restore focus only after onClosed has removed that layout.
-      closeFocusTarget = target;
-      sidecar.close();
-      return;
-    }
     if (!root.open || root.hasAttribute("data-closing")) return;
     focusRevision++;
     window.cancelAnimationFrame(renderFrame);
     renderFrame = null;
     deskEntry.close();
+    trigger?.setAttribute("aria-expanded", "false");
     root.setAttribute("data-closing", "");
     const finish = () => {
       root.close();
       root.removeAttribute("data-closing");
-      if (restoreFocus && previousFocus instanceof HTMLElement) {
-        previousFocus.focus({ preventScroll: true });
+      if (restoreFocus) {
+        const target = previousFocus?.isConnected && previousFocus !== document.body &&
+          !root.contains(previousFocus) && !previousFocus.closest("[hidden], [inert]") &&
+          !previousFocus.matches(":disabled") && (!sidebarRoot?.contains(previousFocus) || sidecar?.isOpen)
+          ? previousFocus : trigger;
+        target?.focus({ preventScroll: true });
       }
     };
     finish();
@@ -437,19 +423,27 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     if (!deskEntry.commandsVisible) return;
     const command = visibleCommands[index];
     if (!command || command.disabled) return;
-    const desktopSidecar = sidecar?.presentation === "sidebar" && !sidecar.mobile;
-    const mobileSidecar = sidecar?.presentation === "sidebar" && sidecar.mobile;
-    if (!command.presentationCommand && (mobileSidecar || (!desktopSidecar && !command.keepOpen))) close({ restoreFocus: false });
-    if (desktopSidecar && !command.presentationCommand && root.contains(document.activeElement)) focusWorkspace();
+    if (!command.presentationCommand && !command.keepOpen) {
+      close({ restoreFocus: false });
+      // A menu opened from the sidebar edge otherwise returns keyboard focus
+      // to that edge. View commands should hand control back to the workspace.
+      if (sidebarRoot?.contains(document.activeElement)) {
+        const workspace = document.querySelector("[data-desk-workspace]");
+        if (workspace) {
+          if (!workspace.hasAttribute("tabindex")) workspace.setAttribute("tabindex", "-1");
+          workspace.focus({ preventScroll: true });
+        }
+      }
+    }
     try {
       Promise.resolve(command.run())
         .then(() => {
           if (command.presentationCommand) return;
           if (!deskEntry.commandsVisible) return;
-          if (desktopSidecar) {
+          if (command.keepOpen && root.open && !otherModalOpen()) {
             refresh();
-            if (root.contains(document.activeElement) && !document.querySelector("dialog[open]:not([data-command-palette])")) focusWorkspace();
-          } else if (!mobileSidecar && command.keepOpen && root.open) input?.focus({ preventScroll: true });
+            input?.focus({ preventScroll: true });
+          }
         })
         .catch((error) => {
           console.error(`Desk command failed: ${command.id}`, error);
@@ -459,17 +453,11 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     }
   }
 
-  function focusWorkspace() {
-    const workspace = document.querySelector("[data-desk-workspace]") || document.querySelector(".desk-stage");
-    if (!workspace) return;
-    if (!workspace.hasAttribute("tabindex")) workspace.setAttribute("tabindex", "-1");
-    workspace.focus({ preventScroll: true });
-  }
-
   function destroy() {
     focusRevision++;
     window.cancelAnimationFrame(renderFrame);
     deskEntry.destroy();
+    sidebarLogo.destroy();
     sidecar?.destroy();
     document.removeEventListener("keydown", handleGlobalShortcut);
     input?.removeEventListener("input", scheduleRender);
@@ -480,13 +468,17 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     root.removeEventListener("cancel", handleCancel);
     root.removeEventListener("click", handleRootClick);
     root.removeEventListener("keydown", handleRootKeydown);
+    sidebarRoot?.removeEventListener("keydown", handleSidebarKeydown);
     if (root.open) root.close();
     registry.clear();
     commandSnapshot = [];
     visibleCommands = [];
   }
 
-  return { close, destroy, open, toggle, showSidebar, centerMenu, refresh, register, initializeSidecar: () => sidecar?.initialize() };
+  return { close, destroy, open, toggle, showSidebar, hideSidebar, centerMenu, refresh, register, initializeSidecar: () => {
+    sidecar?.initialize();
+    trigger?.setAttribute("aria-expanded", String(root.open));
+  } };
 }
 
 function createCommandSnapshot(registry) {
@@ -614,6 +606,7 @@ function createNoopPalette() {
     open() {},
     toggle() {},
     showSidebar() {},
+    hideSidebar() {},
     centerMenu() {},
     initializeSidecar() {},
     refresh() {},

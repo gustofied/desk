@@ -1,4 +1,5 @@
 import { animate as motionAnimate } from "motion";
+import { createDeskLogoMotion } from "./desk-logo.js";
 
 // A visual preview only: this does not authenticate or protect any data.
 // Kept in memory so a page refresh lets the login mock be tried again.
@@ -15,47 +16,23 @@ export function createDeskEntry({
   let waiting = false;
   let logoutFading = false;
   let waitTimer = null;
-  let idleAnimations = [];
   const targets = new Set();
-  const baseInk = button?.querySelector?.("[data-desk-logo-base]");
-  const revealInk = button?.querySelector?.("[data-desk-logo-reveal]");
   const label = button?.querySelector?.("[data-desk-login-label]");
   const buttonTabIndex = button?.getAttribute?.("tabindex") ?? null;
   const entryLabel = entry?.getAttribute?.("aria-label") || "Desk login";
   const motionPreference = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
+  const logoMotion = createDeskLogoMotion({ root: button, reducedMotion, animate, motionDocument });
 
   function stopIdle() {
-    idleAnimations.forEach(animation => animation.cancel());
-    idleAnimations = [];
-    for (const layer of [baseInk, revealInk]) {
-      layer?.style.removeProperty("opacity");
-      layer?.style.removeProperty("clip-path");
-    }
+    logoMotion.stop();
   }
 
   function startIdle() {
-    stopIdle();
-    if (!baseInk || !revealInk || !opened || (unlocked && presentation !== "sidebar") || waiting || motionDocument?.hidden || !motionAllowed()) return;
-    // Reveal the actual PNG over its silhouette; never move or redraw the ink.
-    // This decorative loop also runs after shortcut opening, without delaying it.
-    const settle = [0.32, 0.72, 0, 1];
-    // Ease each segment, not the entire loop (which compresses the ink pass).
-    const timing = { duration: 7, times: [0, 0.04, 0.08, 0.36, 0.46, 0.9, 1],
-      repeat: Infinity, ease: [settle, settle, [0.77, 0, 0.175, 1], settle, settle, settle] };
-    const closed = "inset(0 100% 0 0)";
-    const revealed = "inset(0 0% 0 0)";
-    idleAnimations.push(animate(baseInk, {
-      opacity: [1, 0.24, 0.24, 0.24, 1, 1, 1],
-    }, timing));
-    idleAnimations.push(animate(revealInk, {
-      opacity: [0, 0, 1, 1, 0, 0, 0],
-      clipPath: [closed, closed, closed, revealed, revealed, revealed, revealed],
-    }, timing));
+    if (!opened || (unlocked && presentation !== "sidebar") || waiting) logoMotion.stop();
+    else logoMotion.start();
   }
 
-  function onMotionEnvironmentChange() {
-    if (motionDocument?.hidden || !motionAllowed()) stopIdle();
-    else startIdle();
+  function onMotionPreferenceChange() {
     if (logoutFading && !motionAllowed()) {
       clearMotion();
       sync();
@@ -257,8 +234,7 @@ export function createDeskEntry({
   }
 
   button?.addEventListener("click", reveal);
-  motionDocument?.addEventListener("visibilitychange", onMotionEnvironmentChange);
-  motionPreference?.addEventListener("change", onMotionEnvironmentChange);
+  motionPreference?.addEventListener("change", onMotionPreferenceChange);
   sync();
   return {
     open,
@@ -269,9 +245,9 @@ export function createDeskEntry({
     get commandsVisible() { return unlocked && presentation !== "sidebar"; },
     destroy() {
       close();
+      logoMotion.destroy();
       button?.removeEventListener("click", reveal);
-      motionDocument?.removeEventListener("visibilitychange", onMotionEnvironmentChange);
-      motionPreference?.removeEventListener("change", onMotionEnvironmentChange);
+      motionPreference?.removeEventListener("change", onMotionPreferenceChange);
     },
   };
 }

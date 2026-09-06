@@ -1,0 +1,159 @@
+:root {
+  --desk-market-strip-height: 32px;
+  --desk-market-strip-space: calc(var(--desk-market-strip-height) + env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: calc(var(--desk-market-strip-space) + 16px);
+}
+
+@media (min-width: 641px) {
+  :root[data-display-toolbar="expanded"] {
+    --desk-gallery-top-space: 128px;
+  }
+}
+
+.desk-market-strip {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  height: var(--desk-market-strip-space);
+  gap: 24px;
+  padding-inline: 24px;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  color: var(--desk-control-ink, var(--desk-accent-deep));
+  background: var(--desk-canvas);
+  font: 500 11px/16px "Geist Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.desk-market-strip__viewport {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.desk-market-strip__viewport::-webkit-scrollbar { display: none; }
+.desk-market-strip__track { display: flex; width: max-content; margin-inline: auto; }
+.desk-market-strip[data-overflow="true"] .desk-market-strip__track { margin-inline: 0; }
+.desk-market-strip[data-overflow="true"] .desk-market-strip__viewport {
+  mask-image: linear-gradient(to right, transparent, #000 8px, #000 calc(100% - 8px), transparent);
+}
+
+.desk-market-strip__group {
+  display: flex;
+  align-items: baseline;
+  flex: none;
+  gap: 32px;
+  margin: 0;
+  padding: 0 32px 0 0;
+  list-style: none;
+}
+
+.desk-market-strip__item { display: flex; }
+.desk-market-strip__link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 7px;
+  min-height: 28px;
+  padding: 6px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.desk-market-strip__name { opacity: .75; }
+.desk-market-strip__link:is(:hover, :focus-visible, [data-preview-open]) .desk-market-strip__name { opacity: 1; }
+.desk-market-strip__price { font-weight: 650; }
+.desk-market-strip__unit { margin-left: -4px; font-size: 9px; opacity: .6; }
+.desk-market-strip__stamp, .desk-market-strip__empty { font-size: 10px; opacity: .65; }
+.desk-market-strip__notice { max-width: 50%; overflow: hidden; text-overflow: ellipsis; font-size: 10px; }
+.desk-market-strip [hidden] { display: none; }
+
+.desk-market-strip :focus-visible { outline: 1px solid currentColor; outline-offset: -2px; }
+
+.desk-market-preview {
+  position: fixed;
+  width: min(288px, calc(100vw - 24px));
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 30%, transparent);
+  border-radius: 6px;
+  background: var(--desk-canvas);
+  color: inherit;
+  box-shadow: 0 10px 32px rgb(0 0 0 / 18%);
+  overflow: hidden;
+}
+.desk-market-preview__chart {
+  position: relative;
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.desk-market-preview__artifact {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  text-align: left;
+  pointer-events: none;
+}
+.desk-market-preview svg { display: block; width: 100%; height: 100%; pointer-events: none; }
+.desk-market-preview__artifact :is(.deal-view-mount, .deal-view, .deal-view__shell, .deal-view__surface) {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.desk-market-preview__artifact .deal-view__head { padding: 10px 12px 0; }
+.desk-market-preview__artifact .deal-view__label { font-size: 14px; line-height: 18px; }
+.desk-market-preview__artifact .deal-view__status { font-size: 9px; line-height: 14px; }
+.desk-market-preview__artifact .deal-view__quote { font-size: 26px; line-height: 30px; }
+.desk-market-preview__actions { display: flex; justify-content: flex-end; padding: 4px 12px; }
+.desk-market-preview__actions button {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  opacity: .65;
+}
+.desk-market-preview__actions button:hover { opacity: 1; }
+
+/* Keep the original header and card geometry; leave room to scroll past the footer. */
+body {
+  padding-bottom: max(clamp(20px, 5vw, 72px), calc(var(--desk-market-strip-space) + 16px));
+}
+:root[data-desk-layout="all"] body {
+  padding-bottom: max(96px, calc(var(--desk-market-strip-space) + 16px));
+}
+
+/* The in-flow details end above the fixed strip, with room for their shadow. */
+:root[data-desk-view="monitor"] body {
+  padding-bottom: calc(var(--desk-market-strip-space) + 32px);
+}
+
+@media (max-width: 640px) {
+  .desk-market-strip { gap: 12px; padding-inline: 12px; }
+  .desk-market-strip__group { gap: 24px; padding-right: 24px; }
+  body {
+    padding-bottom: max(64px, calc(var(--desk-market-strip-space) + 16px));
+  }
+
+  :root[data-desk-view="monitor"] body {
+    padding-bottom: calc(var(--desk-market-strip-space) + 24px);
+  }
+}

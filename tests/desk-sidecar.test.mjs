@@ -28,7 +28,7 @@ class FakeElement extends EventTarget {
   releasePointerCapture() { this.captured = null; }
 }
 
-function harness({ viewportWidth = 1200, saved, reducedMotion = false, storageError = false } = {}) {
+function harness({ viewportWidth = 1200, saved, reducedMotion = false, storageError = false, modalOnMobile = true } = {}) {
   const html = new FakeElement();
   const root = new FakeElement();
   const toggle = new FakeElement();
@@ -66,7 +66,7 @@ function harness({ viewportWidth = 1200, saved, reducedMotion = false, storageEr
   let closed = 0;
   let dismissals = 0;
   const sidecar = createDeskSidecar({
-    root, toggle, dragHandle, document, window,
+    root, toggle, dragHandle, document, window, modalOnMobile,
     onOpen: options => opens.push(options), onClose: () => closes++, onClosed: () => closed++,
     onDismiss() { dismissals++; sidecar.close(); },
     onModeChange: options => modes.push(options),
@@ -97,6 +97,20 @@ function harness({ viewportWidth = 1200, saved, reducedMotion = false, storageEr
     },
   };
 }
+
+test("a passive sidebar stays nonmodal across phone and desktop widths", () => {
+  const h = harness({ viewportWidth: 390, reducedMotion: true, modalOnMobile: false });
+  h.sidecar.showSidebar();
+  assert.equal(h.root.open, true);
+  assert.equal(h.sidecar.modal, false);
+  assert.equal(h.root.attributes.get("aria-modal"), "false");
+  const closeCount = h.root.closeCount;
+  h.resizeViewport(1440);
+  h.resizeViewport(390);
+  assert.equal(h.root.closeCount, closeCount, "resizing must not dismiss or remount a passive sidebar");
+  assert.equal(h.sidecar.modal, false);
+  h.sidecar.destroy();
+});
 
 test("fixed responsive widths never exceed the current maximum or narrow viewport", () => {
   assert.equal(resolveSidecarWidth(1200), 240);

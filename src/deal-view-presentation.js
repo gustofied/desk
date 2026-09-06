@@ -17,9 +17,9 @@ import {
 import {
   VIEW_DETAIL_DURATION,
   VIEW_REVEAL_DELAY,
-  VIEW_REVEAL_DURATION,
   VIEW_SUPPORT_DURATION,
 } from "./view-motion.js";
+import { animateChartDraw, animateChartSupport, cancelChartMotion } from "./chart-motion.js";
 
 const VALID_VARIANTS = Object.freeze(["static", "focus", "full"]);
 const QUOTE_CHART_WIDTH = 1200;
@@ -76,7 +76,7 @@ export function mountDealView(
   const chartMotion = configureDealHistoryMotion(
     mount,
     reducedMotion || !revealMotion,
-    normalizedVariant === "full" && interactive,
+    normalizedVariant !== "static",
   );
   const historyInteraction = normalizedVariant === "full" && interactive
     ? isQuote
@@ -447,41 +447,35 @@ function dealHistoryInteractionMarkup(history, geometry) {
 function configureDealHistoryMotion(
   mount,
   reducedMotion,
-  interactive,
+  eligible,
 ) {
   const reveal = mount.querySelector("[data-deal-history-reveal]");
   const agreedPoint = mount.querySelector(".deal-view__agreed-point");
-  if (!reveal || !interactive || reducedMotion) return null;
+  if (!reveal || !eligible || reducedMotion) return null;
 
-  const selection = select(reveal);
-  selection
-    .interrupt()
-    .attr("transform", "translate(0 4)")
-    .style("opacity", 0.48)
-    .transition()
-    .duration(VIEW_REVEAL_DURATION)
-    .ease(easeCubicOut)
-    .attr("transform", "translate(0 0)")
-    .style("opacity", 1);
-  const pointSelection = agreedPoint ? select(agreedPoint) : null;
-  pointSelection
-    ?.interrupt()
-    .style("opacity", 0)
-    .transition()
-    .delay(VIEW_REVEAL_DELAY + VIEW_SUPPORT_DURATION)
-    .duration(VIEW_DETAIL_DURATION)
-    .ease(easeCubicOut)
-    .style("opacity", 1);
+  const isQuote = mount.dataset.kind === "quote";
+  animateChartDraw(reveal.querySelector(".deal-view__negotiation-line--ask"), {
+    from: isQuote ? "right" : "left",
+  });
+  const bid = reveal.querySelector(".deal-view__negotiation-line--bid");
+  animateChartDraw(bid);
+  animateChartSupport(reveal.querySelector(".deal-view__negotiation-area"));
+  reveal.querySelectorAll(".quote-view__flow-signal").forEach((signal) => {
+    animateChartSupport(signal, {
+      delay: signal.classList.contains("quote-view__flow-signal--desk")
+        ? VIEW_REVEAL_DELAY + VIEW_SUPPORT_DURATION
+        : VIEW_REVEAL_DELAY,
+      duration: VIEW_DETAIL_DURATION,
+    });
+  });
+  animateChartSupport(agreedPoint, {
+    delay: VIEW_REVEAL_DELAY + VIEW_SUPPORT_DURATION,
+    duration: VIEW_DETAIL_DURATION,
+  });
 
   return Object.freeze({
     destroy() {
-      selection
-        .interrupt()
-        .attr("transform", "translate(0 0)")
-        .style("opacity", 1);
-      pointSelection
-        ?.interrupt()
-        .style("opacity", 1);
+      cancelChartMotion(mount);
     },
   });
 }

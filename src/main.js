@@ -34,6 +34,9 @@ import { mountDealView } from "./deal-view-presentation.js";
 import { createCommandPalette } from "./command-palette.js";
 import { createMonitorDataModel } from "./monitor-data-model.js";
 import { createMonitorDataRail } from "./monitor-data-rail.js";
+import { createMarketStrip } from "./market-strip.js";
+import { observationLabel as marketObservationLabel } from "./market-strip-model.js";
+import { createMarketWatchlist, watchlistKey, MARKET_WATCHLIST_STORAGE_KEY } from "./market-watchlist.js";
 import { createDealJourneyRail } from "./deal-journey-rail.js";
 import {
   deleteCatalogItem,
@@ -68,9 +71,8 @@ import { shareRangeLabel } from "./share-range-label.js";
 import { viewArtifactHeaderLayout } from "./view-artifact-header.js";
 import {
   VIEW_DETAIL_DURATION,
-  VIEW_REVEAL_DURATION,
-  VIEW_SUPPORT_DURATION,
 } from "./view-motion.js";
+import { animateChartDraw, animateChartSupport, cancelChartMotion, chartAnimations } from "./chart-motion.js";
 import {
   horizontalHitZones,
   positionSvgTooltip,
@@ -113,9 +115,10 @@ if (root) {
   const activeCatalogSessionKey = "desk.active-catalog.v1";
   const railFocusStorageKey = "desk.rail-focus.v1";
   let pendingRailFocusKey = takePendingRailFocus();
-  const reducedMotion = window.matchMedia(
+  const motionPreference = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
-  ).matches;
+  );
+  let reducedMotion = motionPreference.matches;
   const mobileViewport = window.matchMedia("(max-width: 640px)");
   let families = cardDefinition.layers
     .filter((layer) => layer.primary !== false)
@@ -367,6 +370,7 @@ if (root) {
     optionButtons: [],
     composer: root.querySelector("[data-card-composer]"),
     saveButton: root.querySelector("[data-card-save]"),
+    marketPinButtons: Array.from(document.querySelectorAll("[data-card-market-pin]")),
     cardAnnounce: root.querySelector("[data-card-announce]"),
     chart: root.querySelector("[data-gpu-chart]"),
     svg: root.querySelector("[data-gpu-chart-svg]"),
@@ -437,7 +441,202 @@ if (root) {
   let unregisterCoreCommands = () => {};
   let unregisterSavedCatalogCommands = () => {};
   let unregisterCatalogCollectionCommands = () => {};
+  const marketWatchlist = createMarketWatchlist();
+  const marketStrip = createMarketStrip(document.querySelector("[data-market-strip]"), {
+    renderPreview: renderMarketPreview,
+    onSelect(item, keyboard) {
+      const entry = marketEntry(item);
+      if (entry && marketEntryPayload(entry)) monitorCatalogEntry(entry, keyboard);
+    },
+    onRemove: (item) => removeMarketPin(item.id),
+  });
+  window.addEventListener("storage", (event) => {
+    if (event.key !== MARKET_WATCHLIST_STORAGE_KEY && event.key !== null) return;
+    marketWatchlist.reload();
+    refreshMarketStrip();
+    syncMarketPin();
+    commandPalette.refresh();
+  });
   initialize();
+
+  function marketEntry(item) {
+    const pin = marketWatchlist.list().find((entry) => entry.id === item.id);
+    if (!pin) return null;
+    return { ...pin, kind: "watchlist", key: `watchlist-${pin.id}` };
+  }
+
+  function marketEntryPayload(entry) {
+    const definition = getCardDefinition(entry.cardId);
+    return state.runtimePayloads.get(definition.sourceCardId || definition.id);
+  }
+
+  function renderMarketPreview(host, item) {
+    const entry = marketEntry(item);
+    if (!entry || !marketEntryPayload(entry)) return false;
+    const definition = getCardDefinition(entry.cardId);
+    const display = catalogEntryDisplayState(entry);
+    const palette = cardPalette(display);
+    if (definition.renderer === "deal") {
+      const model = createDealViewModel(marketEntryPayload(entry), {
+        kind: definition.viewKind,
+        marketPayload: state.runtimePayloads.get("gpu-index"),
+        overrides: dealModelOverrides(display),
+      });
+      const mount = mountDealView(host, model, {
+        variant: "static", palette, reducedMotion: true, interactive: false,
+      });
+      return () => mount.destroy();
+    }
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("aria-hidden", "true");
+    host.append(svg);
+    if (definition.renderer === "power-basis") {
+      paintPowerBasisChart(svg, createPowerModel(display, marketEntryPayload(entry)), {
+        colors: palette, compact: true, artifact: true, minimal: true,
+        title: entry.label, mode: display.scale, reducedMotion: true,
+        interactive: false, decorative: true,
+      });
+    } else if (definition.renderer === "cumulative-depth") {
+      paintGpuMarketDepthChart(svg, createDepthModel(display, marketEntryPayload(entry)), {
+        colors: palette, compact: true, minimal: true, title: entry.label,
+        view: depthViewMode(display.scale), reducedMotion: true, interactive: false, decorative: true,
+      });
+    } else if (definition.renderer === "categorical-bar") {
+      paintGpuPriceBarChart(svg, createGpuPriceBarModel(marketEntryPayload(entry), definition, {
+        layerIds: display.layers,
+      }), {
+        colors: palette, compact: true, title: entry.label,
+        reducedMotion: true, interactive: false, decorative: true,
+      });
+    } else {
+      const series = cardSeriesForState(display, { definition });
+      if (!series.length) return false;
+      drawShareArtifact(svg, series, display.gpu, {
+        compact: true, scale: display.scale, range: display.range,
+        title: item.label, palette, theme: display.theme,
+      });
+    }
+    return true;
+  }
+
+  function currentMarketPin() {
+    const key = watchlistKey(cardId, currentCardState());
+    return marketWatchlist.list().find((entry) => watchlistKey(entry.cardId, entry.state) === key);
+  }
+
+  function syncMarketPin() {
+    const available = state.shareReady && !state.craftEmpty;
+    const pinned = available && Boolean(currentMarketPin());
+    for (const button of nodes.marketPinButtons) {
+      button.disabled = !available;
+      button.textContent = pinned ? "Unpin" : "Pin to strip";
+    }
+  }
+
+  function toggleMarketPin() {
+    if (!state.shareReady || state.craftEmpty) return;
+    if (nodes.saveDialog?.open) clearSaveError();
+    const existing = currentMarketPin();
+    if (existing) { removeMarketPin(existing.id); return; }
+    try {
+      const pin = marketWatchlist.pin({
+        cardId, state: currentCardState(),
+        label: (nodes.saveDialog?.open && normalizeCatalogName(nodes.saveName?.value)) ||
+          state.catalogName || suggestedCatalogName(),
+      });
+      refreshMarketStrip();
+      syncMarketPin();
+      commandPalette.refresh();
+      if (nodes.saveDialog?.open) nodes.saveError.textContent = "Pinned to strip";
+      announceWorkspace(`${pin.label} pinned to strip`);
+    } catch (error) {
+      reportMarketPinError(error.message || "Could not save this pin");
+    }
+  }
+
+  function removeMarketPin(id) {
+    const pin = marketWatchlist.list().find((entry) => entry.id === id);
+    if (!pin) return;
+    try {
+      if (!marketWatchlist.remove(id)) return;
+      refreshMarketStrip();
+      syncMarketPin();
+      commandPalette.refresh();
+      if (nodes.saveDialog?.open) nodes.saveError.textContent = "Unpinned from strip";
+      announceWorkspace(`${pin.label} unpinned from strip`);
+    } catch (error) {
+      reportMarketPinError(error.message || "Could not unpin this view");
+    }
+  }
+
+  function reportMarketPinError(message) {
+    if (nodes.saveDialog?.open) nodes.saveError.textContent = message;
+    else marketStrip.notice(message);
+  }
+
+  function refreshMarketStrip() {
+    const pins = marketWatchlist.list();
+    const items = pins.map((pin) => {
+      try {
+        const definition = getCardDefinition(pin.cardId);
+        const payload = marketEntryPayload(pin);
+        if (!payload) return null;
+        const cardState = pin.state;
+        let displayValue, displayUnit = "", timestamp;
+        if (definition.renderer === "deal") {
+          const model = createDealViewModel(payload, {
+            kind: definition.viewKind,
+            marketPayload: state.runtimePayloads.get("gpu-index"),
+            overrides: dealModelOverrides(cardState),
+          });
+          displayValue = model.quote.formatted;
+          displayUnit = "/GPU-h";
+          timestamp = model.eventLog.at(-1)?.timestamp || model.quoteHistory.at(-1)?.timestamp;
+        } else if (definition.renderer === "cumulative-depth") {
+          const model = createDepthModel(cardState, payload);
+          displayValue = model.current.targetReached
+            ? formatUsd(model.current.clearingPrice)
+            : `>${formatUsd(model.priceDomain[1])}`;
+          displayUnit = "/GPU-h";
+          timestamp = model.asOf;
+        } else if (definition.renderer === "categorical-bar") {
+          const model = createGpuPriceBarModel(payload, definition, { layerIds: cardState.layers });
+          const values = model.bars.map((bar) => bar.value);
+          const low = Math.min(...values), high = Math.max(...values);
+          displayValue = low === high ? formatUsd(low) : `${formatUsd(low)}–${formatUsd(high)}`;
+          displayUnit = "/GPU-h";
+          timestamp = model.asOf;
+        } else if (definition.renderer === "power-basis") {
+          const model = createPowerModel(cardState, payload);
+          displayValue = cardState.scale === "basis"
+            ? formatSignedPowerPrice(model.latest.basis) : formatPowerPrice(model.latest.realTime);
+          displayUnit = "/MWh";
+          timestamp = model.latest.timestamp;
+        } else {
+          const series = cardSeriesForState(cardState, { definition });
+          const primary = series.find((item) => item.primary) || series[0];
+          const latest = primary?.rows.at(-1);
+          if (!latest) return null;
+          displayValue = formatCardHeadline(latest.plotValue, cardState.scale);
+          displayUnit = cardState.scale === "price" ? "/GPU-h" : "";
+          timestamp = latest.date.getTime() / 1000;
+        }
+        if (!Number.isFinite(timestamp)) return null;
+        return {
+          id: pin.id, label: pin.label, displayValue, displayUnit,
+          observedAt: new Date(timestamp * 1000).toISOString(),
+          kind: payload.dataset?.kind || "unknown", stateKey: watchlistKey(pin.cardId, pin.state),
+        };
+      } catch {
+        return null;
+      }
+    }).filter(Boolean);
+    const empty = pins.length === 0;
+    marketStrip.update({
+      items, key: JSON.stringify({ items, empty }), empty,
+      observationLabel: marketObservationLabel(items),
+    });
+  }
 
   function initialize() {
     syncCardAppearance();
@@ -472,6 +671,9 @@ if (root) {
     configureComposerControls();
     configureDealCraftControls();
     configureSaveControls();
+    for (const button of nodes.marketPinButtons) {
+      button.addEventListener("click", toggleMarketPin);
+    }
     configureCatalogCollectionControls();
     configureCommandPalette();
     syncSavedCatalogCommands();
@@ -512,6 +714,13 @@ if (root) {
       commandPalette.toggle({ returnFocus: nodes.commandOpen, animateEntrance: event.detail !== 0 });
     });
     mobileViewport.addEventListener("change", handleMobileViewportChange);
+    motionPreference.addEventListener("change", (event) => {
+      reducedMotion = event.matches;
+      if (reducedMotion) {
+        cancelChartMotion(root);
+        if (state.runtimePayload) render(false);
+      }
+    });
     nodes.galleryToggle?.addEventListener("click", (event) => {
       showPanel("share", true, "all", event.detail === 0, "catalog");
     });
@@ -551,7 +760,11 @@ if (root) {
           return;
         }
         window.clearTimeout(state.resizeTimer);
-        state.resizeTimer = window.setTimeout(() => render(false), 90);
+        if (state.lastRenderedChartSize === currentChartSize()) return;
+        state.resizeTimer = window.setTimeout(() => {
+          if (state.panel === "detail" && state.layout === "focus" &&
+              state.lastRenderedChartSize !== currentChartSize()) render(false);
+        }, 90);
       });
       observer.observe(nodes.chart);
     }
@@ -1465,6 +1678,7 @@ if (root) {
     if (nodes.saveSubmit) nodes.saveSubmit.textContent = rename ? "Rename" : "Save";
     nodes.saveName.maxLength = MAX_CATALOG_NAME_LENGTH;
     nodes.saveName.value = state.catalogName || suggestedCatalogName();
+    syncMarketPin();
     nodes.saveDialog.showModal();
     window.requestAnimationFrame(() => {
       nodes.saveName.focus({ preventScroll: true });
@@ -1996,7 +2210,7 @@ if (root) {
         group: "Workspace",
         order: 1,
         title: "Open Monitor",
-        subtitle: cardDefinition.title,
+        subtitle: () => state.craftEmpty ? "Choose a view type first" : cardDefinition.title,
         hint: "Monitor",
         keywords: ["monitor", "inspect", "read", "zoom", "chart", "market", "prices", "compute", "gpu"],
         disabled: () => !state.shareReady || state.craftEmpty,
@@ -2147,6 +2361,17 @@ if (root) {
         keywords: ["share", "view", "card", "url", "clipboard"],
         disabled: () => !state.shareReady || state.craftEmpty,
         run: copyCardLink,
+      },
+      {
+        id: "actions.pin-to-strip",
+        group: "Actions",
+        order: 1,
+        title: () => currentMarketPin() ? "Unpin" : "Pin to strip",
+        subtitle: () => workspaceLabel(),
+        hint: "Strip",
+        keywords: ["pin", "unpin", "strip", "watchlist", "ticker", "bottom", "save", "remove"],
+        disabled: () => !state.shareReady || state.craftEmpty,
+        run: toggleMarketPin,
       },
       {
         id: "actions.toggle-display-controls",
@@ -3594,6 +3819,10 @@ if (root) {
         if (active && !state.craftEmpty) button.title = "View types";
         else button.removeAttribute("title");
       }
+      if (mode === "monitor") {
+        if (state.craftEmpty) button.title = "Choose a view type first";
+        else button.removeAttribute("title");
+      }
       button.setAttribute(
         "aria-label",
         mode === "catalog"
@@ -3601,7 +3830,9 @@ if (root) {
             ? `Switch Catalog, ${catalogCollection.name}, ${catalogCount} ${catalogCount === 1 ? "view" : "views"}`
             : `Open ${catalogCollection.name} in Catalog`
           : mode === "monitor"
-            ? `Monitor ${label}`
+            ? state.craftEmpty
+              ? "Monitor, choose a view type first"
+              : `Monitor ${label}`
             : active
               ? state.craftEmpty
                 ? "Craft, current section"
@@ -3628,6 +3859,7 @@ if (root) {
 
   async function loadCards() {
     if (!cardDefinition.dataUrl) {
+      marketStrip.unavailable();
       showFailure("Market data could not load.");
       signalReady();
       return;
@@ -3669,12 +3901,6 @@ if (root) {
         .filter((result) => result.status === "rejected")
         .forEach((result) => console.warn("Auxiliary card data unavailable", result.reason));
       state.runtimePayloads = new Map(results);
-      const sourceId = cardDefinition.sourceCardId || cardDefinition.id;
-      const payload = state.runtimePayloads.get(sourceId);
-      if (!payload) throw new Error(`Missing ${sourceId} market data`);
-      state.runtimePayload = payload;
-      state.dataRevision = payload.revision;
-
       const gpuPayload = state.runtimePayloads.get("gpu-index");
       const gpuDefinition = getCardDefinition("gpu-index");
       state.seriesByLayer = new Map(
@@ -3685,6 +3911,12 @@ if (root) {
           ])
           .filter(([, rows]) => rows.length),
       );
+      refreshMarketStrip();
+      const sourceId = cardDefinition.sourceCardId || cardDefinition.id;
+      const payload = state.runtimePayloads.get(sourceId);
+      if (!payload) throw new Error(`Missing ${sourceId} market data`);
+      state.runtimePayload = payload;
+      state.dataRevision = payload.revision;
       root.dataset.cardDataVersion = String(payload.version);
       if (
         cardDefinition.renderer === "line" &&
@@ -3696,6 +3928,7 @@ if (root) {
       syncMobileSummary();
       render(true);
     } catch (error) {
+      marketStrip.unavailable();
       setShareReady(false);
       console.error("Desk market data failed to load", error);
       showFailure("Market data is temporarily unavailable.");
@@ -3958,7 +4191,7 @@ if (root) {
     const entry = nodes.cardRailEntries.get(nextTab.dataset.catalogEntryKey);
     if (!entry) return false;
     // Open directly: view selection must not depend on browser button focus.
-    openCardRailEntry(entry, true, false);
+    openCardRailEntry(entry, true);
     return true;
   }
 
@@ -4229,7 +4462,7 @@ if (root) {
     if (cardChanged) finishCardDefinitionChange(moveFocus ? entry.key : "");
     syncControls();
     if (alreadyFocused) {
-      render(drawAnimation);
+      render(drawAnimation ? "reveal" : false);
       updateLocation();
       announceWorkspaceView();
       if (moveFocus) activeCardRailButton()?.focus({ preventScroll: true });
@@ -4290,7 +4523,7 @@ if (root) {
     applyCardState(publishedCardState(family));
     syncControls();
     if (state.panel === "share" && state.layout === "focus") {
-      render(true);
+      render("reveal");
       updateLocation();
       if (moveFocus) activeCardRailButton()?.focus({ preventScroll: true });
       announceWorkspaceView();
@@ -4329,7 +4562,7 @@ if (root) {
     }
     syncControls();
     if (alreadyMonitoring) {
-      render(drawAnimation);
+      render(drawAnimation ? "reveal" : false);
       updateLocation();
       announceWorkspaceView();
       if (focusNavigation) {
@@ -4344,6 +4577,10 @@ if (root) {
     entry,
     entryState = catalogEntryOpenState(entry),
   ) {
+    if (entry.kind === "watchlist") {
+      applyCardState(entryState, { catalogName: entry.label });
+      return true;
+    }
     if (entry.kind === "saved") {
       applyCardState(entry.item.state, {
         catalogId: entry.item.id,
@@ -4530,6 +4767,7 @@ if (root) {
   }
 
   function syncControls() {
+    syncMarketPin();
     syncCardRailSelection();
     nodes.rangeButtons.forEach((button) => {
       const selected = button.dataset.gpuRange === state.range;
@@ -5157,6 +5395,7 @@ if (root) {
     const previousLayout = nodes.layoutPanels.get(state.layout);
     const canMorph =
       !reducedMotion && typeof document.startViewTransition === "function";
+    let heldChartAnimations = [];
 
     const commitPanelChange = (animateLayout) => {
       state.panel = nextName;
@@ -5167,7 +5406,12 @@ if (root) {
       syncFocusPanels();
       syncControls();
       syncLayout(animateLayout);
-      render(false);
+      render("reveal");
+      if (canMorph) {
+        // Hold the first chart frame while the view-transition snapshot covers it.
+        heldChartAnimations = chartAnimations(root);
+        heldChartAnimations.forEach((animation) => animation.pause());
+      }
       syncModeActions(animateLayout);
     };
 
@@ -5193,6 +5437,14 @@ if (root) {
       }
     } finally {
       state.transitionPending = false;
+      heldChartAnimations.forEach((animation) => {
+        if (!reducedMotion && !queuedPanelIntent &&
+            animation.playState === "paused" && animation.effect?.target?.isConnected) {
+          animation.play();
+        } else {
+          animation.cancel();
+        }
+      });
     }
 
     if (mobileViewport.matches && targetLayout !== "all") {
@@ -5677,12 +5929,17 @@ if (root) {
   }
 
   function render(drawAnimation) {
+    // Retire the old surface's draw too when it becomes hidden (including Craft).
+    cancelChartMotion(root);
     if (state.mode === "craft" && state.craftEmpty) {
       syncComposerControls();
       return;
     }
     const motion = resolveRenderMotion(drawAnimation);
     state.lastRenderedSceneKey = currentRenderSceneKey();
+    if (state.layout === "focus" && state.panel === "detail") {
+      state.lastRenderedChartSize = currentChartSize();
+    }
     if (isDealCard) {
       renderDealWorkspace(motion);
       return;
@@ -5719,7 +5976,7 @@ if (root) {
     nodes.chartState.hidden = true;
     nodes.tooltip.hidden = true;
     updateRangeDates(primary.rows);
-    renderShareArtifact(rangeSeries);
+    renderShareArtifact(rangeSeries, motion);
     state.catalogDirty = true;
     if (state.layout === "all") renderWorkspaceGallery();
     syncShareStatus();
@@ -5734,7 +5991,8 @@ if (root) {
   }
 
   function resolveRenderMotion(drawAnimation) {
-    if (!drawAnimation || reducedMotion) return "none";
+    if (!drawAnimation || reducedMotion || state.layout !== "focus") return "none";
+    if (drawAnimation === "reveal") return state.mode === "craft" ? "none" : "reveal";
     return state.lastRenderedSceneKey === currentRenderSceneKey()
       ? "update"
       : "reveal";
@@ -5742,6 +6000,14 @@ if (root) {
 
   function currentRenderSceneKey() {
     return `${cardId}:${state.mode}:${state.panel}:${state.layout}`;
+  }
+
+  function currentChartSize() {
+    return `${nodes.chart.clientWidth}:${nodes.chart.clientHeight}`;
+  }
+
+  function revealShareArtifact(motion) {
+    return motion === "reveal" && state.layout === "focus" && state.panel === "share";
   }
 
   function createDealModel(cardState = currentCardState(), payload = null) {
@@ -5787,7 +6053,7 @@ if (root) {
         variant: "focus",
         palette,
         reducedMotion,
-        revealMotion: motion === "reveal",
+        revealMotion: revealShareArtifact(motion),
       });
     }
     if (nodes.dealWorkspace) {
@@ -5796,7 +6062,7 @@ if (root) {
         variant: "full",
         palette,
         reducedMotion,
-        revealMotion: motion === "reveal",
+        revealMotion: motion === "reveal" && state.mode === "monitor" && state.panel === "detail",
         interactive: state.mode === "monitor",
       });
     }
@@ -5851,7 +6117,7 @@ if (root) {
       mode: state.scale,
       compact: true,
       artifact: true,
-      reducedMotion: reducedMotion || motion !== "reveal",
+      reducedMotion: !revealShareArtifact(motion),
       interactive: false,
     });
     syncMonitorDataModel({ powerModel: model });
@@ -5906,7 +6172,7 @@ if (root) {
       colors: palette,
       title: state.catalogName || cardDefinition.title,
       compact: true,
-      reducedMotion: reducedMotion || motion !== "reveal",
+      reducedMotion: !revealShareArtifact(motion),
       interactive: false,
       view: depthViewMode(state.scale),
     });
@@ -5966,7 +6232,7 @@ if (root) {
       colors: palette,
       title: state.catalogName || "Latest prices",
       compact: true,
-      reducedMotion: reducedMotion || motion !== "reveal",
+      reducedMotion: !revealShareArtifact(motion),
       interactive: false,
     });
     syncMonitorDataModel({ barModel: model });
@@ -6280,11 +6546,12 @@ if (root) {
     }
   }
 
-  function renderShareArtifact(series) {
+  function renderShareArtifact(series, motion) {
     drawShareArtifact(nodes.shareArtifactSvg, series, state.selected, {
       compact: true,
       scale: state.scale,
       title: state.catalogName || undefined,
+      reveal: revealShareArtifact(motion),
     });
   }
 
@@ -6306,6 +6573,7 @@ if (root) {
     const isPrimary = (candidate) =>
       candidate === primary || candidate.layer.id === primary.layer.id;
     const svg = d3.select(svgNode);
+    cancelChartMotion(svgNode);
     svg.selectAll("*").remove();
     svg.attr("viewBox", "0 0 1200 675");
 
@@ -6396,6 +6664,7 @@ if (root) {
         .attr("d", quoteBand)
         .attr("fill", palette.area)
         .attr("fill-opacity", 0.075)
+        .attr("data-chart-support", "")
         .attr("aria-hidden", "true");
     }
     if (
@@ -6408,6 +6677,7 @@ if (root) {
         .attr("d", referenceArea)
         .attr("fill", palette.area)
         .attr("fill-opacity", 0.1)
+        .attr("data-chart-support", "")
         .attr("aria-hidden", "true");
     }
     if (scale === "index" || scale === "spread") {
@@ -6420,6 +6690,7 @@ if (root) {
         .attr("y2", y(baseline))
         .attr("stroke", palette.line)
         .attr("stroke-opacity", 0.18)
+        .attr("data-chart-support", "")
         .attr("stroke-width", 1)
         .attr("stroke-dasharray", "2 8");
     }
@@ -6439,6 +6710,7 @@ if (root) {
         .append("path")
         .datum(candidate.rows)
         .attr("d", line)
+        .attr(candidateIsPrimary ? "data-chart-draw" : "data-chart-support", "")
         .attr("fill", "none")
         .attr("stroke", candidateIsPrimary ? palette.line : palette.secondary)
         .attr(
@@ -6457,6 +6729,10 @@ if (root) {
     });
     if (hasComparisons && !compact) {
       appendShareEndpointLabels(svg, series, palette, chart, x, y, isPrimary);
+    }
+    if (options.reveal) {
+      animateChartDraw(svgNode.querySelector("[data-chart-draw]"));
+      svgNode.querySelectorAll("[data-chart-support]").forEach((node) => animateChartSupport(node));
     }
     const headerLayer = svg
       .append("g")
@@ -6550,8 +6826,8 @@ if (root) {
       .range([innerHeight, 0]);
     const reveal = motion === "reveal" && !reducedMotion;
     const update = motion === "update" && !reducedMotion;
-    const animateRoot = reveal || update;
     const svg = d3.select(nodes.svg);
+    cancelChartMotion(nodes.svg);
     svg.selectAll("*").interrupt();
     svg.selectAll(".gpu-benchmark__plot-root.is-exiting").remove();
     const previousRoot = svg.select(".gpu-benchmark__plot-root");
@@ -6563,25 +6839,20 @@ if (root) {
     const plotRoot = svg
       .append("g")
       .attr("class", "gpu-benchmark__plot-root")
-      .attr("opacity", reveal ? 0 : update ? 0.55 : 1)
-      .attr(
-        "transform",
-        reveal ? "translate(0,4)" : "translate(0,0)",
-      );
+      .attr("opacity", update ? 0.55 : 1);
     const plot = plotRoot
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`);
-    if (animateRoot) {
+    if (update) {
       previousRoot
         .transition()
         .duration(VIEW_DETAIL_DURATION)
         .ease(d3.easeCubicOut)
         .attr("opacity", 0)
-        .attr("transform", reveal ? "translate(0,-2)" : "translate(0,0)")
         .remove();
       plotRoot
         .transition()
-        .duration(reveal ? VIEW_SUPPORT_DURATION : VIEW_DETAIL_DURATION)
+        .duration(VIEW_DETAIL_DURATION)
         .ease(d3.easeCubicOut)
         .attr("opacity", 1)
         .attr("transform", "translate(0,0)");
@@ -6675,31 +6946,13 @@ if (root) {
     });
 
     if (reveal) {
-      plot
-        .select(".gpu-benchmark__line.is-selected")
-        .attr("pathLength", 1)
-        .attr("stroke-dasharray", 1)
-        .attr("stroke-dashoffset", 1)
-        .transition()
-        .duration(VIEW_REVEAL_DURATION)
-        .ease(d3.easeCubicOut)
-        .attr("stroke-dashoffset", 0)
-        .on("end", function restorePrimaryLine() {
-          d3.select(this)
-            .attr("pathLength", null)
-            .attr("stroke-dasharray", null)
-            .attr("stroke-dashoffset", null);
-        });
+      animateChartDraw(plot.select(".gpu-benchmark__line.is-selected").node());
       plot
         .selectAll(
           ".gpu-benchmark__band, .gpu-benchmark__value-area, " +
           ".gpu-benchmark__reference-line, .gpu-benchmark__line.is-layer",
         )
-        .attr("opacity", 0)
-        .transition()
-        .duration(VIEW_SUPPORT_DURATION)
-        .ease(d3.easeCubicOut)
-        .attr("opacity", 1);
+        .each(function revealSupport() { animateChartSupport(this); });
     }
 
     if (series.length > 1) {
