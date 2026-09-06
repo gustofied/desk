@@ -82,7 +82,7 @@ function powerBasisMarkup(
   {
     colors,
     title = model?.location?.label,
-    mode = "price",
+    mode = model?.mode || "price",
     compact = false,
     artifact = compact,
     minimal = false,
@@ -151,14 +151,16 @@ function powerBasisMarkup(
   const artifactHeader = showArtifactHeader
     ? viewArtifactHeaderMarkup({
         title: safeTitle,
-        context: formatRange(normalized.range),
+        context: [normalized.marker.toUpperCase(), formatRange(normalized.range)].filter(Boolean).join(" · "),
         headline: chartMode === "basis"
-          ? formatBasis(latest.basis)
-          : formatPrice(latest.realTime),
+          ? formatBasis(latest.basis, normalized.precision)
+          : formatPrice(latest.realTime, normalized.precision),
         colors: palette,
         compact,
         overlap: true,
-      })
+      }) + `<text data-power-basis-unit="" x="${headerLayout.contextX}" y="${headerLayout.headlineY}"
+        fill="${palette.line}" fill-opacity="0.68" font-family="Geist Mono, monospace"
+        font-size="${headerLayout.contextSize}" text-anchor="end">${escapeXml(normalized.unitSuffix)}</text>`
     : "";
   const baseline = chartMode === "basis"
     ? `<line class="power-basis__zero" x1="${plot.left}" x2="${plot.right}"
@@ -176,12 +178,12 @@ function powerBasisMarkup(
         pointer-events="none" aria-hidden="true"/>`
     : "";
   const readout = showReadout
-    ? readoutMarkup(latest, chartMode, palette, plot, readoutX(latest), y)
+    ? readoutMarkup(latest, chartMode, palette, plot, readoutX(latest), y, normalized)
     : "";
   const columns = showReadout
     ? interactionColumnMarkup(
         normalized.rows,
-        normalized.location.unit,
+        normalized,
         chartMode,
         plot,
         x,
@@ -189,10 +191,16 @@ function powerBasisMarkup(
         y,
       )
     : "";
-  const ariaLabel = normalized.ariaLabel || defaultAriaLabel(
+  const description = normalized.ariaLabel || defaultAriaLabel(
     safeTitle,
     normalized,
   );
+  const ariaLabel = [normalized.marker, description].filter(Boolean).join(". ");
+  const minimalContext = minimal && !showArtifactHeader
+    ? `<text data-power-basis-context="" x="2%" y="32" fill="${palette.line}"
+        fill-opacity="0.68" font-family="Geist Mono, monospace" font-size="${headerLayout.contextSize}"
+        pointer-events="none">${escapeXml([normalized.marker.toUpperCase(), normalized.unitSuffix].filter(Boolean).join(" · "))}</text>`
+    : "";
   const inner = `
     <desc>${escapeXml(ariaLabel)}</desc>
     <rect width="${SVG_WIDTH}" height="${height}" fill="${palette.paper}"/>
@@ -211,12 +219,13 @@ function powerBasisMarkup(
       pointer-events="none" aria-hidden="true"/>
     ${columns}
     ${readout}
+    ${minimalContext}
     ${artifactHeader}`;
 
   return { inner, ariaLabel, height };
 }
 
-function readoutMarkup(row, mode, palette, plot, activeX, y) {
+function readoutMarkup(row, mode, palette, plot, activeX, y, model) {
   const realTimeY = y(mode === "basis" ? row.basis : row.realTime);
   const secondaryDot = mode === "price"
     ? `<circle data-power-basis-secondary-dot="" cx="${coordinate(activeX)}"
@@ -236,24 +245,24 @@ function readoutMarkup(row, mode, palette, plot, activeX, y) {
     ${secondaryDot}
     <text x="2%" y="32" font-family="Geist Mono, monospace" font-size="16"
       letter-spacing="0.04em">
-      <tspan data-power-basis-date="" fill="${palette.line}" font-weight="600">${escapeXml(formatDate(row.date))}</tspan>
+      <tspan data-power-basis-date="" fill="${palette.line}" font-weight="600">${escapeXml(readoutDate(row, model))}</tspan>
     </text>
     <text x="30%" y="32" font-family="Geist Mono, monospace" font-size="16"
       letter-spacing="0.04em">
-      <tspan data-power-basis-real-time="" fill="${palette.line}" font-weight="600">${escapeXml(`RT ${formatPrice(row.realTime)}`)}</tspan>
+      <tspan data-power-basis-real-time="" fill="${palette.line}" font-weight="600">${escapeXml(`RT ${readoutPrice(row.realTime, model)}`)}</tspan>
     </text>
     <text x="52%" y="32" font-family="Geist Mono, monospace" font-size="16"
       letter-spacing="0.04em">
-      <tspan data-power-basis-day-ahead="" fill="${palette.secondary}">${escapeXml(`DA ${formatPrice(row.dayAhead)}`)}</tspan>
+      <tspan data-power-basis-day-ahead="" fill="${palette.secondary}">${escapeXml(`DA ${readoutPrice(row.dayAhead, model)}`)}</tspan>
     </text>
     <text x="74%" y="32" font-family="Geist Mono, monospace" font-size="16"
       letter-spacing="0.04em">
-      <tspan data-power-basis-value="" fill="${palette.secondary}">${escapeXml(`SPREAD ${formatBasis(row.basis)}`)}</tspan>
+      <tspan data-power-basis-value="" fill="${palette.secondary}">${escapeXml(`SPREAD ${readoutPrice(row.basis, model, true)}`)}</tspan>
     </text>
   </g>`;
 }
 
-function interactionColumnMarkup(rows, unit, mode, plot, x, readoutX, y) {
+function interactionColumnMarkup(rows, model, mode, plot, x, readoutX, y) {
   const sampled = sampleInteractionRows(rows);
   return sampled
     .map((row, index) => {
@@ -269,11 +278,11 @@ function interactionColumnMarkup(rows, unit, mode, plot, x, readoutX, y) {
           data-timestamp="${escapeXml(row.timestamp)}"
           data-x="${coordinate(markerX)}" data-primary-y="${coordinate(primaryY)}"
           data-secondary-y="${coordinate(secondaryY)}"
-          data-date="${escapeXml(formatDate(row.date))}"
-          data-real-time="${escapeXml(formatPrice(row.realTime))}"
-          data-day-ahead="${escapeXml(formatPrice(row.dayAhead))}"
-          data-basis="${escapeXml(formatBasis(row.basis))}"
-          data-aria-label="${escapeXml(rowAriaLabel(row, unit))}">
+          data-date="${escapeXml(readoutDate(row, model))}"
+          data-real-time="${escapeXml(readoutPrice(row.realTime, model))}"
+          data-day-ahead="${escapeXml(readoutPrice(row.dayAhead, model))}"
+          data-basis="${escapeXml(readoutPrice(row.basis, model, true))}"
+          data-aria-label="${escapeXml(rowAriaLabel(row, model))}">
         <rect x="${coordinate(left)}" y="${plot.top}"
           width="${coordinate(Math.max(1, right - left))}"
           height="${coordinate(plot.bottom - plot.top)}"
@@ -418,11 +427,18 @@ function normalizeModel(model) {
   }
   const latestSource = normalizeRow(model.latest);
   const latest = latestSource || rows.at(-1);
+  const energy = Boolean(model.energy);
+  const unit = model.unit || model.energy?.unit || model.location.unit || "USD per MWh";
   return {
     location: model.location,
     range: model.range,
     rows,
     latest,
+    unit,
+    unitSuffix: unit === "USD per GPU-hour" ? "/GPU-h" : unit === "USD per MWh" ? "/MWh" : ` ${unit}`,
+    precision: model.precision === 4 || energy ? 4 : 2,
+    marker: energy || model.kind === "estimate" ? "Estimate"
+      : ["showcase", "scenario"].includes(model.kind) ? "Demo" : "",
     ariaLabel: typeof model.ariaLabel === "string" ? model.ariaLabel.trim() : "",
   };
 }
@@ -509,21 +525,29 @@ function normalizeColors(colors) {
 
 function defaultAriaLabel(title, model) {
   const latest = model.latest;
-  const unit = model.location.unit || "USD per MWh";
+  const unit = model.unit;
   const market = model.location.market
     ? ` in ${model.location.market}`
     : "";
-  return `${title}${market}. Real-time power ${formatPrice(latest.realTime)} ${unit}. ` +
-    `Day-ahead power ${formatPrice(latest.dayAhead)} ${unit}. ` +
-    `Spread ${formatBasis(latest.basis)} ${unit}. ` +
+  return `${title}${market}. Real-time power ${formatPrice(latest.realTime, model.precision)} ${unit}. ` +
+    `Day-ahead power ${formatPrice(latest.dayAhead, model.precision)} ${unit}. ` +
+    `Spread ${formatBasis(latest.basis, model.precision)} ${unit}. ` +
     `${formatRange(model.range)} history.`;
 }
 
-function rowAriaLabel(row, unit) {
-  const suffix = unit ? ` ${unit}` : "";
-  return `${formatDate(row.date)}. Real time ${formatPrice(row.realTime)}${suffix}. ` +
-    `Day ahead ${formatPrice(row.dayAhead)}${suffix}. ` +
-    `Spread ${formatBasis(row.basis)}${suffix}.`;
+function rowAriaLabel(row, model) {
+  const suffix = ` ${model.unit}`;
+  return `${readoutDate(row, model)}. Real time ${formatPrice(row.realTime, model.precision)}${suffix}. ` +
+    `Day ahead ${formatPrice(row.dayAhead, model.precision)}${suffix}. ` +
+    `Spread ${formatBasis(row.basis, model.precision)}${suffix}.`;
+}
+
+function readoutPrice(value, model, signed = false) {
+  return `${signed ? formatBasis(value, model.precision) : formatPrice(value, model.precision)}${model.unitSuffix}`;
+}
+
+function readoutDate(row, model) {
+  return [model.marker.toUpperCase(), formatDate(row.date)].filter(Boolean).join(" · ");
 }
 
 function formatRange(range) {
@@ -533,19 +557,19 @@ function formatRange(range) {
   return String(value || "").trim().toUpperCase();
 }
 
-function formatPrice(value) {
+function formatPrice(value, precision = 2) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "N/A";
   return amount < 0
-    ? `−$${Math.abs(amount).toFixed(2)}`
-    : `$${amount.toFixed(2)}`;
+    ? `−$${Math.abs(amount).toFixed(precision)}`
+    : `$${amount.toFixed(precision)}`;
 }
 
-function formatBasis(value) {
+function formatBasis(value, precision = 2) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "N/A";
   const sign = amount > 0 ? "+" : amount < 0 ? "−" : "";
-  return `${sign}$${Math.abs(amount).toFixed(2)}`;
+  return `${sign}$${Math.abs(amount).toFixed(precision)}`;
 }
 
 function formatDate(date) {

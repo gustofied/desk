@@ -7,13 +7,14 @@ import { EQUITY_LAYERS, paletteIds, THEMES } from "./card-registry.js";
 import { createSharedDesk } from "./shared-desk.js";
 
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 7;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6]);
+const STORAGE_VERSION = 8;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
 const PRIVATE_CATALOG_ID = "private";
 const EQUITIES_CATALOG_ID = "equities";
+const POWER_CATALOG_ID = "power";
 const LEGACY_QUOTE_KEY = "preset-quote-view-quote-041";
 const STARTER_CATALOGS = Object.freeze([
   Object.freeze({
@@ -57,6 +58,15 @@ const STARTER_CATALOGS = Object.freeze([
     name: "Equities",
     keys: Object.freeze(EQUITY_LAYERS.map((layer) =>
       `preset-equities-${layer.id.toLowerCase()}`)),
+  }),
+  Object.freeze({
+    id: POWER_CATALOG_ID,
+    name: "Power",
+    keys: Object.freeze([
+      "preset-power-basis-pjm-dominion",
+      "preset-power-basis-ercot-north",
+      "preset-power-basis-gpu-energy",
+    ]),
   }),
 ]);
 const MAX_COLLECTIONS = 16;
@@ -589,13 +599,16 @@ function migrateLegacyState(value) {
   });
   const now = new Date().toISOString();
   let collections = [...legacyState.collections];
-  // v5/v6 already record intentional starter removals. Introduce only the new
-  // Equities catalog; never restore an older collection the user deleted.
-  const additions = sourceVersion >= 4
-    ? STARTER_CATALOGS.filter((catalog) => catalog.id === EQUITIES_CATALOG_ID)
-    : sourceVersion === 2
-      ? STARTER_CATALOGS.filter((catalog) => catalog.id !== PRIVATE_CATALOG_ID)
-      : STARTER_CATALOGS;
+  // Introduce only starters newer than the stored schema. In particular v7
+  // remembers Equities removals, so upgrading it must introduce Power alone.
+  const additions = sourceVersion >= 7
+    ? STARTER_CATALOGS.filter((catalog) => catalog.id === POWER_CATALOG_ID)
+    : sourceVersion >= 4
+      ? STARTER_CATALOGS.filter((catalog) =>
+          [EQUITIES_CATALOG_ID, POWER_CATALOG_ID].includes(catalog.id))
+      : sourceVersion === 2
+        ? STARTER_CATALOGS.filter((catalog) => catalog.id !== PRIVATE_CATALOG_ID)
+        : STARTER_CATALOGS;
   for (const starter of additions) {
     const starterName = starter.name.toLocaleLowerCase();
     const exists = collections.some(

@@ -83,7 +83,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     nodes.context.title = nodes.context.textContent;
     nodes.toggle?.setAttribute("aria-label", toggleLabel(model));
     for (const section of nodes.apiSections) section.hidden = sourceOnly;
-    if (nodes.source) nodes.source.hidden = !sourceOnly;
+    if (nodes.source) nodes.source.hidden = !sourceOnly && !model.description;
     if (nodes.sourceDescription) nodes.sourceDescription.textContent = model.description || "";
     if (nodes.sourceLink) {
       nodes.sourceLink.hidden = !model.sourceUrl;

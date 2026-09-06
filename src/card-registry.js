@@ -189,7 +189,21 @@ export const POWER_BASIS_LAYERS = Object.freeze([
     label: "PJM West",
     shortLabel: "PJM WEST",
     unit: "usd-mwh",
-    views: Object.freeze(["price", "basis"]),
+    views: Object.freeze(["price", "basis", "energy"]),
+  }),
+  Object.freeze({
+    id: "PJM-DOMINION",
+    label: "PJM Dominion",
+    shortLabel: "PJM DOMINION",
+    unit: "usd-mwh",
+    views: Object.freeze(["price", "basis", "energy"]),
+  }),
+  Object.freeze({
+    id: "ERCOT-NORTH",
+    label: "ERCOT North",
+    shortLabel: "ERCOT NORTH",
+    unit: "usd-mwh",
+    views: Object.freeze(["price", "basis", "energy"]),
   }),
 ]);
 
@@ -435,7 +449,7 @@ export const CARD_REGISTRY = Object.freeze([
       palette: DEFAULT_PALETTE,
       theme: DEFAULT_THEME,
     }),
-    ranges: Object.freeze(["1d", "7d", "all"]),
+    ranges: Object.freeze(["1d", "7d", "90d", "1y", "all"]),
     allowComparisons: false,
     layers: POWER_BASIS_LAYERS,
     catalogPresets: Object.freeze([
@@ -453,10 +467,26 @@ export const CARD_REGISTRY = Object.freeze([
           range: "7d",
         }),
       }),
+      Object.freeze({
+        id: "pjm-dominion",
+        label: "PJM Dominion",
+        state: Object.freeze({ location: "PJM-DOMINION", scale: "price", range: "1d" }),
+      }),
+      Object.freeze({
+        id: "ercot-north",
+        label: "ERCOT North",
+        state: Object.freeze({ location: "ERCOT-NORTH", scale: "price", range: "1d" }),
+      }),
+      Object.freeze({
+        id: "gpu-energy",
+        label: "GPU energy",
+        state: Object.freeze({ location: "PJM-DOMINION", scale: "energy", range: "1d" }),
+      }),
     ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Price", unit: "usd-mwh" }),
       Object.freeze({ id: "basis", label: "Spread", unit: "usd-mwh" }),
+      Object.freeze({ id: "energy", label: "GPU energy", unit: "usd-gpu-hour" }),
     ]),
   }),
   Object.freeze({

@@ -11,6 +11,8 @@ import { SAVED_CATALOG_STORAGE_KEY } from "../src/saved-catalog.js";
 const DATE = "2026-09-06T12:00:00.000Z";
 const EQUITIES_KEYS = ["MSFT", "AMZN", "GOOGL", "ORCL", "CRWV", "NBIS", "NVDA", "AMD", "TSM"]
   .map(ticker => `preset-equities-${ticker.toLowerCase()}`);
+const POWER_KEYS = ["pjm-dominion", "ercot-north", "gpu-energy"]
+  .map(id => `preset-power-basis-${id}`);
 const STATES = {
   "gpu-index": { gpu: "H100", layers: ["H100", "H200"], range: "1d", scale: "spread" },
   "gpu-price-snapshot": { gpu: "B200", layers: ["H100", "B200"] },
@@ -30,7 +32,7 @@ function snapshot(name = "Shared Desk") {
 function collection(id = "existing", name = "Existing") {
   return { id, name, keys: ["preset-existing-view"], createdAt: DATE, updatedAt: DATE };
 }
-function envelope(collections = [collection()], version = 7, activeId = collections[0]?.id ?? "all") {
+function envelope(collections = [collection()], version = 8, activeId = collections[0]?.id ?? "all") {
   return { version, collections, activeId };
 }
 function harness(t, initial = envelope()) {
@@ -78,7 +80,7 @@ test("shared saving embeds all six families in order with a single atomic collec
   const h = harness(t);
   const input = snapshot();
   const result = saveSharedDeskCollection(input);
-  assert.equal(result.version, 7);
+  assert.equal(result.version, 8);
   assert.equal(result.activeId, "existing");
   assert.deepEqual(result.collections[0], collection());
   const added = result.collections.at(-1);
@@ -108,10 +110,10 @@ test("shared saving embeds all six families in order with a single atomic collec
 test("saving to absent storage seeds starter collections and the shared collection in one write", t => {
   const h = harness(t, null);
   const result = saveSharedDeskCollection(snapshot());
-  assert.deepEqual(result.collections.slice(0, 4).map(item => item.id), ["overview", "hedge", "private", "equities"]);
-  assert.equal(result.collections.length, 5);
+  assert.deepEqual(result.collections.slice(0, 5).map(item => item.id), ["overview", "hedge", "private", "equities", "power"]);
+  assert.equal(result.collections.length, 6);
   assert.equal(h.storage.writes.length, 1);
-  assert.equal(h.stored().version, 7);
+  assert.equal(h.stored().version, 8);
 });
 
 test("repeated normalized names receive unique suffixes without exceeding 48 characters", t => {
@@ -209,28 +211,29 @@ test("removing selected keys retains embedded definitions so views can be re-add
   assert.deepEqual(current.keys, [secondKey]);
 });
 
-test("v5 migration adds only Equities and never recreates removed older starters", t => {
+test("v5 migration adds only Equities and Power and never recreates removed older starters", t => {
   const existing = collection("custom", "Only custom");
   const h = harness(t, envelope([existing], 5, "custom"));
   const result = loadCatalogCollections();
-  assert.equal(result.version, 7);
+  assert.equal(result.version, 8);
   assert.equal(result.activeId, "custom");
   assert.deepEqual(result.collections[0], existing);
-  assert.deepEqual(result.collections.map(item => item.id), ["custom", "equities"]);
+  assert.deepEqual(result.collections.map(item => item.id), ["custom", "equities", "power"]);
   assert.equal(result.collections[1].name, "Equities");
   assert.deepEqual(result.collections[1].keys, EQUITIES_KEYS);
+  assert.deepEqual(result.collections[2].keys, POWER_KEYS);
   assert.equal(h.storage.writes.length, 1);
-  assert.deepEqual(h.stored(), envelope(result.collections, 7, "custom"));
+  assert.deepEqual(h.stored(), envelope(result.collections, 8, "custom"));
   loadCatalogCollections();
   assert.equal(h.storage.writes.length, 1);
 });
 
-test("an empty v5 list receives only Equities without recreating older starters", t => {
+test("an empty v5 list receives only Equities and Power without recreating older starters", t => {
   const h = harness(t, envelope([], 5, "all"));
   const result = loadCatalogCollections();
-  assert.deepEqual(result.collections.map(item => item.id), ["equities"]);
+  assert.deepEqual(result.collections.map(item => item.id), ["equities", "power"]);
   assert.deepEqual(result.collections[0].keys, EQUITIES_KEYS);
-  assert.deepEqual(h.stored(), envelope(result.collections, 7, "all"));
+  assert.deepEqual(h.stored(), envelope(result.collections, 8, "all"));
   assert.equal(h.storage.writes.length, 1);
 });
 
@@ -241,9 +244,9 @@ test("versions 1–4 preserve legacy starter-addition behavior during migration"
     const beforeWrites = h.storage.writes.length;
     const result = loadCatalogCollections();
     const additions = version === 4 ? [] : version === 2 ? ["overview", "hedge"] : ["overview", "hedge", "private"];
-    assert.deepEqual(result.collections.map(item => item.id), ["existing", ...additions, "equities"]);
+    assert.deepEqual(result.collections.map(item => item.id), ["existing", ...additions, "equities", "power"]);
     assert.deepEqual(result.collections[0], collection());
-    assert.equal(result.version, 7);
+    assert.equal(result.version, 8);
     assert.equal(h.storage.writes.length, beforeWrites + 1);
   }
 });
@@ -251,10 +254,10 @@ test("versions 1–4 preserve legacy starter-addition behavior during migration"
 test("saving into v5 migrates and adds atomically without an intermediate write", t => {
   const h = harness(t, envelope([collection()], 5));
   const result = saveSharedDeskCollection(snapshot());
-  assert.equal(result.collections.length, 3);
+  assert.equal(result.collections.length, 4);
   assert.deepEqual(result.collections[0], collection());
   assert.equal(h.storage.writes.length, 1);
-  assert.equal(h.stored().version, 7);
+  assert.equal(h.stored().version, 8);
 });
 
 test("invalid stored embedded definitions reject the whole store without writing repairs", t => {
@@ -288,7 +291,7 @@ test("invalid stored embedded definitions reject the whole store without writing
 
 test("corrupt JSON and unsupported versions block saves without modifying either store", t => {
   const h = harness(t);
-  for (const raw of ["broken JSON", "null", "[]", JSON.stringify(envelope([], 99)), JSON.stringify({ version: 7, collections: {} })]) {
+  for (const raw of ["broken JSON", "null", "[]", JSON.stringify(envelope([], 99)), JSON.stringify({ version: 8, collections: {} })]) {
     h.values.set(CATALOG_COLLECTIONS_STORAGE_KEY, raw);
     assertSaveBlocked(h);
     const writes = h.storage.writes.length;
@@ -392,14 +395,14 @@ test("a planned embedded key colliding with an ordinary selected key forces a fr
 test("read-only loading absent storage returns starters without persisting a seed", t => {
   const h = harness(t, null);
   const result = loadCatalogCollections({ readOnly: true });
-  assert.equal(result.version, 7);
+  assert.equal(result.version, 8);
   assert.equal(result.unavailable, false);
-  assert.deepEqual(result.collections.map(item => item.id), ["overview", "hedge", "private", "equities"]);
+  assert.deepEqual(result.collections.map(item => item.id), ["overview", "hedge", "private", "equities", "power"]);
   assert.equal(h.raw(), undefined);
   assert.equal(h.storage.writes.length, 0);
   assert.equal(h.values.get(SAVED_CATALOG_STORAGE_KEY), h.savedSentinel);
   const saved = saveSharedDeskCollection(snapshot());
-  assert.equal(saved.collections.length, 5);
+  assert.equal(saved.collections.length, 6);
   assert.equal(h.storage.writes.length, 1, "explicit copying still seeds and saves atomically");
 });
 
@@ -411,22 +414,22 @@ test("read-only loading migrates v5 and v6 in memory without writes or recreatin
     const before = h.raw();
     const writes = h.storage.writes.length;
     const result = loadCatalogCollections({ readOnly: true });
-    assert.equal(result.version, 7);
+    assert.equal(result.version, 8);
     assert.equal(result.activeId, "custom");
     assert.deepEqual(result.collections[0], existing);
-    assert.deepEqual(result.collections.map(item => item.id), ["custom", "equities"]);
+    assert.deepEqual(result.collections.map(item => item.id), ["custom", "equities", "power"]);
     assert.deepEqual(result.collections[1].keys, EQUITIES_KEYS);
     assert.equal(h.raw(), before);
     assert.equal(h.storage.writes.length, writes);
     loadCatalogCollections();
-    assert.equal(h.stored().version, 7, "ordinary loads still persist migration");
+    assert.equal(h.stored().version, 8, "ordinary loads still persist migration");
     assert.equal(h.storage.writes.length, writes + 1);
   }
 });
 
 test("read-only loading invalid or inaccessible storage safely reports unavailable without repairs", t => {
   const h = harness(t);
-  for (const raw of ["broken JSON", JSON.stringify(envelope([], 99)), JSON.stringify({ version: 7, collections: {} })]) {
+  for (const raw of ["broken JSON", JSON.stringify(envelope([], 99)), JSON.stringify({ version: 8, collections: {} })]) {
     h.values.set(CATALOG_COLLECTIONS_STORAGE_KEY, raw);
     const result = loadCatalogCollections({ readOnly: true });
     assert.equal(result.unavailable, true);
@@ -543,15 +546,16 @@ test("v6 migration adds Equities exactly once while preserving embedded collecti
   h.values.set(CATALOG_COLLECTIONS_STORAGE_KEY, JSON.stringify(envelope(existing, 6, activeId)));
   const writes = h.storage.writes.length;
   const result = loadCatalogCollections();
-  assert.equal(result.version, 7);
+  assert.equal(result.version, 8);
   assert.equal(result.activeId, activeId);
   assert.deepEqual(result.collections.slice(0, existing.length), existing);
-  assert.deepEqual(result.collections.at(-1).keys, EQUITIES_KEYS);
-  assert.equal(result.collections.at(-1).id, "equities");
-  assert.equal(result.collections.at(-1).name, "Equities");
+  assert.deepEqual(result.collections.at(-2).keys, EQUITIES_KEYS);
+  assert.equal(result.collections.at(-2).id, "equities");
+  assert.equal(result.collections.at(-2).name, "Equities");
+  assert.deepEqual(result.collections.at(-1).keys, POWER_KEYS);
   assert.equal(h.storage.writes.length, writes + 1);
   assert.deepEqual(loadCatalogCollections(), result);
-  assert.equal(h.storage.writes.length, writes + 1, "schema 7 reload must not seed again");
+  assert.equal(h.storage.writes.length, writes + 1, "schema 8 reload must not seed again");
 });
 
 test("v5 and v6 migrations avoid Equities duplicates by ID or case-insensitive name", t => {
@@ -561,10 +565,12 @@ test("v5 and v6 migrations avoid Equities duplicates by ID or case-insensitive n
       const initial = [collection(), existing];
       h.values.set(CATALOG_COLLECTIONS_STORAGE_KEY, JSON.stringify(envelope(initial, version, existing.id)));
       const result = loadCatalogCollections();
-      assert.equal(result.version, 7);
+      assert.equal(result.version, 8);
       assert.equal(result.activeId, existing.id);
-      assert.deepEqual(result.collections, initial);
-      assert.deepEqual(h.stored().collections, initial);
+      assert.deepEqual(result.collections.slice(0, initial.length), initial);
+      assert.deepEqual(h.stored().collections.slice(0, initial.length), initial);
+      assert.equal(result.collections.length, initial.length + 1);
+      assert.deepEqual(result.collections.at(-1).keys, POWER_KEYS);
     }
   }
 });
@@ -575,25 +581,25 @@ test("a full legacy catalog skips the Equities seed without removing existing co
   for (const version of [5, 6]) {
     h.values.set(CATALOG_COLLECTIONS_STORAGE_KEY, JSON.stringify(envelope(initial, version, "kept-15")));
     const result = loadCatalogCollections();
-    assert.equal(result.version, 7);
+    assert.equal(result.version, 8);
     assert.equal(result.activeId, "kept-15");
     assert.deepEqual(result.collections, initial);
     assert.deepEqual(h.stored().collections, initial);
-    assert.equal(h.stored().version, 7);
+    assert.equal(h.stored().version, 8);
   }
 });
 
-test("deleting Equities from schema 7 persists and reload never recreates it", t => {
+test("deleting Equities from schema 8 persists and reload never recreates it", t => {
   const h = harness(t, envelope([collection()], 6));
   const migrated = loadCatalogCollections();
   assert.ok(migrated.collections.some(item => item.id === "equities"));
   const deleted = deleteCatalogCollection("equities");
-  assert.equal(deleted.version, 7);
-  assert.deepEqual(deleted.collections, [collection()]);
+  assert.equal(deleted.version, 8);
+  assert.deepEqual(deleted.collections.map(item => item.id), ["existing", "power"]);
   const before = h.raw();
   const writes = h.storage.writes.length;
-  assert.deepEqual(loadCatalogCollections().collections, [collection()]);
-  assert.deepEqual(loadCatalogCollections({ readOnly: true }).collections, [collection()]);
+  assert.deepEqual(loadCatalogCollections().collections, deleted.collections);
+  assert.deepEqual(loadCatalogCollections({ readOnly: true }).collections, deleted.collections);
   assert.equal(h.raw(), before);
   assert.equal(h.storage.writes.length, writes);
 });
@@ -617,7 +623,7 @@ test("an embedded equities comparison copies its full state and survives owner d
   const reloaded = loadCatalogCollections();
   assert.equal(reloaded.unavailable, false);
   assert.deepEqual(reloaded.collections[0].views, owner.views);
-  assert.equal(h.stored().version, 7);
+  assert.equal(h.stored().version, 8);
   assert.equal(h.values.get(SAVED_CATALOG_STORAGE_KEY), h.savedSentinel);
 });
 
@@ -670,4 +676,85 @@ test("the All equity collection alias does not repair other malformed embedded f
     assertSaveBlocked(h);
   }
   assert.equal(h.storage.writes.length, 0);
+});
+
+test("schema 7 gains exactly the Power starter without restoring removed collections or changing saved West views", t => {
+  const west = normalizeCardVisualization("power-basis", { location: "PJM-WEST", scale: "basis", range: "all" });
+  const existing = { ...collection("custom", "Custom West"), keys: ["desk-custom-west"],
+    views: [{ key: "desk-custom-west", cardId: "power-basis", name: "My West basis", state: west }],
+  };
+  const h = harness(t, envelope([existing], 7, "custom"));
+  const raw = h.raw();
+  const preview = loadCatalogCollections({ readOnly: true });
+  assert.equal(preview.version, 8);
+  assert.equal(preview.activeId, "custom");
+  assert.deepEqual(preview.collections.map(item => item.id), ["custom", "power"]);
+  assert.deepEqual(preview.collections[0], existing);
+  assert.deepEqual(preview.collections[1].keys, POWER_KEYS);
+  assert.equal(preview.collections[1].name, "Power");
+  assert.equal(h.raw(), raw);
+  assert.equal(h.storage.writes.length, 0);
+  const migrated = loadCatalogCollections();
+  assert.deepEqual(migrated.collections[0], existing);
+  assert.deepEqual(migrated.collections[1].keys, POWER_KEYS);
+  assert.equal(h.storage.writes.length, 1);
+  assert.equal(h.stored().version, 8);
+  loadCatalogCollections();
+  assert.equal(h.storage.writes.length, 1);
+  assert.equal(h.values.get(SAVED_CATALOG_STORAGE_KEY), h.savedSentinel);
+});
+
+test("Power migration preserves renamed or case-insensitive existing Power catalogs and full storage", t => {
+  const h = harness(t);
+  for (const initial of [
+    [collection("power", "Renamed power")],
+    [collection("custom-power", "pOwEr")],
+    Array.from({ length: 16 }, (_, index) => collection(`kept-${index}`, `Kept ${index}`)),
+  ]) {
+    const activeId = initial.at(-1).id;
+    h.values.set(CATALOG_COLLECTIONS_STORAGE_KEY, JSON.stringify(envelope(initial, 7, activeId)));
+    const result = loadCatalogCollections();
+    assert.equal(result.version, 8);
+    assert.equal(result.activeId, activeId);
+    assert.deepEqual(result.collections, initial);
+  }
+});
+
+test("Power is added to empty schema 7 only once and deletion persists in schema 8", t => {
+  const h = harness(t, envelope([], 7));
+  const migrated = loadCatalogCollections();
+  assert.deepEqual(migrated.collections.map(item => item.id), ["power"]);
+  assert.deepEqual(migrated.collections[0].keys, POWER_KEYS);
+  deleteCatalogCollection("power");
+  const raw = h.raw();
+  const writes = h.storage.writes.length;
+  assert.deepEqual(loadCatalogCollections().collections, []);
+  assert.deepEqual(loadCatalogCollections({ readOnly: true }).collections, []);
+  assert.equal(h.raw(), raw);
+  assert.equal(h.storage.writes.length, writes);
+});
+
+test("new starter Power contains exactly three views while Overview keeps both legacy West keys", t => {
+  harness(t, null);
+  const { collections } = loadCatalogCollections({ readOnly: true });
+  assert.deepEqual(collections.find(item => item.id === "power").keys, POWER_KEYS);
+  const overview = collections.find(item => item.id === "overview");
+  assert(overview.keys.includes("preset-power-basis-pjm-west"));
+  assert(overview.keys.includes("preset-power-basis-pjm-west-spread"));
+  assert(POWER_KEYS.every(key => !overview.keys.includes(key)));
+});
+
+test("saving an energy desk during schema 7 migration is atomic and survives independent copying", t => {
+  const h = harness(t, envelope([collection()], 7));
+  const energy = normalizeCardVisualization("power-basis", { location: "PJM-DOMINION", scale: "energy", range: "1y" });
+  const input = { name: "Energy desk", entries: [{ cardId: "power-basis", name: "GPU energy", state: energy }], palette: "linen", theme: "dark" };
+  const result = saveSharedDeskCollection(input);
+  assert.equal(h.storage.writes.length, 1);
+  assert.deepEqual(result.collections.map(item => item.id).slice(0, 2), ["existing", "power"]);
+  const owner = result.collections.at(-1);
+  assert.deepEqual(owner.views[0].state, energy);
+  addCatalogCollectionKey("existing", owner.keys[0]);
+  deleteCatalogCollection(owner.id);
+  assert.deepEqual(loadCatalogCollections().collections[0].views[0].state, energy);
+  assert.equal(h.values.get(SAVED_CATALOG_STORAGE_KEY), h.savedSentinel);
 });

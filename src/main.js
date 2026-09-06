@@ -676,8 +676,9 @@ if (root) {
         } else if (definition.renderer === "power-basis") {
           const model = createPowerModel(cardState, payload);
           displayValue = cardState.scale === "basis"
-            ? formatSignedPowerPrice(model.latest.basis) : formatPowerPrice(model.latest.realTime);
-          displayUnit = "/MWh";
+            ? formatSignedPowerPrice(model.latest.basis, model.precision)
+            : formatPowerPrice(model.latest.realTime, model.precision);
+          displayUnit = model.energy ? "/GPU-h" : "/MWh";
           timestamp = model.latest.timestamp;
         } else {
           const series = cardSeriesForState(cardState, { definition });
@@ -1971,7 +1972,9 @@ if (root) {
     if (isBarCard) return "Latest prices";
     if (isDepthCard) return `H100 depth ${state.options.target} nodes`;
     if (isPowerCard) {
-      return getLayerDefinition(cardDefinition, state.selected)?.label || "Power prices";
+      const location = getLayerDefinition(cardDefinition, state.selected)?.label || "Power prices";
+      return state.scale === "energy" ? `GPU energy · ${location}`
+        : state.scale === "basis" ? `${location} spread` : location;
     }
     if (isQuoteCard) {
       const id = state.runtimePayload?.id || "041";
@@ -4949,7 +4952,8 @@ if (root) {
       const selected = button.dataset.gpuRange === state.range;
       const unavailable =
         isBarCard || isDealCard || (state.mode === "craft" && state.craftEmpty);
-      const supported = cardDefinition.ranges?.includes(button.dataset.gpuRange);
+      const supported = cardDefinition.ranges?.includes(button.dataset.gpuRange) &&
+        !(isPowerCard && button.dataset.gpuRange === "all" && state.range !== "all");
       button.hidden = !supported;
       if (supported) {
         button.textContent = rangeControlLabel(button.dataset.gpuRange);
@@ -5040,12 +5044,13 @@ if (root) {
       try {
         const model = createPowerModel(currentCardState(), state.runtimePayload);
         if (nodes.mobileSummaryLabel) {
-          nodes.mobileSummaryLabel.textContent = model.location.shortLabel || model.location.label;
+          nodes.mobileSummaryLabel.textContent = model.energy ? "GPU energy · H100"
+            : model.location.shortLabel || model.location.label;
         }
         if (nodes.mobileSummaryValue) {
           nodes.mobileSummaryValue.textContent = state.scale === "basis"
-            ? formatSignedPowerPrice(model.latest.basis)
-            : formatPowerPrice(model.latest.realTime);
+            ? formatSignedPowerPrice(model.latest.basis, model.precision)
+            : formatPowerPrice(model.latest.realTime, model.precision);
         }
         if (nodes.mobileSummaryRange) {
           nodes.mobileSummaryRange.textContent = rangeControlLabel(state.range);
@@ -5691,6 +5696,7 @@ if (root) {
     if (state.craftEmpty) return "Craft";
     if (state.catalogName) return state.catalogName;
     if (isPowerCard) {
+      if (state.scale === "energy") return "GPU energy";
       return getLayerDefinition(cardDefinition, state.selected)?.label || cardDefinition.title;
     }
     if (cardDefinition.renderer !== "line") return cardDefinition.title;
@@ -6066,11 +6072,11 @@ if (root) {
   function syncPowerShareStatus(model) {
     const observed = model.rows.at(-1)?.date;
     const value = state.scale === "basis"
-      ? formatSignedPowerPrice(model.latest.basis)
-      : formatPowerPrice(model.latest.realTime);
+      ? formatSignedPowerPrice(model.latest.basis, model.precision)
+      : formatPowerPrice(model.latest.realTime, model.precision);
     if (nodes.shareStatus) {
       nodes.shareStatus.textContent =
-        `${model.location.label} ${ranges[state.range].label} ${value}`;
+        `${model.energy ? "GPU energy · " : ""}${model.location.label} ${ranges[state.range].label} ${value} ${model.energy ? "/GPU-h · Estimate" : "/MWh · Demo"}`;
     }
     if (nodes.shareObserved && observed) {
       nodes.shareObserved.textContent = formatUtcDateTime(observed);
@@ -6078,8 +6084,7 @@ if (root) {
     }
     nodes.shareArtifactSvg?.setAttribute(
       "aria-label",
-      `${model.location.label}. Real time ${formatPowerPrice(model.latest.realTime)} per megawatt-hour. ` +
-        `Day ahead ${formatPowerPrice(model.latest.dayAhead)}. Spread ${formatSignedPowerPrice(model.latest.basis)}.`,
+      model.ariaLabel,
     );
   }
 
@@ -6305,6 +6310,7 @@ if (root) {
     return createPowerBasisModel(sourcePayload, definition, {
       locationId: normalized.gpu,
       range: normalized.range,
+      mode: normalized.scale,
     });
   }
 
@@ -6325,7 +6331,7 @@ if (root) {
     const palette = cardPalette(currentCardState());
     paintPowerBasisChart(nodes.shareArtifactSvg, model, {
       colors: palette,
-      title: state.catalogName || model.location.label,
+      title: state.catalogName || (model.energy ? "GPU energy" : model.location.label),
       mode: state.scale,
       compact: true,
       artifact: true,
@@ -6344,7 +6350,7 @@ if (root) {
     ) {
       paintPowerBasisChart(nodes.svg, model, {
         colors: palette,
-        title: state.catalogName || model.location.label,
+        title: state.catalogName || (model.energy ? "GPU energy" : model.location.label),
         mode: state.scale,
         reducedMotion: reducedMotion || motion !== "reveal",
         interactive: true,
@@ -6579,8 +6585,7 @@ if (root) {
         const model = createPowerModel(cardState, payload);
         cardNodes.button.setAttribute(
           "aria-label",
-          `Monitor ${title}, ${formatPowerPrice(model.latest.realTime)} real time, ` +
-            `${formatSignedPowerPrice(model.latest.basis)} spread, ${ranges[cardState.range].label}`,
+          `Monitor ${title}. ${model.ariaLabel}`,
         );
         paintPowerBasisChart(cardNodes.artifact, model, {
           colors: cardPalette(displayState),
@@ -7786,19 +7791,19 @@ if (root) {
     return `$${number.toFixed(1)}`;
   }
 
-  function formatPowerPrice(value) {
+  function formatPowerPrice(value, precision = 2) {
     const number = Number(value);
     if (!Number.isFinite(number)) return "pending";
     const sign = number < 0 ? "−" : "";
-    return `${sign}$${Math.abs(number).toFixed(2)}`;
+    return `${sign}$${Math.abs(number).toFixed(precision)}`;
   }
 
-  function formatSignedPowerPrice(value) {
+  function formatSignedPowerPrice(value, precision = 2) {
     const number = Number(value);
     if (!Number.isFinite(number)) return "pending";
-    const rounded = Math.abs(number) < 0.005 ? 0 : number;
+    const rounded = Math.abs(number) < 0.5 * 10 ** -precision ? 0 : number;
     const sign = rounded > 0 ? "+" : rounded < 0 ? "−" : "";
-    return `${sign}$${Math.abs(rounded).toFixed(2)}`;
+    return `${sign}$${Math.abs(rounded).toFixed(precision)}`;
   }
 
   function formatPlotValue(value, scale = state.scale) {

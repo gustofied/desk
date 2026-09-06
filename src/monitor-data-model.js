@@ -187,9 +187,9 @@ function createPriceSnapshotModel(card, model) {
   const endpoint = publicDatasetUrl(card);
   const asOf = new Date(model.asOf * 1000);
   const instruments = model.bars.map((bar) => bar.id);
-  const acceleratorLabel = model.bars.length === 1 ? "accelerator" : "accelerators";
+  const gpuLabel = model.bars.length === 1 ? "GPU" : "GPUs";
   return finalizeModel(card, {
-    summary: `${model.bars.length} ${acceleratorLabel}`,
+    summary: `${model.bars.length} ${gpuLabel}`,
     breadcrumbs: ["Desk", card.dataTable.label, "Snapshot"],
     rowCount: model.bars.length,
     asOf,
@@ -236,8 +236,16 @@ function createPowerBasisDataModel(card, state, model) {
   const latestDate = model.rows.at(-1).date;
 
   return finalizeModel(card, {
-    summary: `${locationLabel} ${range}`,
-    breadcrumbs: ["Desk", card.dataTable.label, locationLabel, range],
+    summary: `${locationLabel} ${model.energy ? "H100 " : ""}${range}`,
+    breadcrumbs: ["Desk", model.energy ? "GPU energy" : card.dataTable.label, locationLabel, range],
+    accessKind: "cli",
+    provenance: model.energy ? "Estimate" : "Demo",
+    description: model.energy
+      ? "H100 · 10.2 kW node max · 8 GPUs · PUE 1.2 assumed. Demo power × kW × PUE ÷ GPUs ÷ 1,000. Energy only—not a delivered bill or GPU rental rate. CLI exports the underlying $/MWh; SQL applies the estimate."
+      : `${model.location.label} · ${model.location.unit}. Generated hourly RT / DA prices—not an exchange feed.`,
+    sourceUrl: model.energy
+      ? "https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html"
+      : null,
     rowCount: model.rows.length,
     asOf: latestDate,
     endpoint,
@@ -471,6 +479,8 @@ function powerBasisSql(card, url, locationId, firstDate, scale) {
   const table = dataFusionTableName(card);
   const select = scale === "basis"
     ? "basis_usd_mwh"
+    : scale === "energy"
+      ? "real_time_price_usd_mwh * 0.00153 AS rt_usd_gpu_hour,\n       day_ahead_price_usd_mwh * 0.00153 AS da_usd_gpu_hour,\n       basis_usd_mwh * 0.00153 AS spread_usd_gpu_hour"
     : "real_time_price_usd_mwh, day_ahead_price_usd_mwh, basis_usd_mwh";
   return `${dataFusionSource(table, url)}
 

@@ -148,8 +148,12 @@
 }
 .desk-market-preview__actions button:hover { opacity: 1; }
 
-/* Quote stems meet the card's bottom edge; Unpin floats over the chart rather
-   than reserving an empty footer beneath it. */
+/* Keep the original preview height, giving the former 32px footer to the
+   absolute, edge-to-edge chart instead. Unpin floats above it. */
+.desk-market-preview:has(.deal-view--quote) .desk-market-preview__chart {
+  box-sizing: content-box;
+  padding-bottom: 32px;
+}
 .desk-market-preview:has(.deal-view--quote) .desk-market-preview__actions {
   position: absolute;
   inset: auto 0 0;

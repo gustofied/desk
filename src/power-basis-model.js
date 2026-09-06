@@ -7,8 +7,19 @@ const EXPECTED_COLUMNS = Object.freeze([
 const RANGE_SECONDS = Object.freeze({
   "1d": 24 * 60 * 60,
   "7d": 7 * 24 * 60 * 60,
+  "90d": 90 * 24 * 60 * 60,
+  "1y": 365 * 24 * 60 * 60,
   all: null,
 });
+const ENERGY_FACTOR = 0.00153;
+const ENERGY_ASSUMPTIONS = Object.freeze({
+  system: "NVIDIA DGX H100",
+  systemPowerKw: 10.2,
+  gpuCount: 8,
+  pue: 1.2,
+  powerBasis: "full-system maximum",
+});
+const ENERGY_NOTICE = "Energy-only sensitivity at assumed full-system maximum; not measured consumption, delivered electricity cost, or compute margin.";
 
 export function createPowerBasisModel(
   payload,
@@ -16,6 +27,7 @@ export function createPowerBasisModel(
   {
     locationId = card?.defaults?.layer,
     range = card?.defaults?.range || "1d",
+    mode = "price",
   } = {},
 ) {
   assertPayload(payload);
@@ -35,14 +47,34 @@ export function createPowerBasisModel(
   assertDataset(payload.dataset, history);
 
   const normalizedRange = normalizeRange(range, card);
+  const normalizedMode = mode === "energy" ? "energy" : mode === "basis" ? "basis" : "price";
+  const isEnergy = normalizedMode === "energy";
+  const priceKind = typeof payload.dataset?.kind === "string" ? payload.dataset.kind : "unknown";
+  const unit = isEnergy ? "USD per GPU-hour" : "USD per MWh";
+  const precision = isEnergy ? 4 : 2;
+  const energy = isEnergy ? Object.freeze({
+    kind: "estimate",
+    unit,
+    precision,
+    factor: ENERGY_FACTOR,
+    assumptions: ENERGY_ASSUMPTIONS,
+    notice: ENERGY_NOTICE,
+    provenance: Object.freeze({
+      priceKind,
+      priceUnit: "USD per MWh",
+      hardwareSourceUrl: "https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html",
+    }),
+  }) : null;
   const rangeSeconds = RANGE_SECONDS[normalizedRange];
-  const rows = Object.freeze(
-    rangeSeconds === null
-      ? [...history]
-      : history.filter(
-          (row) => row.timestamp >= current.timestamp - rangeSeconds,
-        ),
-  );
+  const ranged = rangeSeconds === null ? history
+    : history.filter(row => row.timestamp >= current.timestamp - rangeSeconds);
+  const rows = Object.freeze(isEnergy ? ranged.map(row => Object.freeze({
+    ...row,
+    realTime: row.realTime * ENERGY_FACTOR,
+    dayAhead: row.dayAhead * ENERGY_FACTOR,
+    basis: row.basis * ENERGY_FACTOR,
+    rawPrice: Object.freeze({ realTime: row.realTime, dayAhead: row.dayAhead, basis: row.basis }),
+  })) : [...ranged]);
   const latest = rows.at(-1);
 
   return Object.freeze({
@@ -52,10 +84,21 @@ export function createPowerBasisModel(
     revision: payload.revision,
     asOf: payload.asOf,
     range: normalizedRange,
+    mode: normalizedMode,
+    kind: isEnergy ? "estimate" : priceKind,
+    unit,
+    precision,
+    energy,
+    provenance: Object.freeze({
+      kind: priceKind,
+      notice: ["showcase", "scenario", "demo"].includes(priceKind)
+        ? "Demo power prices, not observed market prices or delivered data-center electricity costs."
+        : "Wholesale power prices, not delivered data-center electricity costs.",
+    }),
     location,
     rows,
     latest,
-    ariaLabel: createAriaLabel(location, latest, normalizedRange),
+    ariaLabel: createAriaLabel(location, latest, normalizedRange, energy),
   });
 }
 
@@ -106,13 +149,16 @@ function normalizeLocations(values) {
         `Power location ${id} currency`,
       );
       const unit = requiredString(value.unit, `Power location ${id} unit`);
-      const intervalMinutes = Number(value.intervalMinutes);
+      const intervalMinutes = value.intervalMinutes;
       if (currency !== "USD" || unit !== "USD per MWh") {
         throw new TypeError(`Power location ${id} has an unsupported price unit`);
       }
-      if (!Number.isInteger(intervalMinutes) || intervalMinutes <= 0) {
+      if (intervalMinutes !== 60) {
         throw new TypeError(`Power location ${id} has an invalid interval`);
       }
+      const timezone = requiredString(value.timezone, `Power location ${id} timezone`);
+      try { new Intl.DateTimeFormat("en-US", { timeZone: timezone }); }
+      catch { throw new TypeError(`Power location ${id} has an invalid timezone`); }
 
       return Object.freeze({
         id,
@@ -122,10 +168,7 @@ function normalizeLocations(values) {
           value.location,
           `Power location ${id} location`,
         ),
-        timezone: requiredString(
-          value.timezone,
-          `Power location ${id} timezone`,
-        ),
+        timezone,
         currency,
         unit,
         intervalMinutes,
@@ -147,12 +190,10 @@ function normalizeSeries(points, locationId) {
           `Invalid power-basis observation for ${locationId} at index ${index}`,
         );
       }
-      const timestamp = Number(point[0]);
-      const realTime = Number(point[1]);
-      const dayAhead = Number(point[2]);
-      const basis = Number(point[3]);
+      const [timestamp, realTime, dayAhead, basis] = point;
       if (
-        !Number.isInteger(timestamp) ||
+        !Number.isSafeInteger(timestamp) ||
+        !Number.isFinite(new Date(timestamp * 1000).getTime()) ||
         timestamp <= previousTimestamp ||
         (previousTimestamp && timestamp - previousTimestamp !== 60 * 60) ||
         !Number.isFinite(realTime) ||
@@ -197,29 +238,31 @@ function normalizeRange(range, card) {
     ? card.defaults.range
     : "1d";
   const normalized = Object.hasOwn(RANGE_SECONDS, range) ? range : fallback;
-  return Array.isArray(card?.ranges) && !card.ranges.includes(normalized)
+  return normalized !== "all" && Array.isArray(card?.ranges) && !card.ranges.includes(normalized)
     ? fallback
     : normalized;
 }
 
-function createAriaLabel(location, latest, range) {
-  const duration =
-    range === "all" ? "all history" : range === "1d" ? "one day" : "seven days";
+function createAriaLabel(location, latest, range, energy) {
+  const duration = { all: "all history", "1d": "one day", "7d": "seven days", "90d": "ninety days", "1y": "one year" }[range];
+  const precision = energy ? 4 : 2;
+  const unit = energy ? "GPU-hour" : "megawatt-hour";
   return (
-    `${location.label} power prices over ${duration}. ` +
-    `Real time ${formatPrice(latest.realTime)}, ` +
-    `day ahead ${formatPrice(latest.dayAhead)}, ` +
-    `spread ${formatSignedPrice(latest.basis)}.`
+    `${location.label} ${energy ? "GPU energy sensitivity" : "power prices"} over ${duration}. ` +
+    `Real time ${formatPrice(latest.realTime, precision, unit)}, ` +
+    `day ahead ${formatPrice(latest.dayAhead, precision, unit)}, ` +
+    `spread ${formatSignedPrice(latest.basis, precision, unit)}.` +
+    (energy ? ` Assumes a 10.2 kilowatt full-system maximum across eight GPUs and PUE 1.2. ${energy.notice}` : "")
   );
 }
 
-function formatPrice(value) {
-  return `${value < 0 ? "minus " : ""}$${Math.abs(value).toFixed(2)} per megawatt-hour`;
+function formatPrice(value, precision, unit) {
+  return `${value < 0 ? "minus " : ""}$${Math.abs(value).toFixed(precision)} per ${unit}`;
 }
 
-function formatSignedPrice(value) {
+function formatSignedPrice(value, precision, unit) {
   const direction = value > 0 ? "plus " : value < 0 ? "minus " : "";
-  return `${direction}$${Math.abs(value).toFixed(2)} per megawatt-hour`;
+  return `${direction}$${Math.abs(value).toFixed(precision)} per ${unit}`;
 }
 
 function requiredString(value, label) {

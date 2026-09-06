@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  CARD_REGISTRY, EQUITY_LAYERS, RANGES, cardStateParamIds,
+  CARD_REGISTRY, EQUITY_LAYERS, POWER_BASIS_LAYERS, RANGES, cardStateParamIds,
   getCardDefinition, normalizeCardState, publishedCardSharePath, serializeLayerIds,
 } from "../src/card-registry.js";
 import { createCardDocument, normalizeCardDocument, normalizeCardVisualization } from "../src/card-document.js";
+import { createSharedDesk, decodeSharedDesk, encodeSharedDesk } from "../src/shared-desk.js";
+import { createMarketWatchlist } from "../src/market-watchlist.js";
 
 const SYMBOLS = ["MSFT", "AMZN", "GOOGL", "ORCL", "CRWV", "NBIS", "NVDA", "AMD", "TSM"];
 
@@ -96,7 +98,7 @@ test("equities cannot select compute as the primary or use spread, and old cards
   assert.deepEqual([state.symbol, state.layers, state.scale, state.range], ["NVDA", ["NVDA", "H100"], "index", "1y"]);
   assert.deepEqual(getCardDefinition("gpu-index").ranges, ["1d", "7d", "all"]);
   assert.equal(normalizeCardState("gpu-index", { range: "1y" }).range, "7d");
-  assert.equal(normalizeCardState("power-basis", { range: "90d" }).range, "1d");
+  assert.equal(normalizeCardState("power-basis", { range: "90d" }).range, "90d");
   assert.deepEqual(getCardDefinition("equities").ranges, ["7d", "90d", "1y"]);
   assert.equal(normalizeCardState("equities", { range: "all" }).range, "1y");
   assert.equal(RANGES["90d"].milliseconds, 90 * 86400000);
@@ -179,4 +181,60 @@ test("each equity preset selects exactly its symbol and retains the one-year pri
     assert(Object.isFrozen(preset.state.layers));
     assert(publishedCardSharePath(card.id, state).startsWith(`/cards/equities/published/${SYMBOLS[index].toLowerCase()}/`));
   }
+});
+
+test("Power adds Dominion, ERCOT North and GPU energy while retaining the renderer and legacy West presets", () => {
+  const card = getCardDefinition("power-basis");
+  assert.equal(card.renderer, "power-basis");
+  assert.equal(card.primaryParam, "location");
+  assert.equal(card.allowComparisons, false);
+  assert.equal(card.defaults.layer, "PJM-WEST");
+  assert.deepEqual(POWER_BASIS_LAYERS.map(layer => layer.id), ["PJM-WEST", "PJM-DOMINION", "ERCOT-NORTH"]);
+  assert.deepEqual(card.catalogPresets.map(preset => preset.id), ["pjm-west", "pjm-west-spread", "pjm-dominion", "ercot-north", "gpu-energy"]);
+  assert.deepEqual(card.catalogPresets.slice(0, 2).map(preset => preset.state), [
+    { location: "PJM-WEST" }, { location: "PJM-WEST", scale: "basis", range: "7d" },
+  ]);
+  assert.deepEqual(card.catalogPresets.slice(2).map(preset => [preset.label, preset.state.location, preset.state.scale]), [
+    ["PJM Dominion", "PJM-DOMINION", "price"],
+    ["ERCOT North", "ERCOT-NORTH", "price"],
+    ["GPU energy", "PJM-DOMINION", "energy"],
+  ]);
+  assert.deepEqual(card.visualizations.map(view => [view.id, view.label, view.unit]), [
+    ["price", "Price", "usd-mwh"], ["basis", "Spread", "usd-mwh"], ["energy", "GPU energy", "usd-gpu-hour"],
+  ]);
+  assert.deepEqual(cardStateParamIds(card), ["location", "layers", "scale", "range", "palette", "theme"]);
+  assert.deepEqual(card.ranges, ["1d", "7d", "90d", "1y", "all"]);
+  for (const layer of card.layers) {
+    assert.deepEqual(layer.views, ["price", "basis", "energy"]);
+    assert.equal(layer.unit, "usd-mwh");
+    assert(Object.isFrozen(layer));
+    for (const range of card.ranges) {
+      const state = normalizeCardState(card.id, { location: layer.id, scale: "energy", range });
+      assert.deepEqual([state.location, state.layers, state.scale, state.range], [layer.id, [layer.id], "energy", range]);
+    }
+  }
+});
+
+test("new Power presets round-trip strict documents, shared desks and persisted pins without extra state fields", () => {
+  const card = getCardDefinition("power-basis");
+  let raw = null;
+  const storage = { getItem: () => raw, setItem: (_key, value) => { raw = value; } };
+  const watchlist = createMarketWatchlist({ storage });
+  const entries = card.catalogPresets.slice(2).map(preset => {
+    const state = normalizeCardVisualization(card.id, preset.state);
+    assert.deepEqual(Object.keys(state), cardStateParamIds(card));
+    const document = createCardDocument({ id: preset.id, cardId: card.id, name: preset.label, state, createdAt: "2026-09-06T00:00:00.000Z" });
+    assert.deepEqual(normalizeCardDocument(JSON.parse(JSON.stringify(document))), document);
+    const pinned = watchlist.pin({ cardId: card.id, state, label: preset.label });
+    assert.deepEqual(pinned.state, state);
+    assert.deepEqual(createMarketWatchlist({ storage }).list().find(item => item.id === pinned.id), pinned);
+    assert(publishedCardSharePath(card.id, state).includes(`/${state.location.toLowerCase()}/${state.scale}/`));
+    return { cardId: card.id, name: preset.label, state };
+  });
+  const shared = createSharedDesk({ name: "Power", entries, palette: "linen", theme: "dark" });
+  assert.deepEqual(decodeSharedDesk(encodeSharedDesk(shared)), shared);
+  assert.deepEqual(shared.entries.map(entry => [entry.state.location, entry.state.scale]), [
+    ["PJM-DOMINION", "price"], ["ERCOT-NORTH", "price"], ["PJM-DOMINION", "energy"],
+  ]);
+  assert.throws(() => createSharedDesk({ ...shared, entries: [{ ...entries[2], state: { ...entries[2].state, pue: 1.2 } }] }));
 });

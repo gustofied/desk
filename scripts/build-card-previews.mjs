@@ -388,7 +388,7 @@ async function generatePublishedPowerPreviews() {
     const previewImage = await encodePreview(
       renderPowerBasisSvg(model, {
         colors: model.colors,
-        title: model.location.label,
+        title: model.energy ? "GPU energy" : model.location.label,
         mode: model.scale,
         artifact: true,
       }),
@@ -595,9 +595,9 @@ function publishedPowerStates() {
     powerCardDefinition.ranges.length *
     Object.keys(palettes).length *
     THEMES.length;
-  if (statesByPath.size !== expectedCount || expectedCount !== 48) {
+  if (statesByPath.size !== expectedCount) {
     throw new Error(
-      `Expected 48 published power previews, received ${statesByPath.size}`,
+      `Expected ${expectedCount} published power previews, received ${statesByPath.size}`,
     );
   }
 
@@ -740,6 +740,7 @@ function powerPreviewModel(state) {
   const model = createPowerBasisModel(powerRuntimeData, powerCardDefinition, {
     locationId: normalized.location,
     range: normalized.range,
+    mode: normalized.scale,
   });
   return {
     ...normalized,
@@ -1115,12 +1116,14 @@ function renderPublishedPowerSharePage(
   const rangeLabel = RANGES[model.range]?.label || model.range.toUpperCase();
   const rangeDescription = RANGES[model.range]?.longLabel || model.range;
   const isBasis = model.scale === "basis";
-  const title = `${model.location.label} ${isBasis ? "spread" : "power"} ${rangeLabel}`;
-  const description = isBasis
+  const title = `${model.energy ? "GPU energy · " : ""}${model.location.label} ${isBasis ? "spread" : model.energy ? "H100" : "power"} ${rangeLabel}`;
+  const description = model.energy
+    ? `Estimated energy ${formatPowerPrice(model.latest.realTime, model)}. H100: 10.2 kW node max, 8 GPUs, assumed PUE 1.2. Generated power data; not a delivered bill.`
+    : "Demo data. " + (isBasis
     ? `${formatPowerBasis(model.latest.basis)} spread over ${rangeDescription}. ` +
       `Real time ${formatPowerPrice(model.latest.realTime)}.`
     : `Real time ${formatPowerPrice(model.latest.realTime)} against ` +
-      `${formatPowerPrice(model.latest.dayAhead)} day ahead over ${rangeDescription}.`;
+      `${formatPowerPrice(model.latest.dayAhead)} day ahead over ${rangeDescription}.`);
   const imageAlt = isBasis
     ? `${model.location.label} spread chart showing ${description}`
     : `${model.location.label} real-time and day-ahead power chart showing ${description}`;
@@ -1565,10 +1568,10 @@ function formatSignedUsd(value) {
   return `${sign}$${Math.abs(amount).toFixed(2)}`;
 }
 
-function formatPowerPrice(value) {
+function formatPowerPrice(value, model = null) {
   const amount = Number(value);
   const sign = amount < 0 ? "−" : "";
-  return `${sign}$${Math.abs(amount).toFixed(2)} per MWh`;
+  return `${sign}$${Math.abs(amount).toFixed(model?.precision ?? 2)} per ${model?.energy ? "GPU-hour" : "MWh"}`;
 }
 
 function formatPowerBasis(value) {

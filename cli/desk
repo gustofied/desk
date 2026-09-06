@@ -146,8 +146,8 @@ function parseOptions(dataset, args) {
     if (!/^[A-Z0-9-]+$/.test(values.location)) {
       throw usageError("--location must be a market location id");
     }
-    if (!["1d", "7d", "all"].includes(values.range)) {
-      throw usageError("--range must be 1d, 7d, or all");
+    if (!["1d", "7d", "90d", "1y", "all"].includes(values.range)) {
+      throw usageError("--range must be 1d, 7d, 90d, 1y, or all");
     }
   }
 
@@ -246,7 +246,7 @@ function filterPowerPrices(rows, options) {
   if (!filtered.length) throw new Error("the selected location returned no rows");
   if (options.range === "all") return filtered;
   const latest = latestTimestamp(filtered);
-  const duration = options.range === "1d" ? 86_400_000 : 604_800_000;
+  const duration = { "1d": 1, "7d": 7, "90d": 90, "1y": 365 }[options.range] * 86_400_000;
   return filtered.filter((row) => timestamp(row) >= latest - duration);
 }
 
@@ -399,7 +399,8 @@ Datasets
   compute-prices       --series=H200,TPI --range=1d|7d|all
   accelerator-prices   --series=H100,H200,B200,B300
   h100-market-depth    --view=now|history --target=128
-  power-prices         --location=PJM-WEST --range=1d|7d|all
+  power-prices         --location=PJM-DOMINION --range=1d|7d|90d|1y|all
+                       Locations: PJM-DOMINION, ERCOT-NORTH, PJM-WEST
 
 Options
   -o, --output <file>  Write to a specific file

@@ -17,6 +17,42 @@ const series = state.layers.map((id, index) => ({
   rows: [{ date: first, value: 100 + index }, { date: latest, value: 101 + index }],
 }));
 
+test("latest-price details say GPU or GPUs without renaming the card or API", () => {
+  const snapshot = getCardDefinition("gpu-price-snapshot");
+  for (const ids of [["H100"], ["H100", "H200", "B200", "B300"]]) {
+    const model = createMonitorDataModel({ card: snapshot, cardState: {}, barModel: {
+      bars: ids.map(id => ({ id })), asOf: latest.getTime() / 1000,
+    } });
+    assert.equal(model.summary, ids.length === 1 ? "1 GPU" : "4 GPUs");
+    assert.equal(model.label, "Latest prices");
+    assert.match(model.command, /accelerator-prices/);
+    assert.match(model.endpoint, /accelerator-prices\.json$/);
+  }
+});
+
+test("power details label demo prices and expose the matching H100 estimate SQL", () => {
+  const power = getCardDefinition("power-basis");
+  const model = {
+    location: { id: "PJM-DOMINION", label: "PJM Dominion", unit: "USD per MWh" },
+    rows: [{ date: first }, { date: latest }], latest: {},
+  };
+  const cardState = { location: "PJM-DOMINION", range: "1y", scale: "price" };
+  const price = createMonitorDataModel({ card: power, cardState, powerModel: model });
+  assert.equal(price.provenance, "Demo");
+  assert.match(price.description, /Generated.*not an exchange feed/);
+  assert.match(price.command, /--range=1y/);
+  assert.match(price.sql, /instrument = 'PJM-DOMINION'/);
+  assert.doesNotMatch(price.sql, /usd_gpu_hour/);
+  const energy = createMonitorDataModel({ card: power,
+    cardState: { ...cardState, scale: "energy" }, powerModel: { ...model, energy: {} } });
+  assert.equal(energy.provenance, "Estimate");
+  assert.match(energy.description, /10.2 kW node max.*8 GPUs.*PUE 1.2 assumed/);
+  assert.match(energy.sql, /real_time_price_usd_mwh \* 0\.00153 AS rt_usd_gpu_hour/);
+  assert.match(energy.sql, /day_ahead_price_usd_mwh \* 0\.00153 AS da_usd_gpu_hour/);
+  assert.match(energy.description, /not a delivered bill or GPU rental rate/);
+  assert.notEqual(energy.key, price.key);
+});
+
 test("equities monitor attributes external share prices without exposing a Desk API", () => {
   const model = createMonitorDataModel({ card, cardState: state, series, runtimePayload: runtime });
   assert.equal(model.rowCount, 4);
