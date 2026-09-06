@@ -20,6 +20,8 @@ const QUOTE_VIEW_SLUG = "quote-041";
 const DEAL_VIEW_ID = "deal-view";
 const DEAL_VIEW_SLUG = "deal-041";
 const DEAL_VIEW_DATA_FILE = "data/deal-041.json";
+const EQUITIES_ID = "equities";
+const EQUITIES_DATA_FILE = "data/equities.json";
 
 const PRIVATE_CAPACITY_MODELS = Object.freeze(["H100", "H200", "B200", "B300"]);
 
@@ -101,6 +103,18 @@ export const RANGES = Object.freeze({
     label: "7D",
     longLabel: "7 days",
   }),
+  "90d": Object.freeze({
+    id: "90d",
+    milliseconds: 90 * DAY_MS,
+    label: "90D",
+    longLabel: "90 days",
+  }),
+  "1y": Object.freeze({
+    id: "1y",
+    milliseconds: 365 * DAY_MS,
+    label: "1Y",
+    longLabel: "1 year",
+  }),
   all: Object.freeze({
     id: "all",
     milliseconds: null,
@@ -178,6 +192,26 @@ export const POWER_BASIS_LAYERS = Object.freeze([
     views: Object.freeze(["price", "basis"]),
   }),
 ]);
+
+export const EQUITY_LAYERS = Object.freeze([
+  ["MSFT", "Microsoft", "hyperscalers", "Hyperscalers"],
+  ["AMZN", "Amazon", "hyperscalers", "Hyperscalers"],
+  ["GOOGL", "Alphabet", "hyperscalers", "Hyperscalers"],
+  ["ORCL", "Oracle", "hyperscalers", "Hyperscalers"],
+  ["CRWV", "CoreWeave", "neoclouds", "Neoclouds"],
+  ["NBIS", "Nebius Group", "neoclouds", "Neoclouds"],
+  ["NVDA", "NVIDIA", "semiconductors", "Semiconductors"],
+  ["AMD", "Advanced Micro Devices", "semiconductors", "Semiconductors"],
+  ["TSM", "Taiwan Semiconductor Manufacturing Company", "semiconductors", "Semiconductors"],
+].map(([id, companyName, group, groupLabel]) => Object.freeze({
+  id,
+  label: id,
+  companyName,
+  group,
+  groupLabel,
+  unit: "usd-share",
+  views: Object.freeze(["price", "index"]),
+})));
 
 export const CARD_REGISTRY = Object.freeze([
   Object.freeze({
@@ -498,6 +532,49 @@ export const CARD_REGISTRY = Object.freeze([
     ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Deal terms", unit: "usd-hour" }),
+    ]),
+  }),
+  Object.freeze({
+    id: EQUITIES_ID,
+    slug: EQUITIES_ID,
+    hash: "gpu-benchmark-card",
+    renderer: "line",
+    primaryParam: "symbol",
+    title: "Equities",
+    craftLabel: "Equities",
+    description: "Daily equity prices across cloud infrastructure and semiconductors.",
+    sourceFile: "data/equities-source.json",
+    publishable: false,
+    dataFile: EQUITIES_DATA_FILE,
+    dataUrl: `./${EQUITIES_DATA_FILE}`,
+    dataAdapter: "series",
+    sharePath: `/cards/${EQUITIES_ID}`,
+    previewImageDir: `assets/social/${EQUITIES_ID}`,
+    previewPageDir: `cards/${EQUITIES_ID}`,
+    defaults: Object.freeze({
+      layer: "NVDA",
+      layers: Object.freeze(["NVDA"]),
+      range: "1y",
+      scale: "price",
+      palette: DEFAULT_PALETTE,
+      theme: DEFAULT_THEME,
+    }),
+    ranges: Object.freeze(["7d", "90d", "1y", "all"]),
+    allowComparisons: true,
+    layers: EQUITY_LAYERS,
+    catalogPresets: Object.freeze(EQUITY_LAYERS.map((layer) => Object.freeze({
+      id: layer.id.toLowerCase(),
+      label: layer.label,
+      state: Object.freeze({
+        symbol: layer.id,
+        layers: Object.freeze([layer.id]),
+        scale: "price",
+        range: "1y",
+      }),
+    }))),
+    visualizations: Object.freeze([
+      Object.freeze({ id: "price", label: "Price", unit: "usd-share" }),
+      Object.freeze({ id: "index", label: "Change", unit: "index" }),
     ]),
   }),
 ]);

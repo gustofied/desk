@@ -1,6 +1,11 @@
 node_modules/
 .DS_Store
 .cache/
+.env
+.env.*
+!.env.example
+data/equities.json
+data/v1/equity-prices.json
 _site/
 assets/social/gpu-index/published/
 assets/fonts/

@@ -143,6 +143,34 @@
   padding: 24px 16px 32px;
 }
 
+.desk-data-rail [data-monitor-data-api][hidden],
+.desk-data-rail [data-monitor-data-source][hidden],
+.desk-data-rail [data-monitor-data-source-link][hidden] {
+  display: none;
+}
+
+.desk-data-rail__source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 16px;
+  color: var(--index-ink-soft);
+  font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+}
+
+.desk-data-rail__source p {
+  margin: 0;
+  color: inherit;
+  font: inherit;
+}
+
+.desk-data-rail__source a {
+  color: var(--index-ink);
+  text-underline-offset: 4px;
+}
+
 .desk-data-rail__action-label {
   margin: 0 0 16px;
   color: var(--index-ink-soft);

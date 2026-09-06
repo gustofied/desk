@@ -7,9 +7,12 @@ export function createMonitorDataModel({
   barModel = null,
   depthModel = null,
   powerModel = null,
+  runtimePayload = null,
 }) {
+  if (card?.id === "equities") {
+    return createEquityHistoryModel(card, cardState, series, runtimePayload);
+  }
   if (!card?.dataAdapter || !card?.dataTable?.file) return null;
-
   if (card.dataAdapter === "series") {
     return createPriceHistoryModel(card, cardState, series);
   }
@@ -23,6 +26,61 @@ export function createMonitorDataModel({
     return createPowerBasisDataModel(card, cardState, powerModel);
   }
   return null;
+}
+
+function createEquityHistoryModel(card, state, series, runtime) {
+  const selected = series.filter(candidate => candidate?.rows?.length);
+  const requested = Array.isArray(state.layers) ? state.layers : [state.symbol];
+  const symbols = selected.length
+    ? selected.map(candidate => candidate.layer.id)
+    : requested.filter(symbol => card.layers.some(layer => layer.id === symbol));
+  const dataset = runtime?.dataset || {};
+  const source = dataset.source || null;
+  const unavailable = dataset.status === "unavailable" || !selected.length;
+  const rowCount = selected.reduce((total, candidate) => total + candidate.rows.length, 0);
+  const lastObservation = selected.length
+    ? new Date(Math.max(...selected.map(candidate => candidate.rows.at(-1).date.getTime())))
+    : null;
+  const asOf = unavailable ? null
+    : Number.isFinite(runtime?.asOf) && runtime.asOf > 0
+      ? new Date(runtime.asOf * 1000)
+      : lastObservation;
+  const range = String(state.range).toUpperCase();
+  const seriesLabel = symbols.join(" + ") || "Equities";
+  const sourceName = source?.name || "Source unavailable";
+  const provenance = [
+    sourceName,
+    asOf ? `as of ${asOf.toISOString().slice(0, 10)}` : "no observations",
+  ].join(" · ");
+  return finalizeModel(card, {
+    id: "equities-source",
+    label: sourceName,
+    summary: unavailable ? "Not connected" : `Close ${asOf.toISOString().slice(0, 10)}`,
+    description: `Data by ${sourceName}`,
+    sourceUrl: equitySourceUrl(source?.url),
+    breadcrumbs: [sourceName, seriesLabel, range],
+    rowCount,
+    asOf,
+    accessKind: "source",
+    provenance,
+    source,
+    status: unavailable ? "unavailable" : "ready",
+    priceBasis: dataset.priceBasis || "close",
+    unit: "USD per share",
+  });
+}
+
+function equitySourceUrl(value) {
+  try {
+    const url = new URL(value);
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
+    // Attribution links are public documentation, never authenticated feed URLs.
+    url.search = "";
+    url.hash = "";
+    return url.href;
+  } catch {
+    return null;
+  }
 }
 
 function createPriceHistoryModel(card, state, series) {
@@ -197,11 +255,15 @@ function finalizeModel(card, values) {
     values.endpoint,
     values.command,
     values.sql,
+    values.accessKind,
+    values.provenance,
+    values.description,
+    values.sourceUrl,
   ]);
   return Object.freeze({
     key,
-    id: card.dataTable.id,
-    label: card.dataTable.label,
+    id: values.id || card.dataTable.id,
+    label: values.label || card.dataTable.label,
     summary: values.summary,
     breadcrumbs: Object.freeze([...values.breadcrumbs]),
     rowCount: values.rowCount,
@@ -209,6 +271,16 @@ function finalizeModel(card, values) {
     endpoint: values.endpoint,
     command: values.command,
     sql: values.sql,
+    ...(values.accessKind ? {
+      accessKind: values.accessKind,
+      provenance: values.provenance,
+      source: values.source ? Object.freeze({ ...values.source }) : null,
+      status: values.status,
+      priceBasis: values.priceBasis,
+      unit: values.unit,
+      description: values.description,
+      sourceUrl: values.sourceUrl,
+    } : {}),
   });
 }
 

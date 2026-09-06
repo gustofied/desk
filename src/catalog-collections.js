@@ -1,10 +1,18 @@
+import {
+  normalizeCardDocumentName,
+  normalizeCardVisualization,
+} from "./card-document.js";
+import { EQUITY_LAYERS, paletteIds, THEMES } from "./card-registry.js";
+import { createSharedDesk } from "./shared-desk.js";
+
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 5;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4]);
+const STORAGE_VERSION = 7;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
 const PRIVATE_CATALOG_ID = "private";
+const EQUITIES_CATALOG_ID = "equities";
 const LEGACY_QUOTE_KEY = "preset-quote-view-quote-041";
 const STARTER_CATALOGS = Object.freeze([
   Object.freeze({
@@ -43,10 +51,17 @@ const STARTER_CATALOGS = Object.freeze([
       "preset-gpu-market-depth-h100-us",
     ]),
   }),
+  Object.freeze({
+    id: EQUITIES_CATALOG_ID,
+    name: "Equities",
+    keys: Object.freeze(EQUITY_LAYERS.map((layer) =>
+      `preset-equities-${layer.id.toLowerCase()}`)),
+  }),
 ]);
 const MAX_COLLECTIONS = 16;
 const MAX_COLLECTION_NAME_LENGTH = 48;
 const MAX_COLLECTION_KEYS = 128;
+const MAX_EMBEDDED_VIEWS = 32;
 const MAX_KEY_LENGTH = 240;
 
 export const CATALOG_COLLECTIONS_STORAGE_KEY = STORAGE_KEY;
@@ -54,16 +69,16 @@ export const ALL_CARDS_CATALOG_ID = ALL_CARDS_ID;
 export const MAX_CATALOG_COLLECTION_NAME_LENGTH =
   MAX_COLLECTION_NAME_LENGTH;
 
-export function loadCatalogCollections() {
+export function loadCatalogCollections({ readOnly = false } = {}) {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (stored === null) {
       const initial = emptyState();
-      return persistLoadedState(initial);
+      return readOnly ? initial : persistLoadedState(initial);
     }
     const parsed = JSON.parse(stored);
     const normalized = normalizeState(parsed);
-    return parsed?.version === STORAGE_VERSION
+    return readOnly || parsed?.version === STORAGE_VERSION
       ? normalized
       : persistLoadedState(normalized);
   } catch (error) {
@@ -91,6 +106,38 @@ export function createCatalogCollection(name) {
     return {
       ...state,
       collections: [...state.collections, collection],
+    };
+  });
+}
+
+export function saveSharedDeskCollection(snapshot) {
+  // Validate before touching storage. A copy lives entirely in this envelope,
+  // so a failed write can never leave half an import in the saved-views store.
+  const shared = createSharedDesk(snapshot, { includePrivate: true });
+  return updateState((state) => {
+    if (state.collections.length >= MAX_COLLECTIONS) {
+      throw new TypeError("Catalog limit reached");
+    }
+    const id = createSharedCollectionId(state, shared.entries.length);
+    const now = new Date().toISOString();
+    const views = shared.entries.map((entry, index) => ({
+      key: `desk-${id}-${index}`,
+      cardId: entry.cardId,
+      name: entry.name,
+      state: cloneValue(entry.state),
+    }));
+    return {
+      ...state,
+      collections: [...state.collections, {
+        id,
+        name: uniqueSharedCollectionName(state, shared.name),
+        keys: views.map((view) => view.key),
+        views,
+        palette: shared.palette,
+        theme: shared.theme,
+        createdAt: now,
+        updatedAt: now,
+      }],
     };
   });
 }
@@ -139,8 +186,7 @@ export function replaceCatalogCollectionKeys(collectionId, keys) {
       if (collection.id !== id) return collection;
       found = true;
       return {
-        ...collection,
-        keys: normalizeKeys(keys),
+        ...withEmbeddedViews(collection, normalizeKeys(keys), state),
         updatedAt: now,
       };
     });
@@ -160,11 +206,11 @@ export function toggleCatalogCollectionKey(collectionId, key) {
       if (collection.id !== id) return collection;
       found = true;
       const included = collection.keys.includes(normalizedKey);
+      const keys = included
+        ? collection.keys.filter((candidate) => candidate !== normalizedKey)
+        : normalizeKeys([...collection.keys, normalizedKey]);
       return {
-        ...collection,
-        keys: included
-          ? collection.keys.filter((candidate) => candidate !== normalizedKey)
-          : normalizeKeys([...collection.keys, normalizedKey]),
+        ...withEmbeddedViews(collection, keys, state),
         updatedAt: now,
       };
     });
@@ -183,10 +229,14 @@ export function addCatalogCollectionKey(collectionId, key) {
     const collections = state.collections.map((collection) => {
       if (collection.id !== id) return collection;
       found = true;
-      if (collection.keys.includes(normalizedKey)) return collection;
+      const included = collection.keys.includes(normalizedKey);
+      const keys = included
+        ? collection.keys
+        : normalizeKeys([...collection.keys, normalizedKey]);
+      const next = withEmbeddedViews(collection, keys, state);
+      if (included && next.views === collection.views) return collection;
       return {
-        ...collection,
-        keys: normalizeKeys([...collection.keys, normalizedKey]),
+        ...next,
         updatedAt: now,
       };
     });
@@ -245,11 +295,40 @@ function requireUniqueCollectionName(state, name, excludedId = "") {
   if (duplicate) throw new TypeError("Catalog name already exists");
 }
 
+function uniqueSharedCollectionName(state, name) {
+  const base = normalizeCatalogCollectionName(name);
+  const names = new Set([
+    "all views", "all cards",
+    ...state.collections.map((collection) => collection.name.toLocaleLowerCase()),
+  ]);
+  let candidate = base;
+  for (let suffix = 2; names.has(candidate.toLocaleLowerCase()); suffix += 1) {
+    const ending = ` (${suffix})`;
+    const stem = base.slice(0, MAX_COLLECTION_NAME_LENGTH - ending.length).trimEnd();
+    candidate = `${stem}${ending}`;
+  }
+  return candidate;
+}
+
 function updateState(transform) {
   const current = readWritableState();
   const next = normalizeState(transform(cloneState(current)));
   writeState(next);
   return cloneState(next);
+}
+
+function withEmbeddedViews(collection, keys, state) {
+  const owned = new Set((collection.views || []).map((view) => view.key));
+  const available = new Map(state.collections.flatMap((candidate) =>
+    (candidate.views || []).map((view) => [view.key, view])));
+  const additions = keys.filter((key) => !owned.has(key) && available.has(key))
+    .map((key) => cloneValue(available.get(key)));
+  if (!additions.length) return { ...collection, keys };
+  const views = [...(collection.views || []), ...additions];
+  if (views.length > MAX_EMBEDDED_VIEWS) throw new TypeError("Catalog is full");
+  // A selected imported view must survive deletion of its original collection.
+  // Each receiving collection owns its own snapshot, under the same view key.
+  return { ...collection, keys, views };
 }
 
 function readWritableState() {
@@ -297,13 +376,21 @@ function normalizeState(value) {
     throw new TypeError("Unsupported Catalog version");
   }
   const seen = new Set();
+  const embeddedDefinitions = new Map();
   const collections = value.collections.map(normalizeCollection);
   if (
     collections.some((collection) => !collection) ||
     collections.some((collection) => {
       if (seen.has(collection.id)) return true;
       seen.add(collection.id);
-      return false;
+      return (collection.views || []).some((view) => {
+        const definition = JSON.stringify(view);
+        if (embeddedDefinitions.has(view.key)) {
+          return embeddedDefinitions.get(view.key) !== definition;
+        }
+        embeddedDefinitions.set(view.key, definition);
+        return false;
+      });
     })
   ) {
     throw new TypeError("Catalog data is invalid");
@@ -330,16 +417,79 @@ function normalizeCollection(value) {
     if (!name || !Array.isArray(value.keys)) return null;
     const keys = normalizeKeys(value.keys);
     if (keys.length !== value.keys.length) return null;
+    const embedded = Object.hasOwn(value, "views")
+      ? { views: normalizeEmbeddedViews(value.views) }
+      : {};
     return {
       id,
       name,
       keys,
+      ...embedded,
+      ...normalizeAppearance(value),
       createdAt: requireDate(value.createdAt),
       updatedAt: requireDate(value.updatedAt),
     };
   } catch {
     return null;
   }
+}
+
+function normalizeEmbeddedViews(views) {
+  if (!Array.isArray(views) || views.length > MAX_EMBEDDED_VIEWS) {
+    throw new TypeError("Invalid embedded Catalog views");
+  }
+  const seen = new Set();
+  return views.map((value) => {
+    if (!isRecord(value) || !isRecord(value.state) ||
+      typeof value.cardId !== "string" ||
+      Object.keys(value).some((field) =>
+        !["key", "cardId", "name", "state", "palette", "theme"].includes(field))) {
+      throw new TypeError("Invalid embedded Catalog view");
+    }
+    const key = normalizeKey(value.key);
+    const name = normalizeCardDocumentName(value.name);
+    if (!key || key !== value.key || seen.has(key) ||
+      !name || name !== value.name) {
+      throw new TypeError("Invalid embedded Catalog view");
+    }
+    seen.add(key);
+    const state = normalizeCardVisualization(value.cardId, value.state);
+    const fields = Object.keys(state);
+    // Persisted views are complete snapshots, not partial edit inputs. Reject
+    // damaged or newer state instead of silently replacing it with defaults.
+    if (
+      Object.keys(value.state).length !== fields.length ||
+      fields.some((field) =>
+        !Object.hasOwn(value.state, field) ||
+        JSON.stringify(state[field]) !== JSON.stringify(value.state[field]))
+    ) {
+      throw new TypeError("Invalid embedded Catalog state");
+    }
+    return {
+      key,
+      cardId: value.cardId,
+      name,
+      state,
+      ...normalizeAppearance(value),
+    };
+  });
+}
+
+function normalizeAppearance(value) {
+  const appearance = {};
+  if (Object.hasOwn(value, "palette")) {
+    if (!paletteIds().includes(value.palette)) {
+      throw new TypeError("Invalid Catalog palette");
+    }
+    appearance.palette = value.palette;
+  }
+  if (Object.hasOwn(value, "theme")) {
+    if (!THEMES.includes(value.theme)) {
+      throw new TypeError("Invalid Catalog theme");
+    }
+    appearance.theme = value.theme;
+  }
+  return appearance;
 }
 
 function normalizeKeys(keys) {
@@ -393,6 +543,24 @@ function createCollectionId() {
   return `catalog-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function createSharedCollectionId(state, viewCount) {
+  const ids = new Set(state.collections.map((collection) => collection.id));
+  const keys = new Set(state.collections.flatMap((collection) => [
+    ...collection.keys,
+    ...(collection.views || []).map((view) => view.key),
+  ]));
+  const base = requireCustomCollectionId(createCollectionId());
+  const collides = (id) => ids.has(id) ||
+    Array.from({ length: viewCount }, (_, index) => `desk-${id}-${index}`)
+      .some((key) => keys.has(key));
+  let id = base;
+  for (let suffix = 2; collides(id); suffix += 1) {
+    const ending = `-${suffix}`;
+    id = `${base.slice(0, 96 - ending.length)}${ending}`;
+  }
+  return id;
+}
+
 function emptyState(unavailable = false) {
   const now = new Date().toISOString();
   return {
@@ -419,8 +587,10 @@ function migrateLegacyState(value) {
   });
   const now = new Date().toISOString();
   let collections = [...legacyState.collections];
-  const additions = sourceVersion === 4
-    ? []
+  // v5/v6 already record intentional starter removals. Introduce only the new
+  // Equities catalog; never restore an older collection the user deleted.
+  const additions = sourceVersion >= 4
+    ? STARTER_CATALOGS.filter((catalog) => catalog.id === EQUITIES_CATALOG_ID)
     : sourceVersion === 2
       ? STARTER_CATALOGS.filter((catalog) => catalog.id !== PRIVATE_CATALOG_ID)
       : STARTER_CATALOGS;
@@ -440,6 +610,7 @@ function migrateLegacyState(value) {
       updatedAt: now,
     });
   }
+  if (sourceVersion >= 5) return { ...legacyState, collections };
   collections = collections.map((collection) => {
     if (
       ![OVERVIEW_CATALOG_ID, PRIVATE_CATALOG_ID].includes(collection.id) ||
@@ -467,6 +638,24 @@ function cloneState(state) {
     collections: state.collections.map((collection) => ({
       ...collection,
       keys: [...collection.keys],
+      ...(collection.views ? { views: collection.views.map((view) => ({
+        ...view,
+        state: cloneValue(view.state),
+      })) } : {}),
     })),
   };
+}
+
+function cloneValue(value) {
+  if (Array.isArray(value)) return value.map(cloneValue);
+  if (isRecord(value)) {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, cloneValue(entry)]),
+    );
+  }
+  return value;
+}
+
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

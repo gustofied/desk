@@ -32,6 +32,7 @@ export function replaceCardLocation(cardId, view, stateParams = {}) {
 }
 
 export function normalizeLegacyCardPresentation() {
+  if (window.location.hash === "#desk" || window.location.hash.startsWith("#desk=")) return;
   const params = new URL(window.location.href).searchParams;
   if (params.get("present") !== "card") return;
 
@@ -48,6 +49,7 @@ normalizeLegacyCardPresentation();
 
 export function normalizeCardHash() {
   const url = new URL(window.location.href);
+  if (url.hash === "#desk" || url.hash.startsWith("#desk=")) return;
   const card = getCardDefinition(url.searchParams.get("card"));
   if (url.searchParams.get("card") !== card.id) return;
   if (url.hash === `#${card.hash}`) return;

@@ -86,7 +86,7 @@ test("first edit persists defaults plus the change in a versioned envelope", () 
   assert.deepEqual(createMarketWatchlist({ storage }).list(), watchlist.list());
 });
 
-test("pin supports partial state for all six registered chart families", () => {
+test("pin supports partial state for every registered chart family", () => {
   const { watchlist } = harness(envelope([]));
   const states = {
     "gpu-index": { gpu: "h100", layers: ["h200", "h100"], scale: "SPREAD", range: "1D" },
@@ -95,8 +95,9 @@ test("pin supports partial state for all six registered chart families", () => {
     "power-basis": { location: "pjm-west", scale: "basis", range: "7d" },
     "quote-view": { gpu: "h200", quantity: "64.6", quote: "4.567", rfs: "2027-02" },
     "deal-view": { gpu: "b300", quantity: 512, quote: 8.765, rfs: "2028-06" },
+    equities: { symbol: "amd", layers: ["NVDA", "amd"], scale: "index", range: "90d" },
   };
-  assert.equal(CARD_REGISTRY.length, 6);
+  assert.deepEqual(Object.keys(states), CARD_REGISTRY.map(card => card.id));
   for (const card of CARD_REGISTRY) {
     const pinned = watchlist.pin({ cardId: card.id, state: states[card.id], label: card.title });
     assert.deepEqual(pinned.state, normalizeCardVisualization(card.id, states[card.id]));
@@ -110,6 +111,10 @@ test("pin supports partial state for all six registered chart families", () => {
   assert.equal(byCard["quote-view"].quantity, 65);
   assert.equal(byCard["quote-view"].quote, 4.57);
   assert.equal(byCard["deal-view"].quote, 8.77);
+  assert.equal(byCard.equities.symbol, "AMD");
+  assert.deepEqual(byCard.equities.layers, ["NVDA", "AMD"]);
+  assert.equal(byCard.equities.range, "90d");
+  assert.equal(Object.hasOwn(byCard.equities, "gpu"), false);
 });
 
 test("identity ignores colors, case, and layer ordering but retains chart composition", () => {

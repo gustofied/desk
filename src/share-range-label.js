@@ -4,6 +4,8 @@ export function shareRangeLabel(rows = [], requestedRange = null) {
   if (requestedRange === "1d") return "1D";
   if (requestedRange === "latest") return "LATEST";
   if (requestedRange === "7d") return "7D";
+  if (requestedRange === "90d") return "90D";
+  if (requestedRange === "1y") return "1Y";
 
   const dates = rows
     .map((row) => {

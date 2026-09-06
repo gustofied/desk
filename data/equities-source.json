@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "asOf": null,
+  "retrievedAt": null,
+  "requestedRange": null,
+  "source": {
+    "id": "eodhd",
+    "name": "EODHD",
+    "url": "https://eodhd.com/financial-apis/api-for-historical-data-and-volumes",
+    "status": "unavailable",
+    "code": "missing-api-token",
+    "message": "Historical prices are unavailable. Configure EODHD_API_TOKEN and refresh the data.",
+    "licenseUrl": "https://eodhd.com/financial-apis/terms-conditions",
+    "publicDisplayRights": "not-confirmed",
+    "notice": "EODHD describes its prices as indicative. API access does not establish redistribution or public-display rights."
+  },
+  "priceBasis": "split-dividend-adjusted-close",
+  "priceBasisLabel": "Split- and dividend-adjusted close",
+  "currency": "USD",
+  "timestampUnit": "seconds",
+  "columns": ["timestamp", "close"],
+  "series": {
+    "MSFT": [],
+    "AMZN": [],
+    "GOOGL": [],
+    "ORCL": [],
+    "CRWV": [],
+    "NBIS": [],
+    "NVDA": [],
+    "AMD": [],
+    "TSM": []
+  }
+}

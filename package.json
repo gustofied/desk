@@ -13,6 +13,7 @@
   "scripts": {
     "check:data": "node scripts/refresh-market-data.mjs --check && node scripts/build-runtime-data.mjs --check",
     "refresh:data": "node scripts/refresh-market-data.mjs",
+    "refresh:equities": "node scripts/refresh-equities.mjs && node scripts/build-runtime-data.mjs",
     "generate:data": "node scripts/generate-showcase-market.mjs && node scripts/generate-market-depth.mjs && node scripts/generate-power-basis.mjs",
     "build:data": "node scripts/build-runtime-data.mjs",
     "build:previews": "node scripts/build-card-previews.mjs",

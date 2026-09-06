@@ -34,7 +34,7 @@
         const requestedTheme = params.get("theme");
         const requestedPalette = params.get("palette");
         const requestedCard = params.get("card");
-        const requestedView = ["gpu-index", "gpu-price-snapshot", "gpu-market-depth", "power-basis", "quote-view", "deal-view"].includes(requestedCard)
+        const requestedView = window.location.hash.startsWith("#desk=") || ["gpu-index", "gpu-price-snapshot", "gpu-market-depth", "power-basis", "quote-view", "deal-view", "equities"].includes(requestedCard)
           ? params.get("view")
           : null;
         const requestedLayout = params.get("layout");
@@ -103,9 +103,9 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=92">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=95">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=65">
-    <link rel="stylesheet" href="./styles/monitor-data.css?v=16">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=17">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
     <link rel="stylesheet" href="./styles/deal-view.css?v=43">
     <link rel="stylesheet" href="./styles/command-palette.css?v=16">
@@ -184,6 +184,12 @@
         data-gpu-benchmark-card
         data-card-id="gpu-index"
       >
+        <div class="desk-shared-context" data-shared-desk-banner hidden>
+          <span data-shared-desk-name></span>
+          <button type="button" data-shared-desk-save>Save a copy</button>
+          <button type="button" data-shared-desk-leave>My desk</button>
+          <p role="status" data-shared-desk-error></p>
+        </div>
         <header class="desk-card-rail">
           <div class="desk-card-tabs" role="tablist" aria-label="Views in this catalog" aria-description="A for the previous view. D for the next view." aria-keyshortcuts="A D" data-view-tabs></div>
           <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog views" aria-keyshortcuts="Escape" title="Gallery (Esc)" data-index-gallery-toggle>All</button>
@@ -346,6 +352,8 @@
                       <button type="button" aria-pressed="false" data-gpu-range="now" hidden>OFF</button>
                       <button type="button" aria-pressed="false" data-gpu-range="1d">1D</button>
                       <button type="button" aria-pressed="true" data-gpu-range="7d">7D</button>
+                      <button type="button" aria-pressed="false" data-gpu-range="90d" hidden>90D</button>
+                      <button type="button" aria-pressed="false" data-gpu-range="1y" hidden>1Y</button>
                       <button type="button" aria-pressed="false" data-gpu-range="all">ALL</button>
                       <button class="gpu-benchmark__zoom-reset" type="button" data-gpu-zoom-reset hidden>RESET</button>
                     </div>
@@ -391,10 +399,14 @@
                 hidden
                 inert
               >
-                <nav class="desk-data-rail__path" aria-label="Dataset path" tabindex="0">
+                <div class="desk-data-rail__source" data-monitor-data-source hidden>
+                  <p data-monitor-data-source-description></p>
+                  <a data-monitor-data-source-link target="_blank" rel="noopener">Source docs</a>
+                </div>
+                <nav class="desk-data-rail__path" aria-label="Dataset path" tabindex="0" data-monitor-data-api>
                   <ol data-monitor-data-path></ol>
                 </nav>
-                <div class="desk-data-rail__workspace">
+                <div class="desk-data-rail__workspace" data-monitor-data-api>
                   <p
                     class="desk-data-rail__action-label"
                     id="desk-data-action-label"
@@ -409,7 +421,7 @@
                     <pre tabindex="0"><code data-monitor-data-command></code></pre>
                   </div>
                 </div>
-                <footer class="desk-data-rail__footer">
+                <footer class="desk-data-rail__footer" data-monitor-data-api>
                   <nav class="desk-data-rail__resources" aria-label="Desk CLI resources">
                     <a href="https://github.com/gustofied/desk#desk-cli" target="_blank" rel="noopener">Docs</a>
                     <a href="./cli/desk" download="desk">Download CLI</a>
@@ -654,6 +666,33 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=216"></script>
+    <dialog class="desk-save-dialog desk-share-dialog" aria-labelledby="desk-share-title" aria-describedby="desk-share-description" data-desk-share-dialog>
+      <form class="desk-save-dialog__form" novalidate>
+        <header>
+          <h2 id="desk-share-title">Share desk</h2>
+          <p id="desk-share-description">Anyone with the link can open these views.</p>
+        </header>
+        <label for="desk-share-name">Desk name</label>
+        <input id="desk-share-name" type="text" maxlength="48" autocomplete="off" required aria-describedby="desk-share-error" data-desk-share-name>
+        <div class="desk-share-contents">
+          <p data-desk-share-count></p>
+          <ul aria-label="Included views" data-desk-share-views></ul>
+        </div>
+        <label class="desk-share-private" data-desk-share-privacy>
+          <input type="checkbox" data-desk-share-private>
+          <span>Include Quote and Deal</span>
+        </label>
+        <div class="desk-share-link" data-desk-share-link-field hidden>
+          <label for="desk-share-link">Desk link</label>
+          <input id="desk-share-link" type="text" readonly spellcheck="false" data-desk-share-link>
+        </div>
+        <p class="desk-save-dialog__error" id="desk-share-error" role="status" data-desk-share-error></p>
+        <footer>
+          <button type="button" data-desk-share-cancel>Cancel</button>
+          <button type="submit" data-desk-share-submit>Copy link</button>
+        </footer>
+      </form>
+    </dialog>
+    <script type="module" src="./desk.js?v=220"></script>
   </body>
 </html>

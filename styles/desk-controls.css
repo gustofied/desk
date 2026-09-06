@@ -881,6 +881,24 @@ button.compute-share-card-frame:focus-visible {
   pointer-events: none;
 }
 
+.gpu-index[data-card-id="equities"] .gpu-benchmark__chart {
+  position: relative;
+}
+
+.gpu-index[data-card-id="equities"] .gpu-benchmark__state:not([hidden]) {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  width: auto;
+  height: auto;
+  margin: 0;
+  padding: 24px;
+  place-content: center;
+  color: var(--index-muted);
+  font: 500 13px/1.6 "Geist Mono", ui-monospace, monospace;
+  text-align: center;
+}
+
 .compute-card-skin--market .gpu-index-detail::after {
   display: none;
 }
@@ -1317,12 +1335,12 @@ button.compute-share-card-frame:focus-visible {
 
 .gpu-benchmark__craft-start {
   display: grid;
-  width: min(760px, 100%);
+  width: min(896px, 100%);
 }
 
 .gpu-benchmark__craft-types {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--craft-type-count, 6), minmax(0, 1fr));
   background: color-mix(in srgb, var(--desk-canvas) 94%, var(--desk-accent));
   border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
 }
@@ -1475,6 +1493,98 @@ button.compute-share-card-frame:focus-visible {
   gap: 12px;
   padding: 24px;
 }
+
+.desk-share-dialog {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  animation: none;
+}
+
+.desk-share-contents {
+  padding-block: 8px;
+  font: 500 12px/1.6 "Geist Mono", ui-monospace, monospace;
+}
+
+.desk-share-contents ul {
+  max-height: min(200px, 28dvh);
+  margin: 8px 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  opacity: 0.65;
+  overflow-wrap: anywhere;
+}
+
+.desk-share-dialog .desk-share-private {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-height: 36px;
+  margin: 0;
+  letter-spacing: 0;
+  text-transform: none;
+  opacity: 1;
+  cursor: pointer;
+}
+
+.desk-share-dialog .desk-share-private input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  accent-color: var(--desk-accent-deep);
+}
+
+.desk-share-link {
+  display: grid;
+  gap: 12px;
+}
+
+.desk-share-dialog [hidden], .desk-shared-context[hidden] {
+  display: none;
+}
+
+.desk-shared-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  align-items: center;
+  margin-bottom: 16px;
+  color: var(--desk-accent-deep);
+  font: 600 12px/20px "Geist Mono", ui-monospace, monospace;
+}
+
+.desk-shared-context > span {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  opacity: 0.65;
+}
+
+.desk-shared-context button {
+  min-height: 36px;
+  padding: 4px 0;
+  color: inherit;
+  font: inherit;
+  background: none;
+  border: 0;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+
+.desk-shared-context button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 4px;
+}
+
+.desk-shared-context p {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.desk-shared-context p:empty { display: none; }
 
 .desk-save-dialog__form header {
   display: grid;

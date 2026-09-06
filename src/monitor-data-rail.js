@@ -14,6 +14,10 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     mode: root.querySelector("[data-monitor-data-mode]"),
     copy: root.querySelector("[data-monitor-data-copy]"),
     status: root.querySelector("[data-monitor-data-status]"),
+    apiSections: root.querySelectorAll("[data-monitor-data-api]"),
+    source: root.querySelector("[data-monitor-data-source]"),
+    sourceDescription: root.querySelector("[data-monitor-data-source-description]"),
+    sourceLink: root.querySelector("[data-monitor-data-source-link]"),
   };
   let model = null;
   let open = false;
@@ -26,9 +30,10 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     syncOpenState();
   });
   nodes.mode?.addEventListener("click", () => {
+    if (model?.accessKind === "source") return;
     mode = mode === "command" ? "sql" : "command";
     renderMode();
-    announce(mode === "sql" ? "Showing DataFusion SQL" : "Showing Desk CLI command");
+    announce(mode === "sql" ? "Showing DataFusion SQL" : downloadAccess() ? "Showing JSON download link" : "Showing Desk CLI command");
   });
   nodes.copy?.addEventListener("click", async () => {
     const copiedMode = mode;
@@ -42,7 +47,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       copied
         ? copiedMode === "sql"
           ? "DataFusion SQL copied"
-          : "Desk command copied"
+          : downloadAccess() ? "Download link copied" : "Desk command copied"
         : "Copy unavailable in this browser",
     );
     window.clearTimeout(copyFeedbackTimer);
@@ -63,15 +68,31 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
 
   function setModel(nextModel) {
     if (model?.key === nextModel?.key) return;
+    const previousAccess = model?.accessKind;
     model = nextModel;
     if (!model) {
       setVisible(false);
       return;
     }
-    nodes.label.textContent = "Desk API";
+    const sourceOnly = model.accessKind === "source";
+    root.dataset.accessKind = model.accessKind || "cli";
+    root.setAttribute("aria-label", sourceOnly ? "Market data source" : "Desk API");
+    nodes.label.textContent = sourceOnly ? "Source" : "Desk API";
     nodes.dataset.textContent = model.label;
-    nodes.context.textContent = model.summary;
+    nodes.context.textContent = sourceOnly ? model.summary : [model.summary, model.provenance].filter(Boolean).join(" · ");
+    nodes.context.title = nodes.context.textContent;
     nodes.toggle?.setAttribute("aria-label", toggleLabel(model));
+    for (const section of nodes.apiSections) section.hidden = sourceOnly;
+    if (nodes.source) nodes.source.hidden = !sourceOnly;
+    if (nodes.sourceDescription) nodes.sourceDescription.textContent = model.description || "";
+    if (nodes.sourceLink) {
+      nodes.sourceLink.hidden = !model.sourceUrl;
+      if (model.sourceUrl) nodes.sourceLink.href = model.sourceUrl;
+      else nodes.sourceLink.removeAttribute("href");
+    }
+    if (sourceOnly || previousAccess === "source") mode = "command";
+    window.clearTimeout(copyFeedbackTimer);
+    if (nodes.status) nodes.status.textContent = "";
     renderPath();
     renderMode();
     syncOpenState();
@@ -104,22 +125,26 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
 
   function renderMode() {
     if (!model) return;
+    if (model.accessKind === "source") {
+      nodes.command?.replaceChildren();
+      return;
+    }
     const showingSql = mode === "sql";
     root.dataset.accessMode = mode;
     nodes.actionLabel.textContent = showingSql
       ? `Query ${sentenceLabel(model.label)}`
-      : `Sync ${sentenceLabel(model.label)}`;
+      : `${downloadAccess() ? "Download" : "Sync"} ${sentenceLabel(model.label)}`;
     renderCode(nodes.command, showingSql ? model.sql : model.command, {
       highlightSql: showingSql,
     });
     nodes.commandShell?.setAttribute(
       "aria-label",
-      showingSql ? "DataFusion SQL query" : "Desk CLI command",
+      showingSql ? "DataFusion SQL query" : downloadAccess() ? "JSON download link" : "Desk CLI command",
     );
-    nodes.mode.textContent = showingSql ? "View CLI" : "View SQL";
+    nodes.mode.textContent = showingSql ? downloadAccess() ? "View link" : "View CLI" : "View SQL";
     nodes.mode.setAttribute(
       "aria-label",
-      showingSql ? "Show Desk CLI command" : "Show DataFusion SQL",
+      showingSql ? downloadAccess() ? "Show JSON download link" : "Show Desk CLI command" : "Show DataFusion SQL",
     );
     syncCopyLabel();
     nodes.command?.closest("pre")?.scrollTo({ top: 0, left: 0 });
@@ -127,11 +152,15 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
 
   function syncCopyLabel() {
     if (!nodes.copy) return;
-    nodes.copy.textContent = mode === "sql" ? "Copy SQL" : "Copy command";
+    nodes.copy.textContent = mode === "sql" ? "Copy SQL" : downloadAccess() ? "Copy link" : "Copy command";
     nodes.copy.setAttribute(
       "aria-label",
-      mode === "sql" ? "Copy DataFusion SQL" : "Copy Desk CLI command",
+      mode === "sql" ? "Copy DataFusion SQL" : downloadAccess() ? "Copy JSON download link" : "Copy Desk CLI command",
     );
+  }
+
+  function downloadAccess() {
+    return model?.accessKind === "download";
   }
 
   function syncOpenState({ animateClose = true } = {}) {
@@ -279,10 +308,12 @@ function sentenceLabel(value) {
 }
 
 function toggleLabel(model) {
+  if (model.accessKind === "source") return `Data by ${model.label}, ${model.summary}`;
   const label = [
     "Desk API",
     model.label,
     model.summary,
+    ...(model.provenance ? [model.provenance] : []),
     formatRowCount(model.rowCount),
   ];
   if (model.asOf) label.push(`observed ${formatAsOf(model.asOf)}`);

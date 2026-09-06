@@ -1,6 +1,8 @@
 import * as d3 from "d3";
 import { animate } from "motion";
-import { cardUrl, replaceCardLocation } from "./card-presentation.js";
+import { cardUrl } from "./card-presentation.js";
+import { readSharedDeskUrl } from "./shared-desk.js";
+import { createDeskSharing } from "./desk-sharing-ui.js";
 import {
   compositionKey,
   createComposition,
@@ -25,6 +27,7 @@ import {
 import { createGpuPriceBarModel } from "./gpu-price-bar-model.js";
 import { paintGpuPriceBarChart } from "./gpu-price-bar-presentation.js";
 import { createGpuSpreadSeries } from "./gpu-spread-model.js";
+import { alignIndexedPriceSeries, createPriceSeriesIndex, priceRowsForRange } from "./price-series.js";
 import { createGpuMarketDepthModel } from "./gpu-market-depth-model.js";
 import { paintGpuMarketDepthChart } from "./gpu-market-depth-presentation.js";
 import { createPowerBasisModel } from "./power-basis-model.js";
@@ -65,6 +68,7 @@ import {
   removeCatalogKeyFromCollections,
   renameCatalogCollection,
   replaceCatalogCollectionKeys,
+  saveSharedDeskCollection,
   toggleCatalogCollectionKey,
 } from "./catalog-collections.js";
 import { shareRangeLabel } from "./share-range-label.js";
@@ -90,7 +94,27 @@ import {
 const root = document.querySelector("[data-gpu-benchmark-card]");
 
 if (root) {
+  const incomingDesk = readSharedDeskUrl(window.location.href);
+  const sharedDeskId = "shared-desk";
+  const sharedDeskHash = incomingDesk.snapshot ? window.location.hash : "";
+  const personalAppearance = {
+    palette: document.documentElement.dataset.palette,
+    theme: document.documentElement.dataset.theme,
+  };
   const params = new URL(window.location.href).searchParams;
+  if (incomingDesk.snapshot) {
+    const { entries, palette, theme } = incomingDesk.snapshot;
+    if (!params.has("card")) {
+      params.set("card", entries[0].cardId);
+      for (const [key, value] of Object.entries(entries[0].state)) {
+        if (key === "palette" || key === "theme") continue;
+        params.set(key, Array.isArray(value) ? value.join(",") : String(value));
+      }
+      params.set("view", "gallery");
+    }
+    document.documentElement.dataset.palette = params.get("palette") || palette;
+    document.documentElement.dataset.theme = params.get("theme") || theme;
+  }
   const neutralCraftRequested =
     params.get("view") === "craft" && params.get("draft") === "new";
   let cardDefinition = getCardDefinition(
@@ -183,6 +207,15 @@ if (root) {
     )
       ? "all"
       : "focus";
+  const catalogCollections = loadCatalogCollections({ readOnly: Boolean(incomingDesk.snapshot || incomingDesk.error) });
+  const initialCatalogViewId = incomingDesk.snapshot ? sharedDeskId : loadActiveCatalogSession(catalogCollections);
+  const initialCollection = catalogCollections.collections.find((collection) => collection.id === initialCatalogViewId);
+  if (!incomingDesk.snapshot && initialCollection?.views?.length) {
+    document.documentElement.dataset.palette = palettes.includes(params.get("palette"))
+      ? params.get("palette") : initialCollection.palette;
+    document.documentElement.dataset.theme = ["dark", "light"].includes(params.get("theme"))
+      ? params.get("theme") : initialCollection.theme;
+  }
   const requestedState = normalizeCardState(cardId, {
     ...Object.fromEntries(
       cardStateParamIds(cardDefinition).map((name) => [name, params.get(name)]),
@@ -200,7 +233,14 @@ if (root) {
     : requestedState.scale;
   const initialRange = requestedState.range;
   const savedCatalog = loadSavedCatalog(cardId);
-  const catalogCollections = loadCatalogCollections();
+  const initialEmbeddedEntries = incomingDesk.snapshot
+    ? incomingDesk.snapshot.entries.map((entry, index) => ({ ...entry, key: `${sharedDeskId}-${index}` }))
+    : catalogCollections.collections.flatMap((collection) => collection.views || []);
+  const initialEmbeddedMatch = (entry) => entry.cardId === cardId &&
+    compositionKey(cardId, { ...entry.state, palette: requestedState.palette, theme: requestedState.theme }) ===
+      compositionKey(cardId, requestedState);
+  const initialEmbeddedEntry = initialEmbeddedEntries.find((entry) => entry.key === params.get("entry") && initialEmbeddedMatch(entry)) ||
+    (incomingDesk.snapshot ? initialEmbeddedEntries.find(initialEmbeddedMatch) : null);
   const hasCompleteCatalogSnapshot = cardStateParamIds(cardDefinition).every(
     (name) => params.has(name),
   );
@@ -236,7 +276,7 @@ if (root) {
     (params.has("item") && !requestedCatalogItem) ||
     params.has("locked");
   const state = {
-    seriesByLayer: new Map(),
+    priceSeries: new Map(),
     runtimePayloads: new Map(),
     runtimePayload: null,
     mode: initialMode,
@@ -262,13 +302,16 @@ if (root) {
     catalogDirty: true,
     catalogOrder: loadCatalogOrder(),
     catalogCollections,
-    activeCatalogViewId: loadActiveCatalogSession(catalogCollections),
+    activeCatalogViewId: initialCatalogViewId,
+    sharedDesk: incomingDesk.snapshot,
+    sharedDeskError: incomingDesk.error,
+    activeEmbeddedKey: initialEmbeddedEntry?.key || null,
     catalogMenuOpen: false,
     catalogDialogMode: null,
     zoomWindow: null,
     savedCatalog,
     activeCatalogId: requestedCatalogItem?.id || null,
-    catalogName: requestedCatalogItem?.name || "",
+    catalogName: requestedCatalogItem?.name || initialEmbeddedEntry?.name || "",
     craftEmpty: initialCraftEmpty,
     craftDirty: false,
     craftBaseline: null,
@@ -413,6 +456,24 @@ if (root) {
     root: nodes.commandPalette,
     reducedMotion,
   });
+  const deskSharing = createDeskSharing({
+    dialog: document.querySelector("[data-desk-share-dialog]"),
+    banner: document.querySelector("[data-shared-desk-banner]"),
+    getDesk: () => ({
+      name: currentCatalogCollection().name,
+      entries: catalogEntries().map((entry) => ({
+        cardId: entry.cardId,
+        name: catalogEntryTitle(entry),
+        state: catalogEntryDisplayState(entry),
+      })),
+      palette: currentPalette(),
+      theme: currentTheme(),
+    }),
+    saveCopy: saveSharedDeskCopy,
+    leave: leaveSharedDesk,
+    copyText: copyTextToClipboard,
+    returnFocus: nodes.commandOpen,
+  });
   const monitorDataRail = createMonitorDataRail({
     root: root.querySelector("[data-monitor-data]"),
     copyText: copyTextToClipboard,
@@ -525,7 +586,7 @@ if (root) {
   }
 
   function syncMarketPin() {
-    const available = state.shareReady && !state.craftEmpty;
+    const available = state.shareReady && !state.craftEmpty && hasCurrentPriceData();
     const pinned = available && Boolean(currentMarketPin());
     for (const button of nodes.marketPinButtons) {
       button.disabled = !available;
@@ -534,7 +595,7 @@ if (root) {
   }
 
   function toggleMarketPin() {
-    if (!state.shareReady || state.craftEmpty) return;
+    if (!state.shareReady || state.craftEmpty || !hasCurrentPriceData()) return;
     if (nodes.saveDialog?.open) clearSaveError();
     const existing = currentMarketPin();
     if (existing) { removeMarketPin(existing.id); return; }
@@ -572,6 +633,11 @@ if (root) {
   function reportMarketPinError(message) {
     if (nodes.saveDialog?.open) nodes.saveError.textContent = message;
     else marketStrip.notice(message);
+  }
+
+  function hasCurrentPriceData() {
+    return cardDefinition.renderer !== "line" ||
+      priceRowsForRange(state.priceSeries, cardDefinition, state.selected, null).length > 0;
   }
 
   function refreshMarketStrip() {
@@ -617,8 +683,10 @@ if (root) {
           const primary = series.find((item) => item.primary) || series[0];
           const latest = primary?.rows.at(-1);
           if (!latest) return null;
-          displayValue = formatCardHeadline(latest.plotValue, cardState.scale);
-          displayUnit = cardState.scale === "price" ? "/GPU-h" : "";
+          displayValue = formatCardHeadline(latest.plotValue, cardState.scale, primary.layer.unit);
+          displayUnit = cardState.scale === "price"
+            ? primary.layer.unit === "usd-share" ? "/share" : "/GPU-h"
+            : "";
           timestamp = latest.date.getTime() / 1000;
         }
         if (!Number.isFinite(timestamp)) return null;
@@ -792,6 +860,7 @@ if (root) {
         return button;
       });
     nodes.craftTypeList.replaceChildren(...nodes.craftTypeButtons);
+    nodes.craftTypeList.style.setProperty("--craft-type-count", nodes.craftTypeButtons.length);
   }
 
   function configureComposerControls() {
@@ -1230,9 +1299,10 @@ if (root) {
     window.addEventListener("storage", (event) => {
       if (event.key === CATALOG_COLLECTIONS_STORAGE_KEY) {
         const activeId = state.activeCatalogViewId;
-        state.catalogCollections = loadCatalogCollections();
+        state.catalogCollections = loadCatalogCollections({ readOnly: Boolean(state.sharedDesk || state.sharedDeskError) });
         state.activeCatalogViewId =
           activeId === ALL_CARDS_CATALOG_ID ||
+          (activeId === sharedDeskId && state.sharedDesk) ||
           state.catalogCollections.collections.some(
             (collection) => collection.id === activeId,
           )
@@ -1362,6 +1432,10 @@ if (root) {
 
   function syncCatalogCollectionControls() {
     const collection = currentCatalogCollection();
+    deskSharing.sync({
+      snapshot: collection.shared ? state.sharedDesk : null,
+      error: state.sharedDeskError,
+    });
     const allEntries = catalogEntriesAll();
     const visibleEntries = entriesForCatalogCollection(allEntries, collection);
     const availableKeys = new Set(allEntries.map((entry) => entry.key));
@@ -1384,31 +1458,28 @@ if (root) {
       nodes.catalogCreate.setAttribute("aria-label", "Create a new catalog");
     }
     if (nodes.catalogRename) {
-      nodes.catalogRename.disabled = collection.system || catalogUnavailable;
+      nodes.catalogRename.disabled = collection.system || collection.shared || catalogUnavailable;
       nodes.catalogRename.setAttribute(
         "aria-label",
         `Rename ${collection.name}`,
       );
     }
     if (nodes.catalogDelete) {
-      nodes.catalogDelete.disabled = collection.system || catalogUnavailable;
+      nodes.catalogDelete.disabled = collection.system || collection.shared || catalogUnavailable;
       nodes.catalogDelete.setAttribute(
         "aria-label",
         `Delete ${collection.name}`,
       );
     }
     if (nodes.catalogCardsAction) {
-      nodes.catalogCardsAction.disabled = collection.system || catalogUnavailable;
+      nodes.catalogCardsAction.disabled = collection.system || collection.shared || catalogUnavailable;
       nodes.catalogCardsAction.setAttribute(
         "aria-label",
         `Edit views in ${collection.name}`,
       );
     }
     if (nodes.catalogList) {
-      const collections = [
-        { id: ALL_CARDS_CATALOG_ID, name: "All views", keys: null, system: true },
-        ...state.catalogCollections.collections,
-      ];
+      const collections = availableCatalogCollections();
       const options = collections.map((candidate) => {
         const option = document.createElement("button");
         const count = candidate.system
@@ -1444,6 +1515,9 @@ if (root) {
   }
 
   function currentCatalogCollection() {
+    if (state.sharedDesk && state.activeCatalogViewId === sharedDeskId) {
+      return sharedCatalogCollection();
+    }
     const collection = activeCatalogCollection(
       state.catalogCollections,
       state.activeCatalogViewId,
@@ -1453,6 +1527,48 @@ if (root) {
       saveActiveCatalogSession(collection.id);
     }
     return collection;
+  }
+
+  function sharedCatalogCollection() {
+    return {
+      id: sharedDeskId,
+      name: state.sharedDesk.name,
+      keys: state.sharedDesk.entries.map((_, index) => `${sharedDeskId}-${index}`),
+      shared: true,
+      system: false,
+    };
+  }
+
+  function availableCatalogCollections() {
+    return [
+      ...(state.sharedDesk ? [sharedCatalogCollection()] : []),
+      { id: ALL_CARDS_CATALOG_ID, name: "All views", keys: null, system: true },
+      ...state.catalogCollections.collections,
+    ];
+  }
+
+  async function saveSharedDeskCopy() {
+    if (!state.sharedDesk || state.activeCatalogViewId !== sharedDeskId) return;
+    const updated = saveSharedDeskCollection(state.sharedDesk);
+    const collection = updated.collections.at(-1);
+    state.catalogCollections = updated;
+    state.sharedDesk = null;
+    state.sharedDeskError = null;
+    state.activeEmbeddedKey = null;
+    await selectCatalogCollection(collection.id);
+    updateLocation();
+    announceWorkspace(`${collection.name} saved in this browser`);
+  }
+
+  async function leaveSharedDesk() {
+    state.sharedDesk = null;
+    state.sharedDeskError = null;
+    state.activeEmbeddedKey = null;
+    Object.assign(document.documentElement.dataset, personalAppearance);
+    syncAppearanceControls();
+    syncCardAppearance();
+    await selectCatalogCollection(loadActiveCatalogSession(state.catalogCollections));
+    updateLocation();
   }
 
   function loadActiveCatalogSession(collections) {
@@ -1475,6 +1591,7 @@ if (root) {
   }
 
   function saveActiveCatalogSession(collectionId) {
+    if (collectionId === sharedDeskId) return;
     try {
       window.sessionStorage.setItem(activeCatalogSessionKey, collectionId);
     } catch {
@@ -1484,7 +1601,7 @@ if (root) {
 
   function openCatalogCardCommands() {
     const collection = currentCatalogCollection();
-    if (collection.system) return;
+    if (collection.system || collection.shared) return;
     setCatalogMenuOpen(false);
     commandPalette.open({
       query: `Select views ${collection.name}`,
@@ -1493,7 +1610,7 @@ if (root) {
   }
 
   function entriesForCatalogCollection(entries, collection) {
-    if (collection.system) return entries;
+    if (collection.system) return entries.filter((entry) => entry.kind !== "shared");
     const entriesByKey = new Map(entries.map((entry) => [entry.key, entry]));
     return collection.keys
       .map((key) => entriesByKey.get(key))
@@ -1504,6 +1621,7 @@ if (root) {
     const id = String(collectionId || "");
     const exists =
       id === ALL_CARDS_CATALOG_ID ||
+      (id === sharedDeskId && state.sharedDesk) ||
       state.catalogCollections.collections.some((collection) =>
         collection.id === id
       );
@@ -1513,16 +1631,26 @@ if (root) {
     }
     if (state.mode === "craft") preserveCraftDraft();
     state.activeCatalogViewId = id;
+    const selectedCollection = currentCatalogCollection();
+    const appearance = selectedCollection.shared ? state.sharedDesk : selectedCollection;
+    if (appearance.palette && appearance.theme) {
+      document.documentElement.dataset.palette = appearance.palette;
+      document.documentElement.dataset.theme = appearance.theme;
+      syncAppearanceControls();
+      syncCardAppearance();
+    }
     saveActiveCatalogSession(id);
     state.catalogDirty = true;
     setCatalogMenuOpen(false);
     configureWorkspaceControls();
+    configureCommandPalette();
     syncCatalogCollectionCommands();
     if (state.mode !== "catalog" || state.layout !== "all") {
       await showPanel("share", true, "all", false, "catalog");
     } else {
       renderWorkspaceGallery();
     }
+    updateLocation();
     const collection = currentCatalogCollection();
     announceWorkspace(`${collection.name} opened`);
     if (restoreFocus) {
@@ -1533,7 +1661,7 @@ if (root) {
   function openCatalogCollectionDialog(mode) {
     if (!nodes.catalogDialog || !nodes.catalogNameInput) return;
     const collection = currentCatalogCollection();
-    if ((mode === "rename" || mode === "delete") && collection.system) return;
+    if ((mode === "rename" || mode === "delete") && (collection.system || collection.shared)) return;
     state.catalogDialogMode = mode;
     clearCatalogCollectionError();
     setCatalogMenuOpen(false);
@@ -1716,7 +1844,7 @@ if (root) {
       });
       state.savedCatalog = loadSavedCatalog(cardId);
       const collection = currentCatalogCollection();
-      if (creating && !collection.system) {
+      if (creating && !collection.system && !collection.shared) {
         try {
           state.catalogCollections = addCatalogCollectionKey(
             collection.id,
@@ -1967,7 +2095,7 @@ if (root) {
     }
 
     if (state.mode === "catalog") persistCatalogScrollPosition();
-    window.location.assign(neutralCraftUrl());
+    window.location.assign(withSharedDeskLocation(neutralCraftUrl()));
   }
 
   function neutralCraftUrl() {
@@ -2071,7 +2199,7 @@ if (root) {
     });
 
     if (nextCard.id !== cardId) {
-      window.location.assign(cardUrl(nextCard.id, "craft", next));
+      window.location.assign(withSharedDeskLocation(cardUrl(nextCard.id, "craft", next)));
       return;
     }
 
@@ -2363,6 +2491,34 @@ if (root) {
         run: copyCardLink,
       },
       {
+        id: "actions.share-desk",
+        group: "Actions",
+        order: 1,
+        title: "Share desk",
+        subtitle: () => currentCatalogCollection().name,
+        hint: "Share",
+        keywords: ["share", "desk", "collection", "catalog", "link", "workspace"],
+        disabled: () => !catalogEntries().length,
+        run: () => deskSharing.open(),
+      },
+      ...(state.sharedDesk && state.activeCatalogViewId === sharedDeskId ? [{
+        id: "actions.save-desk-copy",
+        group: "Actions",
+        order: 2,
+        title: "Save a copy",
+        subtitle: state.sharedDesk.name,
+        hint: "Save",
+        keywords: ["save", "desk", "copy", "import", "collection"],
+        run: async () => {
+          try { await saveSharedDeskCopy(); }
+          catch (error) {
+            const message = error.message || "Could not save this desk.";
+            deskSharing.sync({ snapshot: state.sharedDesk, error: message });
+            announceWorkspace(message);
+          }
+        },
+      }] : []),
+      {
         id: "actions.pin-to-strip",
         group: "Actions",
         order: 1,
@@ -2370,7 +2526,7 @@ if (root) {
         subtitle: () => workspaceLabel(),
         hint: "Strip",
         keywords: ["pin", "unpin", "strip", "watchlist", "ticker", "bottom", "save", "remove"],
-        disabled: () => !state.shareReady || state.craftEmpty,
+        disabled: () => !state.shareReady || state.craftEmpty || !hasCurrentPriceData(),
         run: toggleMarketPin,
       },
       {
@@ -2447,7 +2603,7 @@ if (root) {
         disabled: () => !state.activeCatalogId,
         run: deleteCurrentCatalogItem,
       },
-      ...(cardDefinition.renderer === "line" ? families : []).map((family, index) => ({
+      ...(cardId === "gpu-index" ? families : []).map((family, index) => ({
         id: `gpu.${family.toLowerCase()}`,
         group: "Catalog",
         order: index + 1,
@@ -2461,6 +2617,20 @@ if (root) {
           state.layout === "focus" &&
           state.selected === family,
         run: () => selectCardTab(family, { detail: 0 }),
+      })),
+      ...getCardDefinition("equities").layers.map((layer, index) => ({
+        id: `equity.${layer.id.toLowerCase()}`,
+        group: "Equities",
+        order: index,
+        title: `Open ${layer.id}`,
+        subtitle: layer.companyName || layer.label,
+        hint: "Equity",
+        keywords: ["stock", "equities", layer.id, layer.companyName || layer.label],
+        disabled: () => !state.runtimePayloads.has("equities"),
+        active: () => cardId === "equities" && state.selected === layer.id,
+        run: () => openCardPreset("equities", "monitor", true, {
+          symbol: layer.id, layers: [layer.id], scale: "price", range: "1y",
+        }),
       })),
       ...(isDealCard || isPowerCard ? [] : cardDefinition.layers).map((layer, index) => ({
         id: `layer.${layer.id.toLowerCase()}`,
@@ -2621,10 +2791,7 @@ if (root) {
     const collection = currentCatalogCollection();
     const allEntries = catalogEntriesAll();
     const included = new Set(collection.system ? [] : collection.keys);
-    const collections = [
-      { id: ALL_CARDS_CATALOG_ID, name: "All views", keys: null, system: true },
-      ...state.catalogCollections.collections,
-    ];
+    const collections = availableCatalogCollections();
     const commands = [
       ...collections.map((candidate, index) => {
         const count = candidate.system
@@ -2665,6 +2832,7 @@ if (root) {
         keywords: ["catalog", "rename", collection.name],
         disabled: () =>
           currentCatalogCollection().system ||
+          currentCatalogCollection().shared ||
           Boolean(state.catalogCollections.unavailable),
         run: () => openCatalogCollectionDialog("rename"),
       },
@@ -2678,12 +2846,13 @@ if (root) {
         keywords: ["catalog", "delete", "remove", collection.name],
         disabled: () =>
           currentCatalogCollection().system ||
+          currentCatalogCollection().shared ||
           Boolean(state.catalogCollections.unavailable),
         run: () => openCatalogCollectionDialog("delete"),
       },
-      ...(collection.system
+      ...(collection.system || collection.shared
         ? []
-        : allEntries.map((entry, index) => {
+        : allEntries.filter((entry) => entry.kind !== "shared").map((entry, index) => {
             const entryIncluded = included.has(entry.key);
             const title = catalogEntryTitle(entry);
             return {
@@ -2716,7 +2885,7 @@ if (root) {
 
   function toggleCatalogEntryInActiveCollection(entry) {
     const collection = currentCatalogCollection();
-    if (collection.system) return;
+    if (collection.system || collection.shared || entry.kind === "shared") return;
     const included = collection.keys.includes(entry.key);
     try {
       state.catalogCollections = toggleCatalogCollectionKey(
@@ -2918,6 +3087,7 @@ if (root) {
   }
 
   function storeDeskAppearance() {
+    if (state.activeCatalogViewId === sharedDeskId) return;
     try {
       window.localStorage.setItem("desk-theme", currentTheme());
       window.localStorage.setItem("desk-palette", currentPalette());
@@ -3165,8 +3335,16 @@ if (root) {
         }),
       })),
     );
+    const embeddedEntries = [...new Map(state.catalogCollections.collections.flatMap((collection) =>
+      (collection.views || []).map((view) => ({
+        ...view, kind: "embedded", label: view.name,
+      })),
+    ).map((entry) => [entry.key, entry])).values()];
+    const sharedEntries = (state.sharedDesk?.entries || []).map((view, index) => ({
+      ...view, key: `${sharedDeskId}-${index}`, kind: "shared", label: view.name,
+    }));
     return orderCatalogEntries(
-      [...savedEntries, ...presetEntries],
+      [...savedEntries, ...presetEntries, ...embeddedEntries, ...sharedEntries],
       state.catalogOrder,
     );
   }
@@ -3184,6 +3362,7 @@ if (root) {
   }
 
   function configureCatalogCardReordering(cardNodes) {
+    if (currentCatalogCollection().shared) return;
     const { button } = cardNodes;
     button.addEventListener("pointerdown", (event) => {
       beginCatalogPointerReorder(event, cardNodes);
@@ -3680,6 +3859,14 @@ if (root) {
   }
 
   function activeCatalogKey() {
+    const currentComposition = compositionKey(cardId, currentCardState());
+    const matchesEmbedded = (entry) =>
+      ["embedded", "shared"].includes(entry.kind) && entry.cardId === cardId &&
+      compositionKey(cardId, catalogEntryDisplayState(entry)) === currentComposition;
+    const embeddedEntries = catalogEntries();
+    const matched = embeddedEntries.find((entry) => entry.key === state.activeEmbeddedKey && matchesEmbedded(entry)) ||
+      (!state.activeCatalogId && embeddedEntries.find(matchesEmbedded));
+    if (matched) return matched.key;
     if (
       state.mode === "craft" &&
       state.craftDraft &&
@@ -3901,16 +4088,7 @@ if (root) {
         .filter((result) => result.status === "rejected")
         .forEach((result) => console.warn("Auxiliary card data unavailable", result.reason));
       state.runtimePayloads = new Map(results);
-      const gpuPayload = state.runtimePayloads.get("gpu-index");
-      const gpuDefinition = getCardDefinition("gpu-index");
-      state.seriesByLayer = new Map(
-        gpuDefinition.layers
-          .map((layer) => [
-            layer.id,
-            normalizeRuntimeSeries(gpuPayload?.series?.[layer.id], layer.id),
-          ])
-          .filter(([, rows]) => rows.length),
-      );
+      state.priceSeries = createPriceSeriesIndex(state.runtimePayloads, CARD_REGISTRY);
       refreshMarketStrip();
       const sourceId = cardDefinition.sourceCardId || cardDefinition.id;
       const payload = state.runtimePayloads.get(sourceId);
@@ -3920,7 +4098,8 @@ if (root) {
       root.dataset.cardDataVersion = String(payload.version);
       if (
         cardDefinition.renderer === "line" &&
-        !state.seriesByLayer.has(state.selected)
+        cardId !== "equities" &&
+        !priceRowsForRange(state.priceSeries, cardDefinition, state.selected, null).length
       ) {
         throw new Error(`Missing ${state.selected} data`);
       }
@@ -3990,29 +4169,6 @@ if (root) {
     if (!payload.series || typeof payload.series !== "object") {
       throw new Error(`Unsupported price data at ${url}`);
     }
-  }
-
-  function normalizeRuntimeSeries(points, layerId) {
-    if (!Array.isArray(points)) return [];
-    return points
-      .map((point) => normalizeRuntimePoint(point, layerId))
-      .filter(Boolean)
-      .sort((left, right) => left.date - right.date);
-  }
-
-  function normalizeRuntimePoint(point, layerId) {
-    const value = Number(point?.[1]);
-    const date = new Date(Number(point?.[0]) * 1000);
-    if (!Number.isFinite(value) || Number.isNaN(date.getTime())) return null;
-    const lower = Number(point?.[2]);
-    const upper = Number(point?.[3]);
-    return {
-      layerId,
-      date,
-      value,
-      lower: Number.isFinite(lower) ? lower : value,
-      upper: Number.isFinite(upper) ? upper : value,
-    };
   }
 
   function configureChoiceButtons(
@@ -4449,7 +4605,7 @@ if (root) {
         if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
         if (moveFocus) storePendingRailFocus(entry.key);
         persistCatalogScrollPosition();
-        window.location.assign(url);
+        window.location.assign(withSharedDeskLocation(url));
         return;
       }
     }
@@ -4491,29 +4647,22 @@ if (root) {
     stateOverrides = {},
   ) {
     const nextCard = getCardDefinition(nextCardId);
-    advanceCardEntryIntent();
-    if (nextCard.id === cardId) {
-      preserveCraftDraft();
-      applyCardState({
-        ...nextCard.defaults,
-        palette: currentPalette(),
-        theme: currentTheme(),
-        ...stateOverrides,
-      });
-      syncControls();
-      showPanel("share", true, "focus", moveFocus, "catalog");
-      return;
-    }
-
-    preserveCraftDraft();
     const nextState = normalizeCardState(nextCard.id, {
       ...nextCard.defaults,
       palette: currentPalette(),
       theme: currentTheme(),
       ...stateOverrides,
     });
-    persistCatalogScrollPosition();
-    window.location.assign(cardUrl(nextCard.id, view, nextState));
+    const entry = {
+      key: `current-${nextCard.id}`,
+      kind: "preset",
+      cardId: nextCard.id,
+      label: nextCard.title,
+      state: nextState,
+    };
+    return view === "monitor"
+      ? monitorCatalogEntry(entry, moveFocus)
+      : openCatalogRailEntry(entry, moveFocus);
   }
 
   async function openPublishedCard(family, moveFocus) {
@@ -4547,7 +4696,7 @@ if (root) {
         if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
         if (focusNavigation) storePendingRailFocus(entry.key);
         persistCatalogScrollPosition();
-        window.location.assign(url);
+        window.location.assign(withSharedDeskLocation(url));
         return;
       }
     }
@@ -4589,7 +4738,10 @@ if (root) {
       return true;
     }
     if (entry.state) {
-      applyCardState(entryState);
+      applyCardState(entryState, {
+        catalogName: ["embedded", "shared"].includes(entry.kind) ? entry.label : "",
+      });
+      state.activeEmbeddedKey = ["embedded", "shared"].includes(entry.kind) ? entry.key : null;
       return true;
     }
     if (families.includes(entry.family)) {
@@ -4634,6 +4786,7 @@ if (root) {
     { catalogId = null, catalogName = "" } = {},
   ) {
     const next = applyCompositionFields(nextState);
+    state.activeEmbeddedKey = null;
     state.activeCatalogId = catalogId;
     state.catalogName = catalogName;
     state.craftEmpty = false;
@@ -5032,7 +5185,7 @@ if (root) {
       button.setAttribute(
         "aria-label",
         button.dataset.cardScale === "price"
-          ? "Show hourly price"
+          ? cardId === "equities" ? "Show adjusted close in USD per share" : "Show hourly price"
           : button.dataset.cardScale === "index"
             ? "Show percentage change from the range start"
             : "Show the relative change between two series",
@@ -5175,6 +5328,8 @@ if (root) {
           ? `${spreadLabel}. The line shows the difference in price change, in percentage points. Positive values mean ${orderedLabels[0]} has risen more; negative values mean ${orderedLabels[1]} has risen more.`
           : state.scale === "index"
           ? `${labels} percentage change from the start of the selected range.`
+          : cardId === "equities"
+          ? `${labels} ${state.runtimePayload?.dataset?.priceBasisLabel || "daily closing prices"}, in US dollars per share. Only reported trading sessions are shown.`
           : `${labels} hourly prices. The band shows the quoted price range for ${state.selected}.`;
     }
   }
@@ -5527,6 +5682,8 @@ if (root) {
   function rangeControlAriaLabel(range) {
     if (range === "1d") return "Show one day";
     if (range === "7d") return "Show seven days";
+    if (range === "90d") return "Show ninety days";
+    if (range === "1y") return "Show one year";
     return "Show all history";
   }
 
@@ -5552,19 +5709,28 @@ if (root) {
             ? "monitor"
             : "card";
     if (state.mode === "craft" && state.craftEmpty) {
-      const url = replaceCardLocation(cardId, "craft", {
+      const url = cardUrl(cardId, "craft", {
         palette: currentPalette(),
         theme: currentTheme(),
       });
       url.searchParams.set("draft", "new");
-      window.history.replaceState({}, "", url);
+      window.history.replaceState({}, "", withSharedDeskLocation(url));
       return;
     }
-    const url = replaceCardLocation(cardId, view, currentCardState());
+    const url = cardUrl(cardId, view, currentCardState());
     if (state.activeCatalogId) {
       url.searchParams.set("item", state.activeCatalogId);
     }
-    window.history.replaceState({}, "", url);
+    const activeKey = activeCatalogKey();
+    if (activeKey && catalogEntries().some((entry) => entry.key === activeKey && ["shared", "embedded"].includes(entry.kind))) {
+      url.searchParams.set("entry", activeKey);
+    }
+    window.history.replaceState({}, "", withSharedDeskLocation(url));
+  }
+
+  function withSharedDeskLocation(url) {
+    if (state.sharedDesk && state.activeCatalogViewId === sharedDeskId) url.hash = sharedDeskHash;
+    return url;
   }
 
   function persistCatalogScrollPosition() {
@@ -5705,7 +5871,7 @@ if (root) {
   }
 
   function shareUrl() {
-    if (isDealCard) {
+    if (isDealCard || cardDefinition.publishable === false) {
       return cardUrl(cardId, "monitor", currentCardState()).toString();
     }
     const cardState =
@@ -5818,7 +5984,9 @@ if (root) {
       `${layerNames} ${ranges[state.range].label} ` +
       `${formatCardHeadline(latest.plotValue, state.scale)}`;
     if (nodes.shareObserved) {
-      nodes.shareObserved.textContent = formatUtcDateTime(latest.date);
+      nodes.shareObserved.textContent = cardId === "equities"
+        ? `Close ${d3.utcFormat("%d %b %Y")(latest.date)}`
+        : formatUtcDateTime(latest.date);
       nodes.shareObserved.setAttribute("datetime", latest.date.toISOString());
     }
     nodes.shareArtifactSvg?.setAttribute(
@@ -5913,6 +6081,7 @@ if (root) {
       const model = createMonitorDataModel({
         card: cardDefinition,
         cardState: currentCardState(),
+        runtimePayload: state.runtimePayload,
         ...context,
       });
       monitorDataRail.setModel(model);
@@ -5963,6 +6132,21 @@ if (root) {
       rangeSeries.find((series) => series.primary) ||
       rangeSeries[0];
     if (!primary?.rows.length) {
+      if (cardId === "equities") {
+        d3.select(nodes.svg).selectAll("*").remove();
+        drawUnavailableEquity(nodes.shareArtifactSvg, currentCardState(), cardDefinition, state.catalogName);
+        showFailure(state.runtimePayload?.dataset?.status === "ready"
+          ? "No shared trading sessions in this range."
+          : "Connect equity data to load history.");
+        updateRangeDates([]);
+        if (nodes.rangeStart) nodes.rangeStart.textContent = "—";
+        if (nodes.rangeEnd) nodes.rangeEnd.textContent = "—";
+        state.catalogDirty = true;
+        if (state.layout === "all") renderWorkspaceGallery();
+        syncShareStatus();
+        syncMonitorDataModel({ series: [] });
+        return;
+      }
       showFailure(
         state.scale === "spread"
           ? "No overlapping observations"
@@ -6389,9 +6573,15 @@ if (root) {
       });
       const primary = cardSeries.find((series) => series.primary) || cardSeries[0];
       const latest = primary?.rows.at(-1);
-      if (!cardNodes || !primary?.rows.length || !latest) continue;
+      if (!cardNodes || !primary?.rows.length || !latest) {
+        if (entryCard.id === "equities") {
+          drawUnavailableEquity(cardNodes.artifact, displayState, entryCard, title);
+          cardNodes.button.setAttribute("aria-label", `Monitor ${title}, equity data not connected`);
+        }
+        continue;
+      }
 
-      const value = formatCardHeadline(latest.plotValue, cardState.scale);
+      const value = formatCardHeadline(latest.plotValue, cardState.scale, primary.layer.unit);
       cardNodes.button.setAttribute(
         "aria-label",
         `Monitor ${title}, ${describeCatalogState(cardState, entryCard)}, ${value}`,
@@ -6484,6 +6674,10 @@ if (root) {
       }))
       .filter((series) => series?.rows.length);
 
+    if (definition.id === "equities") {
+      if (!memberSeries.some(candidate => candidate.primary)) return [];
+      return normalized.scale === "index" ? alignIndexedPriceSeries(memberSeries) : memberSeries;
+    }
     if (normalized.scale !== "spread") return memberSeries;
     if (memberSeries.length !== 2) return [];
     try {
@@ -6507,7 +6701,7 @@ if (root) {
     } = {},
   ) {
     const layer = getLayerDefinition(definition, layerId);
-    const sourceRows = visibleRows(state.seriesByLayer.get(layerId) || [], range);
+    const sourceRows = priceRowsForRange(state.priceSeries, definition, layerId, ranges[range]?.milliseconds);
     if (!layer || !sourceRows.length) return null;
     const baseValue = sourceRows[0].value || 1;
     const selectedRows = zoom ? customZoomRows(sourceRows) : sourceRows;
@@ -6552,6 +6746,31 @@ if (root) {
       scale: state.scale,
       title: state.catalogName || undefined,
       reveal: revealShareArtifact(motion),
+    });
+  }
+
+  function drawUnavailableEquity(svgNode, cardState, definition, title) {
+    if (!svgNode) return;
+    const normalized = normalizeCardState(definition.id, cardState);
+    const layer = getLayerDefinition(definition, normalized.gpu);
+    const palette = cardPalette(normalized);
+    const svg = d3.select(svgNode);
+    cancelChartMotion(svgNode);
+    svg.selectAll("*").remove();
+    svg.attr("viewBox", "0 0 1200 675");
+    svg.append("rect").attr("width", 1200).attr("height", 675).attr("fill", palette.paper);
+    const header = viewArtifactHeaderLayout(title || layer.shortLabel || layer.label, { compact: true });
+    for (const item of [
+      { x: header.titleX, y: header.titleY, text: title || layer.shortLabel || layer.label, size: header.titleSize },
+      { x: header.headlineX, y: header.headlineY, text: "—", size: header.headlineSize },
+      { x: header.titleX, y: 390, text: layer.companyName || layer.label, size: 42 },
+      { x: header.titleX, y: 450, text: state.runtimePayloads.get(definition.id)?.dataset?.status === "ready"
+        ? "No history in this range" : "Data not connected", size: 34 },
+    ]) appendShareText(svg, { ...item, fill: palette.line, weight: 500, family: "Geist, sans-serif" });
+    appendShareText(svg, {
+      x: header.contextX, y: header.contextY, text: ranges[normalized.range].label,
+      size: header.contextSize, anchor: "end", fill: palette.secondary,
+      family: "Geist Mono, monospace", weight: 600,
     });
   }
 
@@ -6768,7 +6987,7 @@ if (root) {
     appendShareText(headerLayer, {
       x: header.headlineX,
       y: header.headlineY,
-      text: formatCardHeadline(latest.plotValue, scale),
+      text: formatCardHeadline(latest.plotValue, scale, primary.layer.unit),
       fill: palette.line,
       size: header.headlineSize,
       weight: 500,
@@ -7196,7 +7415,7 @@ if (root) {
       const tooltipRows = series
         .map((candidate) => {
           const row = nearestRow(candidate.rows, selectedRow.date);
-          return row
+          return row && (cardId !== "equities" || +row.date === +selectedRow.date)
             ? {
               ...row,
               layer: candidate.layer,
@@ -7248,7 +7467,9 @@ if (root) {
 
   function renderTooltip(dateValue, rows) {
     const date = document.createElement("time");
-    date.textContent = formatDateTime(dateValue);
+    date.textContent = cardId === "equities"
+      ? `${d3.utcFormat("%d %b %Y")(dateValue)} · close`
+      : formatDateTime(dateValue);
     if (state.scale === "spread" && rows[0]) {
       const row = rows[0];
       const [primaryMember, comparisonMember] = row.members || [];
@@ -7306,10 +7527,10 @@ if (root) {
       range.textContent =
         state.scale === "index"
           ? row.primary
-            ? formatUsd(row.value)
+            ? formatUsd(row.value, row.layer.unit)
             : ""
           : row.primary
-          ? `${formatUsd(row.lower)} to ${formatUsd(row.upper)}`
+          ? row.layer.unit === "usd-share" ? "USD / share" : `${formatUsd(row.lower)} to ${formatUsd(row.upper)}`
           : "";
       entry.append(swatch, label, value, range);
       return entry;
@@ -7378,17 +7599,6 @@ if (root) {
     return Math.abs(after.date - date) < Math.abs(before.date - date)
       ? after
       : before;
-  }
-
-  function visibleRows(rows, range = state.range) {
-    const milliseconds = ranges[range]?.milliseconds;
-    if (!milliseconds || !rows.length) return rows;
-    const latest = d3.max(
-      Array.from(state.seriesByLayer.values()).flatMap((series) => series),
-      (row) => row.date,
-    );
-    const cutoff = new Date(latest.getTime() - milliseconds);
-    return rows.filter((row) => row.date >= cutoff);
   }
 
   function customZoomRows(rows) {
@@ -7504,9 +7714,10 @@ if (root) {
     }
   }
 
-  function formatUsd(value) {
+  function formatUsd(value, unit) {
     if (!Number.isFinite(Number(value))) return "pending";
     const number = Number(value);
+    if (unit === "usd-share") return `$${number.toFixed(2)}`;
     if (number < 1) return `$${number.toFixed(3)}`;
     if (number < 10) return `$${number.toFixed(2)}`;
     return `$${number.toFixed(1)}`;
@@ -7528,15 +7739,15 @@ if (root) {
   }
 
   function formatPlotValue(value, scale = state.scale) {
-    if (scale === "price") return formatUsd(value);
+    if (scale === "price") return formatUsd(value, getLayerDefinition(cardDefinition, state.selected)?.unit);
     if (scale === "spread") return formatSpreadPoints(value);
     const number = Number(value);
     if (!Number.isFinite(number)) return "pending";
     return formatSignedPercent(number - INDEX_BASELINE);
   }
 
-  function formatCardHeadline(value, scale = state.scale) {
-    if (scale === "price") return formatUsd(value);
+  function formatCardHeadline(value, scale = state.scale, unit = getLayerDefinition(cardDefinition, state.selected)?.unit) {
+    if (scale === "price") return formatUsd(value, unit);
     if (scale === "spread") return formatSpreadPoints(value);
     const change = Number(value) - 100;
     if (!Number.isFinite(change)) return "pending";

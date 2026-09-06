@@ -8,6 +8,10 @@ import {
 } from "../src/card-registry.js";
 import { createGpuMarketDepthModel } from "../src/gpu-market-depth-model.js";
 import { createPowerBasisModel } from "../src/power-basis-model.js";
+import {
+  buildEquitiesRuntime,
+  readEquitiesSource,
+} from "./equities-runtime.mjs";
 
 const HOUR_SECONDS = 60 * 60;
 const DAY_SECONDS = 24 * HOUR_SECONDS;
@@ -18,6 +22,7 @@ const priceSnapshotCard = getCardDefinition("gpu-price-snapshot");
 const depthCard = getCardDefinition("gpu-market-depth");
 const powerCard = getCardDefinition("power-basis");
 const dealCard = getCardDefinition("deal-view");
+const equitiesCard = getCardDefinition("equities");
 const gpuLayers = GPU_LAYERS.filter((layer) => layer.unit === "usd-hour");
 const tokenLayer = GPU_LAYERS.find((layer) => layer.id === "TOKEN");
 
@@ -67,6 +72,8 @@ const powerRuntime = buildPowerBasisRuntime(powerSource, powerSourceFile);
 const dealSourceFile = join(projectRoot, dealCard.sourceFile);
 const dealSource = await readJson(dealSourceFile);
 const dealRuntime = buildDealRuntime(dealSource, dealSourceFile);
+const equitiesSource = await readEquitiesSource(projectRoot, equitiesCard.sourceFile);
+const equitiesRuntime = buildEquitiesRuntime(equitiesSource, equitiesCard);
 
 // Keep the build contract tied to the browser model instead of allowing the
 // source and renderer to drift apart unnoticed.
@@ -115,6 +122,7 @@ const dataManifest = {
     depthRuntime.asOf,
     powerRuntime.asOf,
     dealRuntime.asOf,
+    equitiesRuntime.asOf || 0,
   ),
   cards: {
     [priceCard.id]: {
@@ -137,6 +145,12 @@ const dataManifest = {
       revision: dealRuntime.revision,
       asOf: dealRuntime.asOf,
     },
+    [equitiesCard.id]: {
+      file: equitiesCard.dataFile,
+      revision: equitiesRuntime.revision,
+      asOf: equitiesRuntime.asOf,
+      status: equitiesRuntime.dataset.status,
+    },
   },
   exports: Object.fromEntries(
     publicDataExports.map((dataExport) => [
@@ -152,7 +166,8 @@ if (buildOptions.check) {
     `Validated ${priceCard.id} (${priceRuntime.revision}) and ` +
       `${depthCard.id} (${depthRuntime.revision}) and ` +
       `${powerCard.id} (${powerRuntime.revision}) and ` +
-      `${dealCard.id} (${dealRuntime.revision}) source contracts, plus ` +
+      `${dealCard.id} (${dealRuntime.revision}) and ` +
+      `${equitiesCard.id} (${equitiesRuntime.revision}) source contracts, plus ` +
       `${publicDataExports.length} public data exports.`,
   );
 } else {
@@ -161,6 +176,7 @@ if (buildOptions.check) {
     writeJson(join(projectRoot, depthCard.dataFile), depthRuntime),
     writeJson(join(projectRoot, powerCard.dataFile), powerRuntime),
     writeJson(join(projectRoot, dealCard.dataFile), dealRuntime),
+    writeJson(join(projectRoot, equitiesCard.dataFile), equitiesRuntime),
     writeJson(join(projectRoot, "data", "manifest.json"), dataManifest),
     ...publicDataExports.map((dataExport) =>
       writeJson(join(projectRoot, dataExport.file), dataExport.records),
@@ -170,7 +186,8 @@ if (buildOptions.check) {
     `Built ${priceCard.dataFile} (${priceRuntime.revision}), ` +
       `${depthCard.dataFile} (${depthRuntime.revision}), ` +
       `${powerCard.dataFile} (${powerRuntime.revision}), ` +
-      `${dealCard.dataFile} (${dealRuntime.revision}), and data/manifest.json ` +
+      `${dealCard.dataFile} (${dealRuntime.revision}), ` +
+      `${equitiesCard.dataFile} (${equitiesRuntime.revision}), and data/manifest.json ` +
       `(${dataManifest.revision}), plus ${publicDataExports.length} public ` +
       "data exports.",
   );
