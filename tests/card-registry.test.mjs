@@ -183,7 +183,7 @@ test("each equity preset selects exactly its symbol and retains the one-year pri
   }
 });
 
-test("Power adds Dominion, ERCOT North and GPU energy while retaining the renderer and legacy West presets", () => {
+test("Power adds Dominion, ERCOT North and H100 power cost while retaining the renderer and legacy West presets", () => {
   const card = getCardDefinition("power-basis");
   assert.equal(card.renderer, "power-basis");
   assert.equal(card.primaryParam, "location");
@@ -197,10 +197,10 @@ test("Power adds Dominion, ERCOT North and GPU energy while retaining the render
   assert.deepEqual(card.catalogPresets.slice(2).map(preset => [preset.label, preset.state.location, preset.state.scale]), [
     ["PJM Dominion", "PJM-DOMINION", "price"],
     ["ERCOT North", "ERCOT-NORTH", "price"],
-    ["GPU energy", "PJM-DOMINION", "energy"],
+    ["H100 power cost", "PJM-DOMINION", "energy"],
   ]);
   assert.deepEqual(card.visualizations.map(view => [view.id, view.label, view.unit]), [
-    ["price", "Price", "usd-mwh"], ["basis", "Spread", "usd-mwh"], ["energy", "GPU energy", "usd-gpu-hour"],
+    ["price", "Price", "usd-mwh"], ["basis", "Spread", "usd-mwh"], ["energy", "H100 power cost", "usd-gpu-hour"],
   ]);
   assert.deepEqual(cardStateParamIds(card), ["location", "layers", "scale", "range", "palette", "theme"]);
   assert.deepEqual(card.ranges, ["1d", "7d", "90d", "1y", "all"]);

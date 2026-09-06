@@ -5,8 +5,8 @@ import { pathToFileURL } from "node:url";
 import test, { after, before } from "node:test";
 
 // Existing local preview and installed browsers only. No provider requests,
-// credentials, dependency installs, or application data writes. Gap cases are
-// explicitly named TEST FIXTURES, served only through Playwright interception.
+// credentials, dependency installs, or application data writes. Positive paths
+// load bundled demo histories; only fail-closed gap cases intercept those files.
 const moduleName = process.env.DESK_PLAYWRIGHT_MODULE || "playwright";
 const playwright = await import(isAbsolute(moduleName) ? pathToFileURL(moduleName).href : moduleName);
 const engine = process.env.DESK_BROWSER_ENGINE || "chromium";
@@ -53,7 +53,7 @@ function mixedUrl() {
 
 // Independent raw-data oracle: sort observations, then keep the last per UTC
 // date. The range ends at the latest common date, not either source's asOf.
-function expectedComparison(equities = equityPayload, gpu = gpuPayload) {
+function expectedComparison(equities = equityPayload, gpu = gpuPayload, rangeDays = 90) {
   const daily = ids.map(id => {
     const points = (id === "NVDA" ? equities : gpu).series[id] || [];
     const days = new Map();
@@ -64,7 +64,7 @@ function expectedComparison(equities = equityPayload, gpu = gpuPayload) {
   });
   const common = [...daily[0].keys()].filter(date => daily.every(rows => rows.has(date))).sort((a, b) => a - b);
   if (!common.length) return [];
-  const dates = common.filter(date => date >= common.at(-1) - 90 * day);
+  const dates = common.filter(date => date >= common.at(-1) - rangeDays * day);
   return ids.map((id, index) => {
     const base = daily[index].get(dates[0])[1];
     return { id, rows: dates.map(timestamp => ({ timestamp,
@@ -117,7 +117,7 @@ async function makePage(t, { width, gap = null } = {}) {
     await context.close();
     assert.deepEqual(errors, [], "Uncaught page errors");
   });
-  // Block every non-local request, including the provider documentation URL.
+  // Block every non-local request, including source documentation URLs.
   await page.route("**/*", route => new URL(route.request().url()).origin === new URL(baseUrl).origin
     ? route.continue() : route.abort());
   if (gap) {
@@ -211,23 +211,33 @@ async function compareCommand(page) {
 }
 
 for (const width of [1440, 390]) {
-  test(`local EODHD equity + GPU demo comparison shares dates, base and tooltip units (${engine}, ${width})`, async t => {
+  test(`bundled equity + GPU demo comparison shares dates, base and tooltip units in every range (${engine}, ${width})`, async t => {
     assert.equal(equityPayload.dataset.status, "ready");
+    assert.equal(equityPayload.dataset.kind, "demo");
+    assert.equal(equityPayload.dataset.source.name, "Demo data");
     const expected = expectedComparison();
     assert.equal(expected.length, 3);
     assert(expected[0].rows.length > 1);
-    assert(expected[1].rows.some(row => row.observedAt !== row.timestamp), "The real GPU input should exercise intraday-to-daily alignment");
+    assert(expected[1].rows.some(row => row.observedAt !== row.timestamp), "The bundled GPU input exercises intraday-to-daily alignment");
     const page = await makePage(t, { width });
+    for (const [range, rangeDays] of [["7d", 7], ["90d", 90], ["1y", 365]]) {
+      await page.locator(`[data-gpu-range="${range}"]`).click();
+      await page.waitForFunction(range => new URL(location.href).searchParams.get("range") === range, range);
+      await assertMixedChart(page, expectedComparison(equityPayload, gpuPayload, rangeDays));
+    }
+    await page.locator('[data-gpu-range="90d"]').click();
     await assertMixedChart(page, expected);
     await assertTooltip(page, expected, "Home");
     await assertTooltip(page, expected, "End");
-    await capture(page, "REAL-equity-GPU-demo-tooltip");
+    await capture(page, "bundled-equity-GPU-demo-tooltip");
     const bounds = await page.locator(svg).boundingBox();
     assert(bounds.width > 0 && bounds.height > 0 && bounds.x >= 0 && bounds.x + bounds.width <= width + 1);
     await page.locator("[data-monitor-data-toggle]").click();
-    assert.equal(await page.locator("[data-monitor-data-source-description]").innerText(), "Data by EODHD · GPU demo data");
-    await page.locator("[data-monitor-data-source-link]").focus();
-    await capture(page, "REAL-equity-GPU-demo-source");
+    assert.equal(await page.locator("[data-monitor-data-source-description]").textContent(), "",
+      "The comparison source note is blank");
+    assert.doesNotMatch(await page.locator("[data-monitor-data]").innerText(), /EODHD|not connected/i);
+    assert.doesNotMatch(await page.locator("[data-monitor-data]").innerText(), /\b(?:demo|estimate|estimated)\b/i);
+    await capture(page, "bundled-equity-GPU-demo-source");
 
     // Repeat same-document family changes, including a command issued directly
     // after a GPU tab click. No wait for a visual transition is required.
@@ -259,7 +269,7 @@ for (const width of [1440, 390]) {
         `${id} comparison control is clipped`);
     }
     assert.equal(new URL(page.url()).searchParams.get("symbol"), "NVDA");
-    await capture(page, "REAL-equity-GPU-demo-Craft-Data");
+    await capture(page, "bundled-equity-GPU-demo-Craft-Data");
   });
 }
 

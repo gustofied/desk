@@ -7,10 +7,10 @@ const card = getCardDefinition("equities");
 const first = new Date("2026-08-28T00:00:00.000Z");
 const latest = new Date("2026-08-31T00:00:00.000Z");
 const state = { symbol: "NVDA", layers: ["NVDA", "MSFT"], range: "1y", scale: "price" };
-const source = { name: "EODHD", url: "https://eodhd.com/financial-apis/api-for-historical-data-and-volumes", status: "ready" };
+const source = { name: "Demo data", url: "https://github.com/gustofied/desk/blob/main/README.md", status: "ready" };
 const runtime = {
   asOf: latest.getTime() / 1000,
-  dataset: { source, status: "ready", priceBasis: "split-dividend-adjusted-close" },
+  dataset: { source, kind: "demo", status: "ready", priceBasis: "demo-close" },
 };
 const series = state.layers.map((id, index) => ({
   layer: card.layers.find(layer => layer.id === id),
@@ -29,7 +29,7 @@ test("Sandbox detail attributes the dated benchmark without a Desk API or billin
   assert.equal(model.status, "ready");
   assert.equal(model.unit, "USD per job");
   assert.equal(model.summary, "2026-08-06");
-  assert.equal(model.description, "Estimated CPU + memory cost per job. Median and range across 12 runs.");
+  assert.equal(model.description, "Median and range across 12 runs.");
   for (const field of ["endpoint", "command", "sql"]) assert.equal(model[field], undefined);
   assert(Object.isFrozen(model));
 });
@@ -41,7 +41,7 @@ test("Sandbox history describes batch medians and makes no cross-methodology tre
   const all = createMonitorDataModel({ card: sandbox, sandboxModel: { ...base, range: "all" } });
   assert.equal(week.rowCount, 2);
   assert.equal(week.summary, "2026-08-06");
-  assert.equal(week.description, "Estimated CPU + memory cost per job. Daily batch medians; independent scales. Methodology varies across runs.");
+  assert.equal(week.description, "Daily batch medians; independent scales. Methodology varies across runs.");
   assert.notEqual(week.key, all.key, "Range changes must update details even when observation counts match");
   assert.equal(week.breadcrumbs.at(-1), "7D");
   const missing = createMonitorDataModel({ card: sandbox });
@@ -64,7 +64,7 @@ test("latest-price details say GPU or GPUs without renaming the card or API", ()
   }
 });
 
-test("power details label demo prices and expose the matching H100 estimate SQL", () => {
+test("power details omit demo and estimate notes while retaining the matching SQL and docs", () => {
   const power = getCardDefinition("power-basis");
   const model = {
     location: { id: "PJM-DOMINION", label: "PJM Dominion", unit: "USD per MWh" },
@@ -72,22 +72,22 @@ test("power details label demo prices and expose the matching H100 estimate SQL"
   };
   const cardState = { location: "PJM-DOMINION", range: "1y", scale: "price" };
   const price = createMonitorDataModel({ card: power, cardState, powerModel: model });
-  assert.equal(price.provenance, "Demo");
-  assert.match(price.description, /Generated.*not an exchange feed/);
+  assert.equal(price.provenance, "");
+  assert.equal(price.description, "");
   assert.match(price.command, /--range=1y/);
   assert.match(price.sql, /instrument = 'PJM-DOMINION'/);
   assert.doesNotMatch(price.sql, /usd_gpu_hour/);
   const energy = createMonitorDataModel({ card: power,
     cardState: { ...cardState, scale: "energy" }, powerModel: { ...model, energy: {} } });
-  assert.equal(energy.provenance, "Estimate");
-  assert.match(energy.description, /10.2 kW node max.*8 GPUs.*PUE 1.2 assumed/);
+  assert.equal(energy.provenance, "");
+  assert.equal(energy.description, "");
   assert.match(energy.sql, /real_time_price_usd_mwh \* 0\.00153 AS rt_usd_gpu_hour/);
   assert.match(energy.sql, /day_ahead_price_usd_mwh \* 0\.00153 AS da_usd_gpu_hour/);
-  assert.match(energy.description, /not a delivered bill or GPU rental rate/);
+  assert.match(energy.sourceUrl, /docs.nvidia.com/);
   assert.notEqual(energy.key, price.key);
 });
 
-test("equities monitor attributes external share prices without exposing a Desk API", () => {
+test("equities monitor keeps source docs without a visible demo note or Desk API", () => {
   const model = createMonitorDataModel({ card, cardState: state, series, runtimePayload: runtime });
   assert.equal(model.rowCount, 4);
   assert.equal(model.asOf.toISOString(), latest.toISOString());
@@ -95,12 +95,12 @@ test("equities monitor attributes external share prices without exposing a Desk 
   assert.equal(model.command, undefined);
   assert.equal(model.endpoint, undefined);
   assert.equal(model.sql, undefined);
-  assert.equal(model.label, "EODHD");
+  assert.equal(model.label, "Equities");
   assert.equal(model.sourceUrl, source.url);
-  assert.deepEqual(model.breadcrumbs, ["EODHD", "NVDA + MSFT", "1Y"]);
-  assert.equal(model.description, "Data by EODHD");
-  assert.match(model.provenance, /EODHD.*as of 2026-08-31/);
-  assert.equal(model.priceBasis, "split-dividend-adjusted-close");
+  assert.deepEqual(model.breadcrumbs, ["Desk", "NVDA + MSFT", "1Y"]);
+  assert.equal(model.description, "");
+  assert.match(model.provenance, /Synthetic price history.*as of 2026-08-31/);
+  assert.equal(model.priceBasis, "demo-close");
   assert.equal(model.unit, "USD per share");
   assert.deepEqual(model.source, source);
   assert.equal(model.status, "ready");
@@ -115,7 +115,7 @@ test("indexed equities retain source attribution without exposing SQL", () => {
   assert.doesNotMatch(model.description, /gpu|\blower\b|\bupper\b/i);
 });
 
-test("mixed market source details use the common chart date and identify demo GPUs", () => {
+test("mixed market source details use the common chart date and one concise demo attribution", () => {
   const mixedState = { ...state, symbol: "NVDA", layers: ["NVDA", "H100", "H200"], scale: "index", range: "90d" };
   const common = new Date("2026-08-28T00:00:00Z");
   const mixedSeries = mixedState.layers.map(id => ({
@@ -128,8 +128,8 @@ test("mixed market source details use the common chart date and identify demo GP
   });
   assert.equal(model.asOf.toISOString(), common.toISOString());
   assert.equal(model.summary, "Compared through 2026-08-28");
-  assert.equal(model.label, "EODHD + Desk");
-  assert.equal(model.description, "Data by EODHD · GPU demo data");
+  assert.equal(model.label, "Equities");
+  assert.equal(model.description, "");
   assert.equal(model.unit, "percent change");
   assert.equal(model.priceBasis, "relative-change");
   assert.equal(model.accessKind, "source");
@@ -161,7 +161,7 @@ test("equity attribution links exclude credentials and unsafe protocols", () => 
   assert.equal(model.sourceUrl, source.url);
 });
 
-test("unavailable equity data reports the missing connection without a fake date or export", () => {
+test("unavailable equity data reports no data without a fake date or export", () => {
   const unavailable = {
     asOf: null,
     dataset: { ...runtime.dataset, status: "unavailable", source: { ...source, status: "unavailable", message: "Historical prices are unavailable." } },
@@ -170,9 +170,9 @@ test("unavailable equity data reports the missing connection without a fake date
   assert.equal(model.asOf, null);
   assert.equal(model.rowCount, 0);
   assert.equal(model.status, "unavailable");
-  assert.equal(model.summary, "Not connected");
-  assert.equal(model.description, "Data by EODHD");
-  assert.match(model.provenance, /EODHD.*no observations/);
+  assert.equal(model.summary, "No data");
+  assert.equal(model.description, "");
+  assert.match(model.provenance, /Synthetic price history.*no observations/);
   assert.doesNotMatch(model.provenance, /1970|2026|as of/);
   assert.equal(model.accessKind, "source");
   assert.equal(model.endpoint, undefined);

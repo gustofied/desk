@@ -5,9 +5,6 @@ on:
     branches:
       - main
   workflow_dispatch:
-  schedule:
-    # Off the busy top of the hour; GitHub schedules use UTC.
-    - cron: '17 6 * * *'
 
 permissions:
   contents: read
@@ -21,7 +18,6 @@ concurrency:
 
 jobs:
   build:
-    if: github.event_name != 'schedule' || vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS == 'confirmed'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -40,66 +36,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Set equity cache date
-        id: equity-date
-        if: vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS == 'confirmed'
-        run: echo "day=$(date -u +%F)" >> "$GITHUB_OUTPUT"
-
-      # Cache only licensed observations, never a token or the whole .cache tree.
-      # GitHub caches are immutable and are not a confidentiality boundary.
-      - name: Restore equity observations
-        id: equity-cache
-        if: vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS == 'confirmed'
-        uses: actions/cache/restore@v6
-        with:
-          path: .cache/equities-source.json
-          key: desk-equities-source-v1-${{ steps.equity-date.outputs.day }}
-          restore-keys: desk-equities-source-v1-
-
-      - name: Plan equity refresh without provider access
-        id: equity-plan
-        env:
-          EQUITIES_PUBLIC_DISPLAY_RIGHTS: ${{ vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS }}
-        run: node scripts/plan-equities-refresh.mjs
-
-      - name: Fetch daily equity observations
-        if: vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS == 'confirmed' && steps.equity-plan.outputs.refresh == 'true'
-        env:
-          EODHD_API_TOKEN: ${{ secrets.EODHD_API_TOKEN }}
-        run: node scripts/refresh-equities.mjs
-
-      # Save immediately after a successful refresh, so a later build failure can
-      # be rerun using these observations without another nine provider calls.
-      - name: Validate refreshed equity cache identity
-        if: vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS == 'confirmed' && steps.equity-plan.outputs.refresh == 'true'
-        env:
-          EQUITY_CACHE_DAY: ${{ steps.equity-date.outputs.day }}
-        run: node scripts/plan-equities-refresh.mjs --verify-cache-day "$EQUITY_CACHE_DAY"
-
-      - name: Cache refreshed equity observations
-        if: vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS == 'confirmed' && steps.equity-plan.outputs.refresh == 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: .cache/equities-source.json
-          key: desk-equities-source-v1-${{ steps.equity-date.outputs.day }}
-
       - name: Build Desk
-        env:
-          EQUITIES_PUBLIC_DISPLAY_RIGHTS: ${{ vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS }}
         run: npm run build
 
-      # Generated runtime/manifest assertions must follow the cache-backed build.
+      # Validate the generated runtimes after building from bundled source data.
       - name: Validate market snapshots
-        env:
-          EQUITIES_PUBLIC_DISPLAY_RIGHTS: ${{ vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS }}
         run: npm run check:data
 
       - name: Run unit tests
         run: node --test tests/*.test.mjs
 
       - name: Assemble deployment
-        env:
-          EQUITIES_PUBLIC_DISPLAY_RIGHTS: ${{ vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS }}
         run: npm run build:site
 
       - name: Upload GitHub Pages artifact

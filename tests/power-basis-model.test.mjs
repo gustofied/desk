@@ -149,7 +149,7 @@ test("energy mode converts RT, DA and basis without rounding, fabricating margin
       assert(Object.isFrozen(row.rawPrice));
     });
     assert(energy.rows.some(row => row.realTime < 0), "negative wholesale energy components remain negative");
-    assert.match(energy.ariaLabel, /GPU energy sensitivity over one year/);
+    assert.match(energy.ariaLabel, /H100 power cost estimate over one year/);
     assert.match(energy.ariaLabel, /\$\d+\.\d{4} per GPU-hour/);
     assert.match(energy.ariaLabel, /10\.2 kilowatt.*eight GPUs.*PUE 1\.2/);
   }

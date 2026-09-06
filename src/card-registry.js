@@ -493,14 +493,14 @@ export const CARD_REGISTRY = Object.freeze([
       }),
       Object.freeze({
         id: "gpu-energy",
-        label: "GPU energy",
+        label: "H100 power cost",
         state: Object.freeze({ location: "PJM-DOMINION", scale: "energy", range: "1d" }),
       }),
     ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Price", unit: "usd-mwh" }),
       Object.freeze({ id: "basis", label: "Spread", unit: "usd-mwh" }),
-      Object.freeze({ id: "energy", label: "GPU energy", unit: "usd-gpu-hour" }),
+      Object.freeze({ id: "energy", label: "H100 power cost", unit: "usd-gpu-hour" }),
     ]),
   }),
   Object.freeze({

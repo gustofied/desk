@@ -24,10 +24,12 @@ function fixture({ energy = false, negative = false, kind = "showcase" } = {}) {
 const render = (model, options = {}) => renderPowerBasisSvg(model, { colors, ...options });
 const paths = markup => [...markup.matchAll(/<path[^>]+d="([^"]+)"/g)].map(match => match[1]);
 
-test("Power artifacts disclose Demo and /MWh without changing the compact frame", () => {
+test("Power artifacts keep only the range and units in the compact header", () => {
   const markup = render(fixture(), { compact: true });
   assert.match(markup, /viewBox="0 0 1200 675"/);
-  assert.match(markup, />DEMO · 1D<\/text>/);
+  assert.match(markup, />1D<\/text>/);
+  assert.doesNotMatch(markup, />DEMO|>ESTIMATE/);
+  assert.match(markup, /aria-label="Demo\./);
   assert.match(markup, />\$43\.36<\/text>/);
   assert.match(markup, /data-power-basis-unit=""[^>]*>\/MWh<\/text>/);
   assert.equal((markup.match(/data-power-basis-line=/g) || []).length, 2);
@@ -35,9 +37,10 @@ test("Power artifacts disclose Demo and /MWh without changing the compact frame"
   assert.doesNotMatch(markup, /data-power-basis-column/);
 });
 
-test("Energy artifacts show Estimate and four-decimal GPU-hour prices, never raw MWh prices", () => {
+test("H100 cost artifacts show four-decimal GPU-hour prices, with estimate semantics in accessibility", () => {
   const markup = render(fixture({ energy: true }), { compact: true });
-  assert.match(markup, />ESTIMATE · 1D<\/text>/);
+  assert.match(markup, />1D<\/text>/);
+  assert.doesNotMatch(markup, />DEMO|>ESTIMATE/);
   assert.match(markup, />\$0\.0663<\/text>/);
   assert.match(markup, /data-power-basis-unit=""[^>]*>\/GPU-h<\/text>/);
   assert.doesNotMatch(markup, /43\.36|USD per MWh|>\/MWh</);
@@ -56,7 +59,7 @@ test("Monitor readout and interactive observations share precision, units and at
       assert(markup.includes(`data-${name}="${value}"`), `Interactive ${name}`);
       assert(markup.includes(`>${prefix} ${value}</tspan>`), `Visible ${name}`);
     }
-    assert(markup.includes(`data-date="${energy ? "ESTIMATE" : "DEMO"} ·`));
+    assert.doesNotMatch(markup, /data-date="(?:ESTIMATE|DEMO)/);
     assert.match(markup, /data-aria-label="[^\"]+USD per (?:GPU-hour|MWh)/);
   }
 });
@@ -79,6 +82,18 @@ test("Energy uses the same RT, DA and fill geometry as the underlying Power seri
   }
 });
 
+test("solid Power paths do not retain obsolete dash animation attributes", () => {
+  for (const options of [{}, { compact: true }, { minimal: true }]) {
+    for (const mode of ["price", "basis", "energy"]) {
+      const markup = render(fixture({ energy: mode === "energy" }), { ...options, mode });
+      const primary = markup.match(/<path[^>]+data-power-basis-line="(?:real-time|basis)"[^>]*>/)?.[0];
+      assert(primary);
+      assert.doesNotMatch(primary, /pathLength|stroke-dasharray|stroke-dashoffset/);
+      if (mode !== "basis") assert.match(markup, /data-power-basis-line="day-ahead"[^>]+stroke-dasharray="2 8"/);
+    }
+  }
+});
+
 test("existing basis mode keeps its single signed line and zero reference", () => {
   const markup = render(fixture({ negative: true }), { compact: true, mode: "basis" });
   assert.match(markup, />−\$6\.50<\/text>/);
@@ -87,10 +102,11 @@ test("existing basis mode keeps its single signed line and zero reference", () =
   assert.doesNotMatch(markup, /data-power-basis-line="day-ahead"/);
 });
 
-test("minimal mobile charts retain quiet provenance and units without interactive columns", () => {
+test("minimal mobile charts keep units without provenance badges or interactive columns", () => {
   for (const energy of [false, true]) {
     const markup = render(fixture({ energy }), { minimal: true });
-    assert(markup.includes(`>${energy ? "ESTIMATE · /GPU-h" : "DEMO · /MWh"}</text>`));
+    assert(markup.includes(`>${energy ? "/GPU-h" : "/MWh"}</text>`));
+    assert.match(markup, /<desc>(?:Estimate|Demo)\./);
     assert.doesNotMatch(markup, /data-power-basis-readout|data-power-basis-column|data-view-artifact-header/);
     assert.match(markup, /viewBox="0 0 1200 600"/);
   }
@@ -118,7 +134,7 @@ test("the actual model contract keeps raw location units but renders converted E
   assert.equal(model.location.unit, "USD per MWh");
   assert.equal(model.unit, "USD per GPU-hour");
   const markup = render(model, { compact: true });
-  assert.match(markup, />ESTIMATE · 1D<\/text>/);
+  assert.match(markup, />1D<\/text>/);
   assert.match(markup, />−\$0\.0069<\/text>/);
   assert.match(markup, />\/GPU-h<\/text>/);
 });

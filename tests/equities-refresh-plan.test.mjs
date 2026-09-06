@@ -1,87 +1,119 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import test from "node:test";
-import { createEquitiesSource, createUnavailableEquitiesSource, EQUITIES_TICKERS } from "../src/equities-data.js";
-import { assertEquitiesCacheDay, planEquitiesRefresh } from "../scripts/plan-equities-refresh.mjs";
+import { CARD_REGISTRY, getCardDefinition } from "../src/card-registry.js";
+import { buildEquitiesRuntime } from "../scripts/equities-runtime.mjs";
+import { buildSite } from "../scripts/build-site.mjs";
 
-const now = new Date("2026-09-06T06:17:00Z");
-const defaults = { publicDisplayRights: "confirmed", eventName: "schedule", runAttempt: "1", now };
-function observedSource(retrievedAt = "2026-09-05T06:17:00Z") {
-  // Small synthetic policy-test fixture, never installed in the chart runtime.
-  return createEquitiesSource(Object.fromEntries(EQUITIES_TICKERS.map(ticker => [ticker, [
-    { date: "2026-09-01", adjusted_close: 100 },
-    { date: "2026-09-04", adjusted_close: 101 },
-  ]])), { from: "2026-09-01", to: "2026-09-04", retrievedAt });
+const projectFile = path => new URL(`../${path}`, import.meta.url);
+const publicTables = [
+  "data/v1/accelerator-prices.json",
+  "data/v1/compute-prices.json",
+  "data/v1/h100-market-depth.json",
+  "data/v1/power-prices.json",
+];
+const dataFiles = [...new Set([
+  "data/manifest.json",
+  ...CARD_REGISTRY.flatMap(card => [card.dataFile, card.dataTable?.file]).filter(Boolean),
+])];
+
+async function fixture(t) {
+  const projectRoot = await mkdtemp(join(tmpdir(), "desk-demo-build-"));
+  t.after(() => rm(projectRoot, { recursive: true, force: true }));
+  const put = async (path, value) => {
+    await mkdir(dirname(join(projectRoot, path)), { recursive: true });
+    await writeFile(join(projectRoot, path), typeof value === "string" ? value : JSON.stringify(value));
+  };
+  const source = JSON.parse(await readFile(projectFile("data/equities-source.json"), "utf8"));
+  const equities = buildEquitiesRuntime(source, getCardDefinition("equities"));
+  for (const path of [".nojekyll", "CNAME", "index.html", "desk.js", "robots.txt", "sitemap.xml"]) {
+    await put(path, `fixture ${path}`);
+  }
+  for (const path of ["styles", "assets", "cards", "cli"]) await put(`${path}/fixture.txt`, path);
+  for (const path of dataFiles) await put(path, path === "data/equities.json" ? equities : { fixture: path });
+  // These are harmless test sentinels, never real local credentials or prices.
+  for (const path of ["data/equities-source.json", "data/v1/equity-prices.json", "data/local-note.json", ".cache/ignored.txt"]) {
+    await put(path, "excluded test sentinel");
+  }
+  return { projectRoot, put, equities };
 }
 
-test("only exact confirmed rights enable the daily refresh", () => {
-  for (const publicDisplayRights of [undefined, "", "true", "Confirmed", " confirmed", "not-confirmed"]) {
-    assert.equal(planEquitiesRefresh({ ...defaults, publicDisplayRights }).refresh, false);
-  }
-  assert.equal(planEquitiesRefresh(defaults).refresh, true);
-  assert.equal(planEquitiesRefresh({ ...defaults, cachedSource: observedSource() }).refresh, true);
+test("Pages builds bundled data on push or demand without an equity provider, schedule or cache", async () => {
+  const workflow = await readFile(projectFile(".github/workflows/pages.yml"), "utf8");
+  assert.match(workflow, /push:\n\s+branches:\n\s+- main/);
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.doesNotMatch(workflow, /schedule:|cron:|EODHD|EQUITIES_PUBLIC_DISPLAY_RIGHTS|secrets\.|actions\/cache|\.cache\/|equity-(?:cache|date|plan)/i);
+  assert.doesNotMatch(workflow, /refresh-equities|plan-equities-refresh|curl\b|wget\b|continue-on-error/);
+  const build = workflow.indexOf("name: Build Desk");
+  const check = workflow.indexOf("name: Validate market snapshots");
+  const unit = workflow.indexOf("name: Run unit tests");
+  const assemble = workflow.indexOf("name: Assemble deployment");
+  assert(build >= 0 && build < check && check < unit && unit < assemble);
+  assert.match(workflow, /name: Assemble deployment\n\s+run: npm run build:site/);
 });
 
-test("same UTC day cache prevents all provider calls, even when the market was closed", () => {
-  const cachedSource = observedSource("2026-09-06T00:01:00Z");
-  for (const eventName of ["schedule", "push", "workflow_dispatch"]) {
-    const plan = planEquitiesRefresh({ ...defaults, eventName, cachedSource });
-    assert.equal(plan.refresh, false);
-    assert.match(plan.message, /2026-09-06.*no API calls/);
-    assert.equal(plan.warning, undefined);
-  }
-  assert.equal(planEquitiesRefresh({ ...defaults, cachedSource, now: new Date("2026-09-07T00:00:00Z") }).refresh, true);
+test("npm offers deterministic equity generation and retains the separate market refresh workflow", async () => {
+  const pkg = JSON.parse(await readFile(projectFile("package.json"), "utf8"));
+  assert.equal(pkg.scripts["refresh:equities"], undefined);
+  assert.equal(pkg.scripts["generate:equities"], "node scripts/generate-equities-demo.mjs");
+  assert.match(pkg.scripts["generate:data"], /npm run generate:equities/);
+  assert.equal(pkg.scripts["refresh:data"], "node scripts/refresh-market-data.mjs");
+  const refresh = await readFile(projectFile(".github/workflows/refresh-data.yml"), "utf8");
+  assert.match(refresh, /workflow_dispatch:/);
+  assert.match(refresh, /run: npm run refresh:data/);
+  assert.match(refresh, /DESK_SNAPSHOT_TOKEN/);
+  assert.match(refresh, /gh workflow run pages.yml --ref main/);
+  assert.doesNotMatch(refresh, /EODHD|refresh-equities|EQUITIES_PUBLIC_DISPLAY_RIGHTS/);
 });
 
-test("pushes, manual runs and reruns reuse older observations without claiming freshness", () => {
-  const cachedSource = observedSource();
-  for (const change of [{ eventName: "push" }, { eventName: "workflow_dispatch" }, { runAttempt: "2" }, { runAttempt: "3" }, { runAttempt: undefined }]) {
-    const plan = planEquitiesRefresh({ ...defaults, ...change, cachedSource });
-    assert.equal(plan.refresh, false);
-    assert.equal(plan.warning, true);
-    assert.match(plan.message, /retrieved 2026-09-05.*closes through 2026-09-04.*no API calls/);
-    assert.throws(() => planEquitiesRefresh({ ...defaults, ...change }), /No equity cache.*existing site/);
+test("obsolete provider scripts are removed and the equity build path has no requests or environment gate", async () => {
+  for (const path of ["scripts/refresh-equities.mjs", "scripts/plan-equities-refresh.mjs"]) {
+    await assert.rejects(access(projectFile(path)), { code: "ENOENT" });
   }
-});
-
-test("malformed, partial, unavailable and future caches fail closed", () => {
-  const partial = observedSource();
-  partial.series.MSFT = [];
-  for (const cachedSource of [{}, partial, createUnavailableEquitiesSource(), observedSource("2026-09-07T06:17:00Z")]) {
-    assert.throws(() => planEquitiesRefresh({ ...defaults, cachedSource }));
+  for (const path of ["scripts/build-site.mjs", "scripts/equities-runtime.mjs", "scripts/generate-equities-demo.mjs"]) {
+    const source = await readFile(projectFile(path), "utf8");
+    assert.doesNotMatch(source, /\bfetch\s*\(|EODHD_API_TOKEN|EQUITIES_PUBLIC_DISPLAY_RIGHTS|\.cache[/\\]|https:\/\/eodhd/i);
   }
 });
 
-test("immutable daily keys cannot be filled with yesterday's restored snapshot", () => {
-  const source = observedSource();
-  assert.doesNotThrow(() => assertEquitiesCacheDay(source, "2026-09-05"));
-  assert.throws(() => assertEquitiesCacheDay(source, "2026-09-06"), /cache key's UTC date/);
-  assert.throws(() => assertEquitiesCacheDay(source, "2026-9-5"), /cache key's UTC date/);
-  assert.throws(() => assertEquitiesCacheDay(createUnavailableEquitiesSource(), "2026-09-06"));
+test("demo-only assembly preserves registered public exports but excludes raw and retired data", async t => {
+  const { projectRoot, put, equities } = await fixture(t);
+  const fetch = t.mock.method(globalThis, "fetch", () => { throw new Error("No provider request is allowed"); });
+  await put("_site/data/v1/equity-prices.json", "stale artifact test sentinel");
+  const output = await buildSite({ projectRoot });
+  assert.equal(output, join(projectRoot, "_site"));
+  assert.equal(fetch.mock.callCount(), 0);
+  assert.deepEqual(JSON.parse(await readFile(join(output, "data/equities.json"), "utf8")), equities);
+  assert.equal(equities.dataset.kind, "demo");
+  assert.deepEqual(CARD_REGISTRY.map(card => card.dataTable?.file).filter(Boolean).sort(), publicTables);
+  assert.deepEqual((await readdir(join(output, "data/v1"))).map(file => `data/v1/${file}`).sort(), publicTables);
+  for (const path of dataFiles) await access(join(output, path));
+  for (const path of ["data/equities-source.json", "data/v1/equity-prices.json", "data/local-note.json", ".cache/ignored.txt"]) {
+    await assert.rejects(access(join(output, path)), { code: "ENOENT" });
+    assert.equal(await readFile(join(projectRoot, path), "utf8"), "excluded test sentinel", "Build must not modify excluded local inputs");
+  }
+  for (const path of ["styles", "assets", "cards", "cli"]) await access(join(output, path, "fixture.txt"));
 });
 
-test("Pages workflow confines the provider token and cache and validates after building", async () => {
-  const workflow = await readFile(new URL("../.github/workflows/pages.yml", import.meta.url), "utf8");
-  const steps = workflow.split(/^      - name: /m).slice(1);
-  const named = name => steps.find(step => step.startsWith(`${name}\n`));
-  const fetch = named("Fetch daily equity observations");
-  assert.equal(workflow.match(/secrets\.EODHD_API_TOKEN/g)?.length, 1);
-  assert(fetch.includes("secrets.EODHD_API_TOKEN"));
-  assert(fetch.includes("vars.EQUITIES_PUBLIC_DISPLAY_RIGHTS == 'confirmed'"));
-  assert(fetch.includes("steps.equity-plan.outputs.refresh == 'true'"));
-  assert.equal(workflow.match(/run: node scripts\/refresh-equities\.mjs/g)?.length, 1);
-  assert.match(workflow, /cron: '17 6 \* \* \*'/);
-  assert.match(workflow, /group: pages\n  cancel-in-progress: false\n  queue: max/);
-  for (const name of ["Restore equity observations", "Cache refreshed equity observations"]) {
-    const step = named(name);
-    assert.match(step, /if: vars\.EQUITIES_PUBLIC_DISPLAY_RIGHTS == 'confirmed'/);
-    assert.match(step, /path: \.cache\/equities-source\.json\n/);
-    assert.match(step, /key: desk-equities-source-v1-\$\{\{ steps\.equity-date\.outputs\.day \}\}/);
+test("stale observed equity data fails before an existing site is replaced", async t => {
+  const { projectRoot, put, equities } = await fixture(t);
+  const stale = structuredClone(equities);
+  stale.dataset.kind = "observed";
+  stale.dataset.source = { id: "retired-provider", status: "ready", publicDisplayRights: "confirmed" };
+  await put("data/equities.json", stale);
+  await put("_site/keep.txt", "previous deployment");
+  await assert.rejects(buildSite({ projectRoot }));
+  assert.equal(await readFile(join(projectRoot, "_site/keep.txt"), "utf8"), "previous deployment");
+});
+
+test("an unavailable or malformed equity runtime cannot bypass demo validation", async t => {
+  const { projectRoot, put, equities } = await fixture(t);
+  await put("_site/keep.txt", "previous deployment");
+  for (const runtime of [{}, { ...equities, dataset: { ...equities.dataset, kind: "unavailable", status: "unavailable" } }]) {
+    await put("data/equities.json", runtime);
+    await assert.rejects(buildSite({ projectRoot }));
+    assert.equal(await readFile(join(projectRoot, "_site/keep.txt"), "utf8"), "previous deployment");
   }
-  assert(named("Cache refreshed equity observations").includes("steps.equity-plan.outputs.refresh == 'true'"));
-  assert(workflow.indexOf("name: Validate refreshed equity cache identity") < workflow.indexOf("name: Cache refreshed equity observations"));
-  assert(workflow.indexOf("name: Build Desk") < workflow.indexOf("name: Validate market snapshots"));
-  assert(workflow.indexOf("name: Build Desk") < workflow.indexOf("name: Run unit tests"));
-  assert(workflow.indexOf("name: Run unit tests") < workflow.indexOf("name: Assemble deployment"));
-  assert.doesNotMatch(workflow, /git (?:add|commit|push)|continue-on-error/);
 });

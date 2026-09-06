@@ -102,7 +102,7 @@ export function createDeskSharing({ dialog, banner, getDesk, saveCopy, leave, co
     },
     sync({ snapshot = null, error: message = null } = {}) {
       banner.hidden = !snapshot && !message;
-      bannerName.textContent = snapshot ? `${snapshot.name} · Shared` : "Shared desk";
+      bannerName.textContent = snapshot ? `${snapshot.name} Shared` : "Shared desk";
       bannerError.textContent = message || "";
       save.hidden = !snapshot;
     },

@@ -1,32 +1,16 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { getCardDefinition } from "../src/card-registry.js";
-import { createUnavailableEquitiesSource, EQUITIES_TICKERS } from "../src/equities-data.js";
-import {
-  assertEquitiesPublicDisplay, buildEquitiesRuntime, readEquitiesSource,
-} from "../scripts/equities-runtime.mjs";
+import { createDemoEquitiesSource, EQUITIES_TICKERS } from "../src/equities-data.js";
+import { assertEquitiesPublicDisplay, buildEquitiesRuntime, readEquitiesSource } from "../scripts/equities-runtime.mjs";
 
 const card = getCardDefinition("equities");
-const first = Date.parse("2026-08-28T00:00:00.000Z") / 1000;
-const last = Date.parse("2026-08-31T00:00:00.000Z") / 1000;
-function observedSource() {
-  const source = createUnavailableEquitiesSource();
-  source.source.status = "ready";
-  source.source.code = null;
-  source.source.message = "Observed historical daily closes.";
-  source.asOf = last;
-  source.series = Object.fromEntries(EQUITIES_TICKERS.map((symbol, index) => [
-    symbol, [[first, 100.1234567 + index], [last, 101.1234567 + index]],
-  ]));
-  return source;
-}
 
-test("equities runtime preserves observed prices and trading-day gaps without inventing bands", () => {
-  const source = observedSource();
+test("the demo runtime preserves synthetic closes, USD/share units, weekday gaps and source provenance", () => {
+  const source = createDemoEquitiesSource();
   const before = structuredClone(source);
   const runtime = buildEquitiesRuntime(source, card);
   assert.equal(runtime.version, 2);
@@ -35,164 +19,116 @@ test("equities runtime preserves observed prices and trading-day gaps without in
   assert.deepEqual(Object.keys(runtime.series), EQUITIES_TICKERS);
   assert.deepEqual(runtime.series, source.series);
   assert.deepEqual(source, before);
-  assert.equal(runtime.asOf, last);
-  assert.equal(runtime.dataset.start, first);
-  assert.equal(runtime.dataset.end, last);
-  assert.equal(runtime.dataset.observationCount, 18);
-  assert.equal(runtime.dataset.kind, "observed");
+  assert.equal(runtime.asOf, 1788480000);
+  assert.equal(runtime.dataset.start, source.series.MSFT[0][0]);
+  assert.equal(runtime.dataset.end, runtime.asOf);
+  assert.equal(runtime.dataset.observationCount, 9 * 262);
+  assert.equal(runtime.dataset.kind, "demo");
+  assert.equal(runtime.dataset.label, "Demo");
   assert.equal(runtime.dataset.status, "ready");
-  assert.equal(runtime.dataset.cadence, "daily");
   assert.equal(runtime.dataset.unit, "USD per share");
-  assert.equal(runtime.dataset.priceBasis, "split-dividend-adjusted-close");
-  assert.equal(runtime.dataset.source.name, "EODHD");
+  assert.equal(runtime.dataset.timestampUnit, "seconds");
+  assert.equal(runtime.dataset.priceBasis, "demo-close");
+  assert.equal(runtime.dataset.priceBasisLabel, "Daily close (demo)");
+  assert.equal(runtime.dataset.source.name, "Demo data");
   assert.equal(runtime.dataset.source.notice, source.source.notice);
-  assert.equal(runtime.dataset.source.publicDisplayRights, "not-confirmed");
+  assert.deepEqual(runtime.dataset.generation, source.generation);
+  assert.deepEqual(runtime.dataset.sampleWindow, source.sampleWindow);
+  assert.equal(Object.hasOwn(runtime.dataset.source, "publicDisplayRights"), false);
   assert.match(runtime.revision, /^[a-f0-9]{12}$/);
   assert.equal(buildEquitiesRuntime(source, card).revision, runtime.revision);
-  source.series.NVDA[1][1] += 0.01;
-  assert.notEqual(buildEquitiesRuntime(source, card).revision, runtime.revision);
+  assert.notEqual(buildEquitiesRuntime(createDemoEquitiesSource({ seed: 1 }), card).revision, runtime.revision);
+  runtime.series.NVDA[0][1] = 1;
+  runtime.dataset.generation.seed = 1;
+  assert.deepEqual(source, before, "The runtime does not share mutable arrays or metadata with its source");
 });
 
-test("cross-market card layers do not expand the nine-symbol equity source contract", () => {
-  assert.deepEqual(card.layers.filter(layer => layer.sourceCardId).map(layer => layer.id), ["H100", "H200"]);
-  for (const source of [observedSource(), createUnavailableEquitiesSource()]) {
-    const runtime = buildEquitiesRuntime(source, card);
-    assert.deepEqual(Object.keys(runtime.series), EQUITIES_TICKERS);
-    assert.equal(Object.hasOwn(runtime.series, "H100"), false);
-    assert.equal(Object.hasOwn(runtime.series, "H200"), false);
-    for (const symbol of ["H100", "H200"]) {
-      const contaminated = structuredClone(source);
-      contaminated.series[symbol] = source.source.status === "ready" ? [[last, 2]] : [];
-      assert.throws(() => buildEquitiesRuntime(contaminated, card), /only registered symbols/);
-    }
+test("the fixed sample supports 7D, 90D and 1Y with identical clocks for every equity", () => {
+  const runtime = buildEquitiesRuntime(createDemoEquitiesSource(), card);
+  for (const [days, count] of [[7, 6], [90, 65], [365, 262]]) {
+    const clocks = Object.values(runtime.series).map(points => points.filter(point => point[0] >= runtime.asOf - days * 86400));
+    assert(clocks.every(points => points.length === count));
+    assert(clocks.every(points => points.at(-1)[0] === runtime.asOf));
+    assert(clocks.every(points => JSON.stringify(points.map(point => point[0])) === JSON.stringify(clocks[0].map(point => point[0]))));
   }
-  assert.throws(() => buildEquitiesRuntime(observedSource(), {
-    ...card, layers: card.layers.filter(layer => layer.id !== "NVDA"),
-  }), /exactly the nine equity source symbols/);
-  assert.throws(() => buildEquitiesRuntime(observedSource(), {
-    ...card, layers: [...card.layers, { id: "EXTRA", unit: "usd-share" }],
-  }), /exactly the nine equity source symbols/);
 });
 
-test("explicit millisecond source timestamps become Unix seconds without changing prices", () => {
-  const source = observedSource();
-  const expected = buildEquitiesRuntime(source, card);
-  source.timestampUnit = "milliseconds";
-  source.asOf *= 1000;
-  for (const points of Object.values(source.series)) for (const point of points) point[0] *= 1000;
-  assert.deepEqual(buildEquitiesRuntime(source, card), expected);
-});
-
-test("an unavailable equities feed stays empty with no fabricated as-of date", () => {
-  const source = createUnavailableEquitiesSource();
+test("GPU comparison layers stay outside the exact nine-ticker equities source", () => {
+  const source = createDemoEquitiesSource();
+  assert.deepEqual(card.layers.filter(layer => layer.sourceCardId).map(layer => layer.id), ["H100", "H200"]);
   const runtime = buildEquitiesRuntime(source, card);
-  assert.equal(runtime.asOf, null);
-  assert.equal(runtime.dataset.start, null);
-  assert.equal(runtime.dataset.end, null);
-  assert.equal(runtime.dataset.observationCount, 0);
-  assert.equal(runtime.dataset.kind, "unavailable");
-  assert.equal(runtime.dataset.status, "unavailable");
-  assert.equal(runtime.dataset.source.code, "missing-api-token");
-  assert.equal(runtime.dataset.source.message, source.source.message);
-  assert(Object.values(runtime.series).every(points => points.length === 0));
+  assert.deepEqual(Object.keys(runtime.series), EQUITIES_TICKERS);
+  assert.equal(Object.hasOwn(runtime.series, "H100"), false);
+  assert.equal(Object.hasOwn(runtime.series, "H200"), false);
+  for (const symbol of ["H100", "H200"]) {
+    const invalid = structuredClone(source);
+    invalid.series[symbol] = [[source.asOf, 2]];
+    assert.throws(() => buildEquitiesRuntime(invalid, card), /exactly the nine configured tickers/);
+  }
+  assert.throws(() => buildEquitiesRuntime(source, { ...card, layers: card.layers.filter(layer => layer.id !== "NVDA") }), /exactly the nine equity source symbols/);
+  assert.throws(() => buildEquitiesRuntime(source, { ...card, layers: [...card.layers, { id: "EXTRA" }] }), /exactly the nine equity source symbols/);
 });
 
-test("invalid price data and misleading availability fail the build instead of being dropped", () => {
+test("only bundled demo runtimes pass the publication safety check", () => {
+  const runtime = buildEquitiesRuntime(createDemoEquitiesSource(), card);
+  assert.doesNotThrow(() => assertEquitiesPublicDisplay(runtime));
   const mutations = [
-    source => { source.version = 2; },
-    source => { source.series.NVDA[0][1] = NaN; },
-    source => { source.series.NVDA[0][1] = 0; },
-    source => { source.series.NVDA[0][1] = "100"; },
-    source => { source.series.NVDA[1][0] = first; },
-    source => { source.series.NVDA[1][0] = first - 86400; },
-    source => { source.series.NVDA[0][0] += 0.5; },
-    source => { source.asOf = last + 86400; },
-    source => { source.series.NVDA = []; },
-    source => { delete source.series.NVDA; },
-    source => { source.series.FAKE = [[last, 1]]; },
-    source => { source.currency = "EUR"; },
-    source => { source.priceBasis = "unknown"; },
-    source => { source.priceBasis = "close"; },
-    source => { source.priceBasis = "split-adjusted-close"; },
-    source => { source.timestampUnit = "minutes"; },
-    source => { source.source.status = "unavailable"; },
-    source => { source.source.url = "file:///private/data"; },
+    value => { value.dataset.kind = "observed"; },
+    value => { value.dataset.status = "unavailable"; },
+    value => { value.dataset.source.kind = "observed"; },
+    value => { value.dataset.source.id = "external-provider"; },
+    value => { value.dataset.priceBasis = "split-dividend-adjusted-close"; },
+    value => { value.dataset.source.notice = "Live market data"; },
+    value => { value.asOf = null; },
+    value => { value.series.NVDA = []; },
+    value => { value.series.NVDA[0][1] = -1; },
+    value => { value.dataset.observationCount = 1; },
+    value => { value.dataset.start += 86400; },
+    value => { value.columns = ["timestamp", "close"]; },
   ];
   for (const mutate of mutations) {
-    const source = observedSource();
-    mutate(source);
-    assert.throws(() => buildEquitiesRuntime(source, card), mutate.toString());
+    const invalid = structuredClone(runtime);
+    mutate(invalid);
+    assert.throws(() => assertEquitiesPublicDisplay(invalid), mutate.toString());
   }
-  const unavailable = createUnavailableEquitiesSource();
-  unavailable.asOf = last;
-  assert.throws(() => buildEquitiesRuntime(unavailable, card), /null asOf/);
+  const observed = structuredClone(runtime);
+  observed.dataset.kind = "observed";
+  observed.dataset.source.publicDisplayRights = "confirmed";
+  assert.throws(() => assertEquitiesPublicDisplay(observed), /Only a bundled demo/);
+  assert.throws(() => assertEquitiesPublicDisplay(null), /Only a bundled demo/);
 });
 
-test("public builds allow the unavailable placeholder and require confirmed display rights for observed prices", () => {
-  const unavailable = buildEquitiesRuntime(createUnavailableEquitiesSource(), card);
-  assert.doesNotThrow(() => assertEquitiesPublicDisplay(unavailable));
-  const ready = buildEquitiesRuntime(observedSource(), card);
-  assert.throws(() => assertEquitiesPublicDisplay(ready), /rights.*confirmed/);
-  ready.dataset.source.publicDisplayRights = "confirmed";
-  assert.doesNotThrow(() => assertEquitiesPublicDisplay(ready));
-  const disguised = structuredClone(unavailable);
-  disguised.series.NVDA = [[last, 123]];
-  assert.throws(() => assertEquitiesPublicDisplay(disguised), /rights.*confirmed/);
-  assert.throws(() => assertEquitiesPublicDisplay(null), /runtime/);
-});
-
-test("local equities cache wins, and corrupt cache never silently falls back to the placeholder", async t => {
-  const root = await mkdtemp(join(tmpdir(), "desk-equities-runtime-"));
+test("equities reader uses only committed demo data and ignores even a corrupt private-cache decoy", async t => {
+  const root = await mkdtemp(join(tmpdir(), "desk-demo-equities-test-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   await mkdir(join(root, "data"));
   await mkdir(join(root, ".cache"));
-  const placeholder = createUnavailableEquitiesSource();
-  await writeFile(join(root, "data", "equities-source.json"), JSON.stringify(placeholder));
-  assert.deepEqual(await readEquitiesSource(root, "data/equities-source.json"), placeholder);
-  const cacheFile = join(root, ".cache", "equities-source.json");
-  const ready = observedSource();
-  await writeFile(cacheFile, JSON.stringify(ready));
-  assert.deepEqual(await readEquitiesSource(root, "data/equities-source.json"), ready);
-  await writeFile(cacheFile, "{invalid JSON");
-  await assert.rejects(readEquitiesSource(root, "data/equities-source.json"), SyntaxError);
-  ready.asOf = last + 86400;
-  await writeFile(cacheFile, JSON.stringify(ready));
-  assert.throws(() => buildEquitiesRuntime(ready, card), /asOf/);
-  const loaded = await readEquitiesSource(root, "data/equities-source.json");
-  assert.throws(() => buildEquitiesRuntime(loaded, card), /asOf/);
+  const committed = createDemoEquitiesSource();
+  const sourceFile = join(root, "data", "equities-source.json");
+  await writeFile(sourceFile, JSON.stringify(committed));
+  assert.deepEqual(await readEquitiesSource(root), committed);
+  // This is a test-owned temporary decoy, never the user's private cache.
+  const cacheDecoy = join(root, ".cache", "equities-source.json");
+  await writeFile(cacheDecoy, "{not valid JSON");
+  assert.deepEqual(await readEquitiesSource(root, "data/equities-source.json"), committed);
+  const alternate = createDemoEquitiesSource({ seed: 1 });
+  await writeFile(cacheDecoy, JSON.stringify(alternate));
+  assert.deepEqual(await readEquitiesSource(root), committed);
+  await unlink(sourceFile);
+  await assert.rejects(readEquitiesSource(root), { code: "ENOENT" }, "A cache cannot replace a missing committed source");
+  await writeFile(sourceFile, "{invalid demo JSON");
+  await assert.rejects(readEquitiesSource(root), SyntaxError);
 });
 
-test("only an explicit confirmed deployment override permits public equity display", () => {
-  const source = observedSource();
-  const before = structuredClone(source);
-  const privateRuntime = buildEquitiesRuntime(source, card, { publicDisplayRights: "" });
-  for (const publicDisplayRights of ["", "true", "yes", "Confirmed", " confirmed", "not-confirmed"]) {
-    const runtime = buildEquitiesRuntime(source, card, { publicDisplayRights });
-    assert.throws(() => assertEquitiesPublicDisplay(runtime), /rights.*confirmed/);
-    assert.equal(runtime.revision, privateRuntime.revision);
-  }
-  const publicRuntime = buildEquitiesRuntime(source, card, { publicDisplayRights: "confirmed" });
-  assert.doesNotThrow(() => assertEquitiesPublicDisplay(publicRuntime));
-  assert.equal(publicRuntime.dataset.source.publicDisplayRights, "confirmed");
-  assert.notEqual(publicRuntime.revision, privateRuntime.revision);
-  assert.deepEqual(publicRuntime.series, privateRuntime.series);
-  assert.deepEqual(source, before, "deployment confirmation must not mutate the cached provider source");
-});
-
-test("the build-time rights environment override is read without changing source provenance", () => {
-  const runtimeModule = new URL("../scripts/equities-runtime.mjs", import.meta.url).href;
-  const registryModule = new URL("../src/card-registry.js", import.meta.url).href;
-  const program = `
-    import { buildEquitiesRuntime, assertEquitiesPublicDisplay } from ${JSON.stringify(runtimeModule)};
-    import { getCardDefinition } from ${JSON.stringify(registryModule)};
-    const source = ${JSON.stringify(observedSource())};
-    const runtime = buildEquitiesRuntime(source, getCardDefinition("equities"));
-    assertEquitiesPublicDisplay(runtime);
-    console.log(runtime.dataset.source.publicDisplayRights, source.source.publicDisplayRights);
-  `;
-  const output = execFileSync(process.execPath, ["--input-type=module", "-e", program], {
-    env: { EQUITIES_PUBLIC_DISPLAY_RIGHTS: "confirmed" },
-    encoding: "utf8",
-  });
-  assert.equal(output.trim(), "confirmed not-confirmed");
+test("the runtime cannot copy unknown provider metadata or require deployment settings", async () => {
+  const source = createDemoEquitiesSource();
+  source.source.privateMarker = "do-not-publish-test-marker";
+  source.source.publicDisplayRights = "confirmed";
+  const runtime = buildEquitiesRuntime(source, card, { publicDisplayRights: "confirmed" });
+  assert.equal(JSON.stringify(runtime).includes("do-not-publish-test-marker"), false);
+  assert.equal(Object.hasOwn(runtime.dataset.source, "publicDisplayRights"), false);
+  assert.doesNotThrow(() => assertEquitiesPublicDisplay(runtime));
+  const code = await readFile(new URL("../scripts/equities-runtime.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(code, /process\.env|fetch\(|["']\.cache["']/,
+    "Runtime construction and source loading have no provider, environment or cache dependency");
 });

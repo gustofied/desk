@@ -248,7 +248,7 @@ function createAriaLabel(location, latest, range, energy) {
   const precision = energy ? 4 : 2;
   const unit = energy ? "GPU-hour" : "megawatt-hour";
   return (
-    `${location.label} ${energy ? "GPU energy sensitivity" : "power prices"} over ${duration}. ` +
+    `${location.label} ${energy ? "H100 power cost estimate" : "power prices"} over ${duration}. ` +
     `Real time ${formatPrice(latest.realTime, precision, unit)}, ` +
     `day ahead ${formatPrice(latest.dayAhead, precision, unit)}, ` +
     `spread ${formatSignedPrice(latest.basis, precision, unit)}.` +

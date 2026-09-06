@@ -151,7 +151,7 @@ function powerBasisMarkup(
   const artifactHeader = showArtifactHeader
     ? viewArtifactHeaderMarkup({
         title: safeTitle,
-        context: [normalized.marker.toUpperCase(), formatRange(normalized.range)].filter(Boolean).join(" · "),
+        context: formatRange(normalized.range),
         headline: chartMode === "basis"
           ? formatBasis(latest.basis, normalized.precision)
           : formatPrice(latest.realTime, normalized.precision),
@@ -199,7 +199,7 @@ function powerBasisMarkup(
   const minimalContext = minimal && !showArtifactHeader
     ? `<text data-power-basis-context="" x="2%" y="32" fill="${palette.line}"
         fill-opacity="0.68" font-family="Geist Mono, monospace" font-size="${headerLayout.contextSize}"
-        pointer-events="none">${escapeXml([normalized.marker.toUpperCase(), normalized.unitSuffix].filter(Boolean).join(" · "))}</text>`
+        pointer-events="none">${escapeXml(normalized.unitSuffix)}</text>`
     : "";
   const inner = `
     <desc>${escapeXml(ariaLabel)}</desc>
@@ -214,8 +214,7 @@ function powerBasisMarkup(
       data-power-basis-line="${chartMode === "basis" ? "basis" : "real-time"}"
       d="${line(normalized.rows)}" fill="none" stroke="${palette.line}"
       stroke-width="${primaryWidth}" stroke-linecap="butt" stroke-linejoin="round"
-      vector-effect="non-scaling-stroke" pathLength="1"
-      stroke-dasharray="1" stroke-dashoffset="0"
+      vector-effect="non-scaling-stroke"
       pointer-events="none" aria-hidden="true"/>
     ${columns}
     ${readout}
@@ -547,7 +546,7 @@ function readoutPrice(value, model, signed = false) {
 }
 
 function readoutDate(row, model) {
-  return [model.marker.toUpperCase(), formatDate(row.date)].filter(Boolean).join(" · ");
+  return formatDate(row.date);
 }
 
 function formatRange(range) {

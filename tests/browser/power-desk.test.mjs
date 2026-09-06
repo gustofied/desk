@@ -18,7 +18,7 @@ const pinKey = "desk.market-watchlist.v1";
 const presets = [
   { id: "pjm-dominion", location: "PJM-DOMINION", label: "PJM Dominion", scale: "price" },
   { id: "ercot-north", location: "ERCOT-NORTH", label: "ERCOT North", scale: "price" },
-  { id: "gpu-energy", location: "PJM-DOMINION", label: "GPU energy", scale: "energy" },
+  { id: "gpu-energy", location: "PJM-DOMINION", label: "H100 power cost", scale: "energy" },
 ];
 let browser;
 let payload;
@@ -106,8 +106,24 @@ async function assertSurface(page, selector, energy) {
   assert.equal(await svg.locator('[data-power-basis-line="day-ahead"]').count(), 1);
   assert.equal(await svg.locator("[data-power-basis-area]").count(), 1);
   assert.equal(await svg.locator(".gpu-benchmark__plot-root, .gpu-benchmark__line, .is-exiting").count(), 0);
-  const text = await svg.textContent();
-  assert.match(text, energy ? /ESTIMATE|Estimate/ : /DEMO|Demo/);
+  const primaryPaint = await svg.locator('[data-power-basis-line="real-time"]').evaluate(node => {
+    const style = getComputedStyle(node);
+    return { dasharray: style.strokeDasharray, opacity: style.opacity, strokeOpacity: style.strokeOpacity,
+      visibility: style.visibility, stroke: style.stroke };
+  });
+  assert.equal(primaryPaint.dasharray, "none", "Primary power line is solid, without obsolete dash-reveal attributes");
+  assert.equal(primaryPaint.opacity, "1");
+  assert.equal(primaryPaint.strokeOpacity, "1");
+  assert.equal(primaryPaint.visibility, "visible");
+  assert.notEqual(primaryPaint.stroke, "none");
+  const text = (await svg.locator("text").allTextContents()).join(" ");
+  assert.doesNotMatch(text, /demo|estimate|GPU energy/i, "Card headers and readout dates stay free of source badges");
+  const header = svg.locator("[data-view-artifact-header]");
+  if (await header.count()) {
+    const range = new URL(page.url()).searchParams.get("range") || "1d";
+    assert((await header.textContent()).includes(range.toUpperCase()), "Artifact range remains visible");
+    if (energy) assert((await header.textContent()).includes("H100 power cost"));
+  }
   assert(text.includes(energy ? "/GPU-h" : "/MWh"), "Visible unit is correct");
   assert(await page.evaluate(() => window.__powerDocument === document.documentElement), "Navigation reloaded document");
   assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), "Page overflows horizontally");
@@ -128,6 +144,11 @@ test("fresh Power catalog has three cards that open Monitor and switch as focuse
   const labels = await page.locator(gallery).evaluateAll(nodes => nodes.map(node => node.getAttribute("aria-label")));
   assert.equal(labels.length, presets.length);
   presets.forEach((preset, index) => assert(labels[index].startsWith(`Monitor ${preset.label}.`)));
+  for (const card of await page.locator(gallery).all()) {
+    const header = await card.locator("[data-view-artifact-header]").textContent();
+    assert.doesNotMatch(header, /demo|estimate|GPU energy/i);
+    assert(header.includes("1D"), "Power Gallery keeps its range badge");
+  }
   await capture(page, "power-gallery-demo");
   for (const [index, preset] of presets.entries()) {
     await page.locator(gallery).nth(index).click();
@@ -156,25 +177,51 @@ for (const width of [1440, 390]) {
       await page.locator(`[data-gpu-range="${range}"]`).click();
       assert.equal(await page.locator(`[data-gpu-range="${range}"]`).getAttribute("aria-pressed"), "true");
       await assertSurface(page, monitorSvg, true);
+      // The existing mobile Power renderer intentionally has no readout.
+      if (width === 1440) {
+        const interactive = page.locator("[data-power-basis-interactive]").filter({ has: page.locator(monitorSvg) });
+        await interactive.focus();
+        await page.keyboard.press("Home");
+        const firstDate = await page.locator(`${monitorSvg} [data-power-basis-date]`).textContent();
+        const firstTimestamp = await interactive.getAttribute("data-power-basis-timestamp");
+        assert.doesNotMatch(firstDate, /demo|estimate/i, "Inspected dates contain no source badge");
+        await page.keyboard.press("ArrowRight");
+        assert.notEqual(await page.locator(`${monitorSvg} [data-power-basis-date]`).textContent(), firstDate,
+          "Arrow inspection advances to the next sampled date");
+        await page.keyboard.press("End");
+        const lastDate = await page.locator(`${monitorSvg} [data-power-basis-date]`).textContent();
+        assert.doesNotMatch(lastDate, /demo|estimate/i);
+        assert.notEqual(await interactive.getAttribute("data-power-basis-timestamp"), firstTimestamp,
+          "Keyboard endpoints differ even when a one-year range repeats the displayed month/day/time");
+      }
       if (width === 1440) assert((await page.locator(`${monitorSvg} [data-power-basis-real-time]`).textContent()).includes(`$${expected}/GPU-h`));
     }
     await page.locator("[data-monitor-data-toggle]").click();
     await page.locator("[data-monitor-data-body]").waitFor({ state: "visible" });
-    const description = await page.locator("[data-monitor-data-source-description]").innerText();
-    for (const term of ["10.2 kW", "8 GPUs", "PUE 1.2", "Demo", "Energy only"]) assert(description.includes(term), term);
+    assert.equal(await page.locator("[data-monitor-data-source-description]").textContent(), "",
+      "Power source notes are blank");
+    assert.doesNotMatch(await page.locator("[data-monitor-data]").innerText(), /\b(?:demo|estimate|estimated)\b/i,
+      "Neither the expanded note nor collapsed provenance displays a demo/estimate marker");
+    assert(await page.locator("[data-monitor-data-source-link]").isVisible(), "Source docs remain available without a note");
     assert.match(await page.locator("[data-monitor-data-source-link]").getAttribute("href"), /^https:\/\/docs\.nvidia\.com\/dgx\//);
     await capture(page, "energy-monitor-estimate");
     await command(page, "actions.pin-to-strip", "pin");
     const items = await page.evaluate(key => JSON.parse(localStorage.getItem(key)).items, pinKey);
     const pinned = items.find(item => item.cardId === "power-basis" && item.state.scale === "energy");
     assert(pinned, "Energy pin persisted");
+    assert.equal(pinned.label, "H100 power cost PJM Dominion");
     assert.equal(pinned.state.location, "PJM-DOMINION");
     assert.equal(pinned.state.range, "1y");
     await page.reload({ waitUntil: "networkidle" });
     await ready(page);
+    await page.evaluate(() => { window.__powerDocument = document.documentElement; });
     assert.deepEqual(await page.evaluate(({ key, id }) => JSON.parse(localStorage.getItem(key)).items.find(item => item.id === id),
       { key: pinKey, id: pinned.id }), pinned);
     if (width === 1440) {
+      await page.locator(`[data-market-instrument="${pinned.id}"] button`).hover();
+      await page.locator("[data-market-preview]").waitFor({ state: "visible" });
+      await assertSurface(page, "[data-market-preview] svg", true);
+      await capture(page, "H100-power-cost-pin-preview");
       const snapshot = createSharedDesk({ name: "Energy estimate", entries: [{ cardId: pinned.cardId, name: pinned.label, state: pinned.state }],
         palette: "linen", theme: "dark" });
       const url = new URL("/?view=gallery", baseUrl);
@@ -183,7 +230,9 @@ for (const width of [1440, 390]) {
       await ready(page);
       await page.evaluate(() => { window.__powerDocument = document.documentElement; });
       assert.equal(await page.locator(gallery).count(), 1);
-      assert.match(await page.locator(gallery).textContent(), /ESTIMATE/);
+      const visibleText = (await page.locator(`${gallery} svg text`).allTextContents()).join(" ");
+      assert.doesNotMatch(visibleText, /ESTIMATE|DEMO|GPU energy/i);
+      assert.match(visibleText, /H100 power cost/);
       await page.locator(gallery).click();
       await assertPreset(page, presets[2]);
       assert.equal(new URL(page.url()).searchParams.get("range"), "1y");

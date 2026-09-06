@@ -52,15 +52,14 @@ function createSandboxDataModel(card, state = {}, model) {
     rowCount: Array.isArray(model?.rows) ? model.rows.length : providers.length,
     asOf: available ? asOf : null,
     accessKind: "source",
-    provenance: available ? `Benchmark snapshot · ${String(range).toUpperCase()} · as of ${date}` : "Benchmark observations unavailable",
+    provenance: available ? `Benchmark snapshot ${String(range).toUpperCase()} as of ${date}` : "Benchmark observations unavailable",
     source: { name: sourceName, url: sourceUrl },
     status: available ? "ready" : "unavailable",
     unit: "USD per job",
     priceBasis: "cpu-memory-job-estimate",
-    description: "Estimated CPU + memory cost per job. " +
-      (history
+    description: history
         ? "Daily batch medians; independent scales. Methodology varies across runs."
-        : "Median and range across 12 runs."),
+        : "Median and range across 12 runs.",
     sourceUrl,
   });
 }
@@ -87,22 +86,23 @@ function createEquityHistoryModel(card, state, series, runtime, runtimes) {
   const range = String(state.range).toUpperCase();
   const seriesLabel = symbols.join(" + ") || "Equities";
   const sourceName = source?.name || "Source unavailable";
+  const demo = dataset.kind === "demo";
   const computeSource = runtimes.get("gpu-index")?.dataset;
   const computeAttribution = !computeSource ? "GPU data unavailable"
     : computeSource.kind === "scenario" ? "GPU demo data" : "GPU prices by Desk";
-  const label = crossMarket ? `${sourceName} + Desk` : sourceName;
+  const label = "Equities";
   const provenance = [
-    label,
+    demo ? "Synthetic price history" : sourceName,
     asOf ? `as of ${asOf.toISOString().slice(0, 10)}` : "no observations",
-  ].join(" · ");
+  ].join(" ");
   return finalizeModel(card, {
     id: "equities-source",
     label,
-    summary: unavailable ? crossMarket && dataset.status === "ready" ? "No shared data" : "Not connected"
+    summary: unavailable ? crossMarket && dataset.status === "ready" ? "No shared data" : "No data"
       : `${crossMarket ? "Compared through" : "Close"} ${asOf.toISOString().slice(0, 10)}`,
-    description: `Data by ${sourceName}${crossMarket ? ` · ${computeAttribution}` : ""}`,
+    description: demo ? "" : `Data by ${sourceName}${crossMarket ? ` ${computeAttribution}` : ""}`,
     sourceUrl: equitySourceUrl(source?.url),
-    breadcrumbs: [sourceName, seriesLabel, range],
+    breadcrumbs: ["Desk", seriesLabel, range],
     rowCount,
     asOf,
     accessKind: "source",
@@ -272,12 +272,10 @@ function createPowerBasisDataModel(card, state, model) {
 
   return finalizeModel(card, {
     summary: `${locationLabel} ${model.energy ? "H100 " : ""}${range}`,
-    breadcrumbs: ["Desk", model.energy ? "GPU energy" : card.dataTable.label, locationLabel, range],
+    breadcrumbs: ["Desk", model.energy ? "H100 power cost" : card.dataTable.label, locationLabel, range],
     accessKind: "cli",
-    provenance: model.energy ? "Estimate" : "Demo",
-    description: model.energy
-      ? "H100 · 10.2 kW node max · 8 GPUs · PUE 1.2 assumed. Demo power × kW × PUE ÷ GPUs ÷ 1,000. Energy only—not a delivered bill or GPU rental rate. CLI exports the underlying $/MWh; SQL applies the estimate."
-      : `${model.location.label} · ${model.location.unit}. Generated hourly RT / DA prices—not an exchange feed.`,
+    provenance: "",
+    description: "",
     sourceUrl: model.energy
       ? "https://docs.nvidia.com/dgx/dgxh100-user-guide/introduction-to-dgxh100.html"
       : null,
@@ -311,6 +309,7 @@ function finalizeModel(card, values) {
     values.provenance,
     values.description,
     values.sourceUrl,
+    values.source,
   ]);
   return Object.freeze({
     key,

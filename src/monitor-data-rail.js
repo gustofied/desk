@@ -79,11 +79,11 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     root.setAttribute("aria-label", sourceOnly ? "Market data source" : "Desk API");
     nodes.label.textContent = sourceOnly ? "Source" : "Desk API";
     nodes.dataset.textContent = model.label;
-    nodes.context.textContent = sourceOnly ? model.summary : [model.summary, model.provenance].filter(Boolean).join(" · ");
+    nodes.context.textContent = sourceOnly ? model.summary : [model.summary, model.provenance].filter(Boolean).join(" ");
     nodes.context.title = nodes.context.textContent;
     nodes.toggle?.setAttribute("aria-label", toggleLabel(model));
     for (const section of nodes.apiSections) section.hidden = sourceOnly;
-    if (nodes.source) nodes.source.hidden = !sourceOnly && !model.description;
+    if (nodes.source) nodes.source.hidden = !model.description && !model.sourceUrl;
     if (nodes.sourceDescription) nodes.sourceDescription.textContent = model.description || "";
     if (nodes.sourceLink) {
       nodes.sourceLink.hidden = !model.sourceUrl;
@@ -316,7 +316,7 @@ function toggleLabel(model) {
     ...(model.provenance ? [model.provenance] : []),
     formatRowCount(model.rowCount),
   ];
-  if (model.asOf) label.push(`observed ${formatAsOf(model.asOf)}`);
+  if (model.asOf) label.push(`as of ${formatAsOf(model.asOf)}`);
   return label.join(", ");
 }
 

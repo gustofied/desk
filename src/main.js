@@ -1993,7 +1993,7 @@ if (root) {
     if (isDepthCard) return `H100 depth ${state.options.target} nodes`;
     if (isPowerCard) {
       const location = getLayerDefinition(cardDefinition, state.selected)?.label || "Power prices";
-      return state.scale === "energy" ? `GPU energy · ${location}`
+      return state.scale === "energy" ? `H100 power cost ${location}`
         : state.scale === "basis" ? `${location} spread` : location;
     }
     if (isQuoteCard) {
@@ -2958,7 +2958,7 @@ if (root) {
 
   function describeCatalogState(cardState, definition = cardDefinition) {
     if (definition.renderer === "sandbox-cost") {
-      return `${cardState.layers.length} providers · ${cardState.range === "now" ? "Latest run" : ranges[cardState.range].label}`;
+      return `${cardState.layers.length} providers ${cardState.range === "now" ? "Latest run" : ranges[cardState.range].label}`;
     }
     if (definition.renderer === "deal") {
       if (definition.viewKind === "quote") {
@@ -5097,7 +5097,7 @@ if (root) {
       try {
         const model = createPowerModel(currentCardState(), state.runtimePayload);
         if (nodes.mobileSummaryLabel) {
-          nodes.mobileSummaryLabel.textContent = model.energy ? "GPU energy · H100"
+          nodes.mobileSummaryLabel.textContent = model.energy ? "H100 power cost"
             : model.location.shortLabel || model.location.label;
         }
         if (nodes.mobileSummaryValue) {
@@ -5266,7 +5266,7 @@ if (root) {
       button.setAttribute(
         "aria-label",
         button.dataset.cardScale === "price"
-          ? isSandboxCard ? "Show estimated cost per job" : cardId === "equities" ? "Show adjusted close in USD per share" : "Show hourly price"
+          ? isSandboxCard ? "Show estimated cost per job" : cardId === "equities" ? "Show daily close in USD per share" : "Show hourly price"
           : button.dataset.cardScale === "index"
             ? "Show percentage change from the range start"
             : "Show the relative change between two series",
@@ -5415,11 +5415,11 @@ if (root) {
           : state.scale === "spread"
           ? `${spreadLabel}. The line shows the difference in price change, in percentage points. Positive values mean ${orderedLabels[0]} has risen more; negative values mean ${orderedLabels[1]} has risen more.`
           : hasCrossMarketLayers(cardDefinition, [...state.layers])
-          ? `${labels} percentage change from the same first shared date. Equity adjusted closes and the last recorded GPU rental price on each shared UTC day. GPU history is currently demo data. Hover shows original prices in dollars per share or GPU hour.`
+          ? `${labels} percentage change from the same first shared date. Demo equity closes and GPU rental prices on each shared UTC day. Hover shows original prices in dollars per share or GPU hour.`
           : state.scale === "index"
           ? `${labels} percentage change from the start of the selected range.`
           : cardId === "equities"
-          ? `${labels} ${state.runtimePayload?.dataset?.priceBasisLabel || "daily closing prices"}, in US dollars per share. Only reported trading sessions are shown.`
+          ? `${labels} ${state.runtimePayload?.dataset?.priceBasisLabel || "daily closing prices"}, in US dollars per share. Synthetic weekday history, not market prices.`
           : `${labels} hourly prices. The band shows the quoted price range for ${state.selected}.`;
     }
   }
@@ -5755,7 +5755,7 @@ if (root) {
     if (state.craftEmpty) return "Craft";
     if (state.catalogName) return state.catalogName;
     if (isPowerCard) {
-      if (state.scale === "energy") return "GPU energy";
+      if (state.scale === "energy") return "H100 power cost";
       return getLayerDefinition(cardDefinition, state.selected)?.label || cardDefinition.title;
     }
     if (cardDefinition.renderer !== "line") return cardDefinition.title;
@@ -6141,7 +6141,7 @@ if (root) {
       : formatPowerPrice(model.latest.realTime, model.precision);
     if (nodes.shareStatus) {
       nodes.shareStatus.textContent =
-        `${model.energy ? "GPU energy · " : ""}${model.location.label} ${ranges[state.range].label} ${value} ${model.energy ? "/GPU-h · Estimate" : "/MWh · Demo"}`;
+        `${model.energy ? "H100 power cost " : ""}${model.location.label} ${ranges[state.range].label} ${value} ${model.energy ? "/GPU-h" : "/MWh"}`;
     }
     if (nodes.shareObserved && observed) {
       nodes.shareObserved.textContent = formatUtcDateTime(observed);
@@ -6159,7 +6159,7 @@ if (root) {
 
   function syncSandboxShareStatus(model) {
     const observed = new Date(model.asOf);
-    if (nodes.shareStatus) nodes.shareStatus.textContent = `${model.providers.length} sandbox providers · estimated cost per job`;
+    if (nodes.shareStatus) nodes.shareStatus.textContent = `${model.providers.length} providers`;
     if (nodes.shareObserved) {
       nodes.shareObserved.textContent = `Snapshot ${d3.utcFormat("%d %b %Y")(observed)}`;
       nodes.shareObserved.setAttribute("datetime", observed.toISOString());
@@ -6452,7 +6452,7 @@ if (root) {
     const palette = cardPalette(currentCardState());
     paintPowerBasisChart(nodes.shareArtifactSvg, model, {
       colors: palette,
-      title: state.catalogName || (model.energy ? "GPU energy" : model.location.label),
+      title: state.catalogName || (model.energy ? "H100 power cost" : model.location.label),
       mode: state.scale,
       compact: true,
       artifact: true,
@@ -6471,7 +6471,7 @@ if (root) {
     ) {
       paintPowerBasisChart(nodes.svg, model, {
         colors: palette,
-        title: state.catalogName || (model.energy ? "GPU energy" : model.location.label),
+        title: state.catalogName || (model.energy ? "H100 power cost" : model.location.label),
         mode: state.scale,
         reducedMotion: reducedMotion || motion !== "reveal",
         interactive: true,
@@ -7702,7 +7702,7 @@ if (root) {
     const date = document.createElement("time");
     const crossMarket = hasCrossMarketLayers(cardDefinition, [...state.layers]);
     date.textContent = cardId === "equities"
-      ? `${d3.utcFormat("%d %b %Y")(dateValue)}${crossMarket ? "" : " · close"}`
+      ? `${d3.utcFormat("%d %b %Y")(dateValue)}${crossMarket ? "" : " close"}`
       : formatDateTime(dateValue);
     if (state.scale === "spread" && rows[0]) {
       const row = rows[0];
