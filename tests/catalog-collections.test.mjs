@@ -143,6 +143,27 @@ test("shared saving embeds all six families in order with a single atomic collec
   assert.deepEqual(h.stored().collections, result.collections);
 });
 
+test("catalog copies default to Linen light while explicit saved appearances survive reload", t => {
+  harness(t, null);
+  const entries = CARD_REGISTRY.map(card => ({ cardId: card.id, name: card.title, state: {} }));
+  const light = saveSharedDeskCollection({ name: "Default appearance", entries }).collections.at(-1);
+  assert.equal(light.palette, "linen");
+  assert.equal(light.theme, "light");
+  for (const view of light.views) {
+    assert.equal(view.state.palette, "linen", view.cardId);
+    assert.equal(view.state.theme, "light", view.cardId);
+  }
+  const dark = saveSharedDeskCollection({ name: "Authored appearance", palette: "azure", theme: "dark",
+    entries: entries.map(entry => ({ ...entry, state: { palette: "azure", theme: "dark" } })),
+  }).collections.at(-1);
+  assert.equal(dark.palette, "azure");
+  assert.equal(dark.theme, "dark");
+  assert(dark.views.every(view => view.state.palette === "azure" && view.state.theme === "dark"));
+  const reloaded = loadCatalogCollections();
+  assert.deepEqual(reloaded.collections.find(collection => collection.id === light.id), light);
+  assert.deepEqual(reloaded.collections.find(collection => collection.id === dark.id), dark);
+});
+
 test("saving to absent storage seeds starter collections and the shared collection in one write", t => {
   const h = harness(t, null);
   const result = saveSharedDeskCollection(snapshot());

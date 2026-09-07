@@ -88,7 +88,7 @@ export const SITE_ORIGIN = "https://desk.adamsioud.com";
 export const PUBLISHED_CARD_VERSION = "v17";
 export const SHARE_COPY_VERSION = "copy2";
 export const DEFAULT_PALETTE = "linen";
-export const DEFAULT_THEME = "dark";
+export const DEFAULT_THEME = "light";
 
 export const PALETTES = Object.freeze([
   Object.freeze({ id: "azure", label: "Soft Azure", accent: "#91aecb" }),

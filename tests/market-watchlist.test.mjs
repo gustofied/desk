@@ -133,12 +133,12 @@ test("initial defaults are five frozen in-memory views and never write storage",
     assert.equal(item.cardId, "gpu-index");
     assert.equal(item.label, item.id);
     assert.deepEqual(item.state, {
-      gpu: item.id, layers: [item.id], scale: "price", range: "7d", palette: "linen", theme: "dark",
+      gpu: item.id, layers: [item.id], scale: "price", range: "7d", palette: "linen", theme: "light",
     });
   }
   assert.deepEqual(watchlist.list().at(-1), {
     id: "PJM-WEST-RT", cardId: "power-basis", label: "PJM West RT",
-    state: { location: "PJM-WEST", layers: ["PJM-WEST"], scale: "price", range: "1d", palette: "linen", theme: "dark" },
+    state: { location: "PJM-WEST", layers: ["PJM-WEST"], scale: "price", range: "1d", palette: "linen", theme: "light" },
   });
   assert.ok(Object.isFrozen(watchlist.list()));
   assert.ok(watchlist.list().every(item => Object.isFrozen(item) && Object.isFrozen(item.state) && Object.isFrozen(item.state.layers)));
@@ -210,7 +210,7 @@ test("identity ignores colors, case, and layer ordering but retains chart compos
 
 test("duplicate compositions preserve the original ID, label, colors, and write count", () => {
   const { storage, watchlist } = harness();
-  const original = watchlist.pin({ cardId: "gpu-index", state: { gpu: "H100", layers: ["H100", "H200"], scale: "spread" }, label: "Original spread" });
+  const original = watchlist.pin({ cardId: "gpu-index", state: { gpu: "H100", layers: ["H100", "H200"], scale: "spread", theme: "dark" }, label: "Original spread" });
   const writes = storage.writes.length;
   const duplicate = watchlist.pin({ cardId: "gpu-index", state: { gpu: "h100", layers: new Set(["h200", "h100"]), scale: "SPREAD", theme: "light" }, label: "Replacement name" });
   assert.deepEqual(duplicate, original);

@@ -70,7 +70,7 @@ test("Equities defaults to NVDA price over one year and stores symbol canonicall
   const state = normalizeCardState("equities");
   assert.deepEqual(state, {
     gpu: "NVDA", symbol: "NVDA", layers: ["NVDA"], scale: "price",
-    range: "1y", palette: "linen", theme: "dark",
+    range: "1y", palette: "linen", theme: "light",
   });
   const fields = ["symbol", "layers", "scale", "range", "palette", "theme"];
   assert.deepEqual(cardStateParamIds(getCardDefinition("equities")), fields);
@@ -133,7 +133,7 @@ test("mixed equity query and saved states force index and retain a canonical sto
   assert.equal(Object.hasOwn(saved.visualization, "gpu"), false);
   assert.deepEqual(saved.visualization, {
     symbol: "AMD", layers: ["MSFT", "AMD", "H100", "H200"], scale: "index",
-    range: "90d", palette: "linen", theme: "dark",
+    range: "90d", palette: "linen", theme: "light",
   });
   assert.deepEqual(normalizeCardDocument(JSON.parse(JSON.stringify(saved))), saved);
   const canonicalQuery = new URLSearchParams(Object.entries(saved.visualization).map(([key, value]) => [

@@ -1,12 +1,12 @@
 <!doctype html>
-<html lang="en" data-display-toolbar="collapsed">
+<html lang="en" data-theme="light" data-palette="linen" data-display-toolbar="collapsed">
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <meta name="application-name" content="Desk">
     <meta name="apple-mobile-web-app-title" content="Desk">
     <meta name="description" content="The workspace for compute desks. Explore, compose, monitor, and share compute market views.">
-    <meta name="theme-color" content="#181818">
+    <meta name="theme-color" content="#ffffff">
     <link rel="canonical" href="https://desk.adamsioud.com/">
     <meta property="og:title" content="Desk">
     <meta property="og:description" content="Explore, compose, monitor, and share compute market views.">
@@ -52,7 +52,7 @@
           mobileViewport.matches && requestedView === "card";
         let theme = requestedTheme === "light" || requestedTheme === "dark"
           ? requestedTheme
-          : "dark";
+          : "light";
         let palette = palettes.includes(requestedPalette)
           ? requestedPalette
           : "linen";
@@ -66,7 +66,7 @@
           if (hasSavedAppearance) {
             theme = savedTheme === "light" || savedTheme === "dark"
               ? savedTheme
-              : "dark";
+              : "light";
             palette = palettes.includes(savedPalette) ? savedPalette : "linen";
           }
         } catch {}
@@ -119,8 +119,8 @@
         <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Soft Linen palette" aria-pressed="true" data-palette-value="linen">
           <i aria-hidden="true"></i>
         </button>
-        <button class="desk-display-option desk-theme-option" type="button" aria-pressed="false" data-theme-value="light">Light</button>
-        <button class="desk-display-option desk-theme-option" type="button" aria-pressed="true" data-theme-value="dark">Dark</button>
+        <button class="desk-display-option desk-theme-option" type="button" aria-pressed="true" data-theme-value="light">Light</button>
+        <button class="desk-display-option desk-theme-option" type="button" aria-pressed="false" data-theme-value="dark">Dark</button>
         <button class="desk-display-option desk-palette-option" type="button" aria-label="Use Sage Green palette" aria-pressed="false" data-palette-value="sage">
           <i aria-hidden="true"></i>
         </button>
@@ -190,7 +190,7 @@
           class="desk-card-focus"
           id="desk-card-focus"
           tabindex="-1"
-          data-card-theme="dark"
+          data-card-theme="light"
           data-card-palette="linen"
           data-card-layout-panel="focus"
         >
@@ -690,6 +690,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=248"></script>
+    <script type="module" src="./desk.js?v=249"></script>
   </body>
 </html>
