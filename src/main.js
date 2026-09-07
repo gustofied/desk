@@ -243,8 +243,10 @@ if (root) {
   const initialEmbeddedMatch = (entry) => entry.cardId === cardId &&
     compositionKey(cardId, { ...entry.state, palette: requestedState.palette, theme: requestedState.theme }) ===
       compositionKey(cardId, requestedState);
-  const initialEmbeddedEntry = initialEmbeddedEntries.find((entry) => entry.key === params.get("entry") && initialEmbeddedMatch(entry)) ||
-    (incomingDesk.snapshot ? initialEmbeddedEntries.find(initialEmbeddedMatch) : null);
+  const initialEmbeddedEntry = initialEmbeddedEntries.find((entry) => entry.key === params.get("entry") && entry.cardId === cardId) ||
+    (!params.has("entry") && incomingDesk.snapshot ? initialEmbeddedEntries.find(initialEmbeddedMatch) : null);
+  const initialPreset = (cardDefinition.catalogPresets || []).find((preset) =>
+    presetCatalogKey(cardId, preset.id) === params.get("entry"));
   const hasCompleteCatalogSnapshot = cardStateParamIds(cardDefinition).every(
     (name) => params.has(name),
   );
@@ -310,6 +312,11 @@ if (root) {
     sharedDesk: incomingDesk.snapshot,
     sharedDeskError: incomingDesk.error,
     activeEmbeddedKey: initialEmbeddedEntry?.key || null,
+    activeViewKey: requestedCatalogItem
+      ? savedCatalogKey(cardId, requestedCatalogItem.id)
+      : initialEmbeddedEntry?.key || (initialPreset
+        ? presetCatalogKey(cardId, initialPreset.id)
+        : params.has("entry") ? `current-${cardId}` : null),
     catalogMenuOpen: false,
     catalogDialogMode: null,
     zoomWindow: null,
@@ -1350,6 +1357,7 @@ if (root) {
           !state.savedCatalog.some((item) => item.id === state.activeCatalogId)
         ) {
           state.activeCatalogId = null;
+          state.activeViewKey = currentCardRailKey();
           state.catalogName = "";
         }
         refreshCatalogWorkspace("Views updated");
@@ -1582,6 +1590,7 @@ if (root) {
     state.sharedDesk = null;
     state.sharedDeskError = null;
     state.activeEmbeddedKey = null;
+    state.activeViewKey = null;
     await selectCatalogCollection(collection.id);
     updateLocation();
     announceWorkspace(`${collection.name} saved in this browser`);
@@ -1591,6 +1600,7 @@ if (root) {
     state.sharedDesk = null;
     state.sharedDeskError = null;
     state.activeEmbeddedKey = null;
+    state.activeViewKey = null;
     Object.assign(document.documentElement.dataset, personalAppearance);
     syncAppearanceControls();
     syncCardAppearance();
@@ -1892,6 +1902,8 @@ if (root) {
     }
 
     state.activeCatalogId = saved.id;
+    state.activeViewKey = savedCatalogKey(cardId, saved.id);
+    state.activeEmbeddedKey = null;
     state.catalogName = saved.name;
     state.craftEmpty = false;
     state.craftDirty = false;
@@ -1972,6 +1984,8 @@ if (root) {
     }
     state.savedCatalog = loadSavedCatalog(cardId);
     state.activeCatalogId = null;
+    state.activeViewKey = currentCardRailKey();
+    state.activeEmbeddedKey = null;
     state.catalogName = "";
     state.craftBaseline = compositionKey(cardId, currentCardState());
     state.craftDirty = false;
@@ -2154,6 +2168,9 @@ if (root) {
     advanceCardEntryIntent();
     applyCompositionFields(draft.cardState);
     state.activeCatalogId = draft.activeCatalogId;
+    state.activeViewKey = draft.activeCatalogId
+      ? savedCatalogKey(cardId, draft.activeCatalogId) : currentCardRailKey();
+    state.activeEmbeddedKey = null;
     state.catalogName = draft.catalogName;
     state.craftEmpty = false;
     state.craftDirty = true;
@@ -2182,6 +2199,8 @@ if (root) {
     });
     applyCompositionFields(next);
     state.activeCatalogId = null;
+    state.activeViewKey = currentCardRailKey();
+    state.activeEmbeddedKey = null;
     state.catalogName = "";
     state.craftEmpty = true;
     state.craftDirty = false;
@@ -2235,6 +2254,8 @@ if (root) {
 
     applyCompositionFields(next);
     state.activeCatalogId = null;
+    state.activeViewKey = currentCardRailKey();
+    state.activeEmbeddedKey = null;
     state.catalogName = "";
     state.craftEmpty = false;
     state.craftDirty = true;
@@ -2330,6 +2351,10 @@ if (root) {
     state.craftDirty = state.craftBaseline
       ? compositionKey(cardId, next) !== state.craftBaseline
       : true;
+    if (!state.activeCatalogId && state.craftDirty) {
+      state.activeViewKey = currentCardRailKey();
+      state.activeEmbeddedKey = null;
+    }
     state.zoomWindow = null;
     syncControls();
     render(true);
@@ -3924,13 +3949,34 @@ if (root) {
   }
 
   function activeCatalogKey() {
+    if (state.craftEmpty) return null;
+    // A view is navigation identity, not an exact match for its current range.
+    // Match once on entry, then keep the tab anchored while inspecting its chart.
+    if (state.mode !== "craft" && state.activeViewKey) {
+      if (state.activeViewKey === currentCardRailKey()) return null;
+      const active = catalogEntriesAll().find((entry) =>
+        entry.key === state.activeViewKey && entry.cardId === cardId);
+      if (active) return active.key;
+      state.activeViewKey = currentCardRailKey();
+      state.activeEmbeddedKey = null;
+      state.activeCatalogId = null;
+      state.catalogName = "";
+      return null;
+    }
+    const key = matchingCatalogKey();
+    if (state.mode !== "craft") state.activeViewKey = key || currentCardRailKey();
+    return key;
+  }
+
+  function matchingCatalogKey() {
     const currentComposition = compositionKey(cardId, currentCardState());
     const matchesEmbedded = (entry) =>
       ["embedded", "shared"].includes(entry.kind) && entry.cardId === cardId &&
       compositionKey(cardId, catalogEntryDisplayState(entry)) === currentComposition;
     const embeddedEntries = catalogEntries();
-    const matched = embeddedEntries.find((entry) => entry.key === state.activeEmbeddedKey && matchesEmbedded(entry)) ||
-      (!state.activeCatalogId && embeddedEntries.find(matchesEmbedded));
+    const matched = !state.activeCatalogId && (
+      embeddedEntries.find((entry) => entry.key === state.activeEmbeddedKey && matchesEmbedded(entry)) ||
+      embeddedEntries.find(matchesEmbedded));
     if (matched) return matched.key;
     if (
       state.mode === "craft" &&
@@ -4676,6 +4722,7 @@ if (root) {
       if (!activateCardDefinition(entryCard)) {
         const url = cardUrl(entryCard.id, "card", entryState);
         if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
+        else url.searchParams.set("entry", entry.key);
         if (moveFocus) storePendingRailFocus(entry.key);
         persistCatalogScrollPosition();
         window.location.assign(withSharedDeskLocation(url));
@@ -4767,6 +4814,7 @@ if (root) {
       if (!activateCardDefinition(entryCard)) {
         const url = cardUrl(entryCard.id, "monitor", entryState);
         if (entry.kind === "saved") url.searchParams.set("item", entry.item.id);
+        else url.searchParams.set("entry", entry.key);
         if (focusNavigation) storePendingRailFocus(entry.key);
         persistCatalogScrollPosition();
         window.location.assign(withSharedDeskLocation(url));
@@ -4807,12 +4855,14 @@ if (root) {
       applyCardState(entry.item.state, {
         catalogId: entry.item.id,
         catalogName: entry.item.name,
+        entryKey: entry.key,
       });
       return true;
     }
     if (entry.state) {
       applyCardState(entryState, {
         catalogName: ["embedded", "shared"].includes(entry.kind) ? entry.label : "",
+        entryKey: entry.presetId || ["embedded", "shared", "current"].includes(entry.kind) ? entry.key : null,
       });
       state.activeEmbeddedKey = ["embedded", "shared"].includes(entry.kind) ? entry.key : null;
       return true;
@@ -4856,10 +4906,11 @@ if (root) {
 
   function applyCardState(
     nextState,
-    { catalogId = null, catalogName = "" } = {},
+    { catalogId = null, catalogName = "", entryKey = null } = {},
   ) {
     const next = applyCompositionFields(nextState);
     state.activeEmbeddedKey = null;
+    state.activeViewKey = entryKey;
     state.activeCatalogId = catalogId;
     state.catalogName = catalogName;
     state.craftEmpty = false;
@@ -5816,7 +5867,9 @@ if (root) {
       url.searchParams.set("item", state.activeCatalogId);
     }
     const activeKey = activeCatalogKey();
-    if (activeKey && catalogEntries().some((entry) => entry.key === activeKey && ["shared", "embedded"].includes(entry.kind))) {
+    if (state.mode !== "craft" && !state.activeCatalogId) {
+      url.searchParams.set("entry", activeKey || currentCardRailKey());
+    } else if (activeKey && catalogEntries().some((entry) => entry.key === activeKey && ["shared", "embedded"].includes(entry.kind))) {
       url.searchParams.set("entry", activeKey);
     }
     window.history.replaceState({}, "", withSharedDeskLocation(url));
