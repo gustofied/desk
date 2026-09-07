@@ -1,6 +1,12 @@
 # Desk
 
-![Desk Overview catalog](assets/showcase/desk-catalog-header.png)
+<p>
+  <img src="assets/showcase/desk-hedge-catalog-overview.png" alt="Desk Hedge catalog" width="100%"><br>
+  <img src="assets/showcase/desk-compute-comparison.webp" alt="GPU rental price comparisons" width="100%"><br>
+  <img src="assets/showcase/desk-clouds-compute-comparison.png" alt="Cloud shares compared with GPU rental prices" width="100%"><br>
+  <img src="assets/showcase/desk-gallery-sidebar-light.png" alt="Desk gallery with the sidebar open" width="100%"><br>
+  <img src="assets/showcase/desk-h100-depth-history-monitor.png" alt="H100 market depth in Monitor" width="100%">
+</p>
 
 The workspace for compute desks.
 
