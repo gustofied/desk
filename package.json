@@ -11,6 +11,8 @@
     "node": ">=22"
   },
   "scripts": {
+    "test": "node --test tests/core.test.mjs",
+    "test:browser": "node --test tests/browser/smoke.test.mjs",
     "check:data": "node scripts/refresh-market-data.mjs --check && node scripts/build-runtime-data.mjs --check",
     "refresh:data": "node scripts/refresh-market-data.mjs",
     "generate:equities": "node scripts/generate-equities-demo.mjs",

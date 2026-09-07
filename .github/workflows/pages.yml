@@ -44,7 +44,7 @@ jobs:
         run: npm run check:data
 
       - name: Run unit tests
-        run: node --test tests/*.test.mjs
+        run: npm test
 
       - name: Assemble deployment
         run: npm run build:site
