@@ -105,7 +105,7 @@
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
     <link rel="stylesheet" href="./styles/desk-controls.css?v=97">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=66">
-    <link rel="stylesheet" href="./styles/monitor-data.css?v=18">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=19">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
     <link rel="stylesheet" href="./styles/deal-view.css?v=43">
     <link rel="stylesheet" href="./styles/command-palette.css?v=16">
@@ -386,21 +386,23 @@
                 type="button"
                 aria-expanded="false"
                 aria-controls="desk-data-body"
-                aria-describedby="desk-data-description"
                 data-monitor-data-toggle
               >
                 <strong data-monitor-data-label>Desk API</strong>
                 <span data-monitor-data-dataset>Compute prices</span>
                 <small data-monitor-data-context>H200 7D</small>
               </button>
-              <p class="desk-data-rail__description" id="desk-data-description" data-monitor-data-description></p>
               <div
                 class="desk-data-rail__body"
                 id="desk-data-body"
+                role="region"
+                aria-labelledby="desk-data-toggle"
+                aria-describedby="desk-data-description"
                 data-monitor-data-body
                 hidden
                 inert
               >
+                <p class="desk-data-rail__description" id="desk-data-description" data-monitor-data-description></p>
                 <div class="desk-data-rail__source" data-monitor-data-source hidden>
                   <p data-monitor-data-source-description></p>
                   <a data-monitor-data-source-link target="_blank" rel="noopener">Source docs</a>
@@ -451,23 +453,23 @@
                 type="button"
                 aria-expanded="false"
                 aria-controls="deal-journey-body"
-                aria-describedby="deal-journey-description"
                 data-deal-journey-toggle
               >
                 <strong>Activity</strong>
                 <span data-deal-journey-summary></span>
                 <small data-deal-journey-count></small>
               </button>
-              <p class="desk-data-rail__description" id="deal-journey-description" data-deal-journey-description></p>
               <div
                 class="desk-data-rail__body deal-journey-rail__body"
                 id="deal-journey-body"
                 role="region"
                 aria-labelledby="deal-journey-toggle"
+                aria-describedby="deal-journey-description"
                 data-deal-journey-body
                 hidden
                 inert
               >
+                <p class="desk-data-rail__description" id="deal-journey-description" data-deal-journey-description></p>
                 <ol
                   class="deal-journey-rail__activity-list"
                   aria-label="Deal activity"
@@ -697,6 +699,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=244"></script>
+    <script type="module" src="./desk.js?v=245"></script>
   </body>
 </html>

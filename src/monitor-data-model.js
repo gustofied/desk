@@ -60,7 +60,7 @@ function createSandboxDataModel(card, state = {}, model) {
     unit: "USD per job",
     priceBasis: "cpu-memory-job-estimate",
     description: history
-        ? "Daily batch medians; independent scales. Methodology varies across runs."
+        ? "Methodology varies across runs."
         : "Median and range across 12 runs.",
     sourceUrl,
   });

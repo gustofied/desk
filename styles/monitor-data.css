@@ -84,7 +84,7 @@
 
 .desk-data-rail__description {
   margin: 0;
-  padding: 0 16px 12px;
+  padding: 12px 16px;
   color: var(--index-ink-soft);
   font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
   text-wrap: pretty;

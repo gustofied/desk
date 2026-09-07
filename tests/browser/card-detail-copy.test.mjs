@@ -12,14 +12,23 @@ assert(["chromium", "webkit"].includes(engine));
 const baseUrl = process.env.DESK_BASE_URL || "http://127.0.0.1:4173";
 const screenshotDir = process.env.DESK_SCREENSHOT_DIR || "/private/tmp/desk-detail-copy-qa";
 const cards = "[data-card-gallery-grid] .desk-gallery-card";
+const descriptions = {
+  gpu: "GPU rental rates in USD per GPU-hour, with the median and middle 50% price band.",
+  snapshot: "The latest available rental rate for each selected GPU, in USD per GPU-hour.",
+  depth: "US H100 capacity for 30-day rentals, in eight-GPU InfiniBand nodes. The target marks the lowest rate covering the requested capacity.",
+  depthHistory: "Daily US H100 rental rates in USD per GPU-hour for the selected capacity target. Each InfiniBand node has eight GPUs on 30-day terms.",
+  sandboxLatest: "Estimated CPU and memory cost per benchmark job, calculated from measured runtime and provider rates.",
+  sandboxHistory: "Daily medians of CPU and memory cost estimates across benchmark batches. Each provider uses its own price scale.",
+  deal: "Reserved-capacity negotiations, including quote revisions, capacity, contract terms and service dates.",
+};
 const chartCases = [
-  ["gpu-index", "preset-gpu-index-h200", "GPU rental prices over time."],
-  ["gpu-price-snapshot", "preset-gpu-price-snapshot-prices", "Hourly rental prices by GPU."],
-  ["gpu-market-depth", "preset-gpu-market-depth-h100-us", "Available capacity at each hourly rate."],
-  ["power-basis", "preset-power-basis-pjm-dominion", "Day-ahead and real-time power prices."],
-  ["equities", "preset-equities-nvda", "Stock prices over time."],
-  ["sandbox-cost", "preset-sandbox-cost-cost", "Job costs across providers."],
-  ["deal-view", "preset-deal-view-deal-041", "Quote changes and deal activity."],
+  ["gpu-index", "preset-gpu-index-h200", descriptions.gpu],
+  ["gpu-price-snapshot", "preset-gpu-price-snapshot-prices", descriptions.snapshot],
+  ["gpu-market-depth", "preset-gpu-market-depth-h100-us", descriptions.depth],
+  ["power-basis", "preset-power-basis-pjm-dominion", "Hourly day-ahead and real-time wholesale electricity prices at PJM Dominion, in USD per MWh."],
+  ["equities", "preset-equities-nvda", "Daily share-price series for NVIDIA, in USD per share."],
+  ["sandbox-cost", "preset-sandbox-cost-cost", descriptions.sandboxLatest],
+  ["deal-view", "preset-deal-view-deal-041", descriptions.deal],
   ["quote-view", "preset-quote-view-b200", null],
 ];
 let browser;
@@ -77,7 +86,7 @@ async function openChart(page, cardId, key) {
 
 function railName(cardId) { return cardId === "deal-view" ? "deal-journey" : "monitor-data"; }
 
-async function assertIntro(page, cardId, text) {
+async function assertIntro(page, cardId, text, expanded = false) {
   if (text === null) {
     for (const name of ["monitor-data", "deal-journey"]) {
       assert.equal(await page.locator(`[data-${name}]`).isVisible(), false, "Quote retains its no-rail layout");
@@ -89,22 +98,50 @@ async function assertIntro(page, cardId, text) {
   const rail = page.locator(`[data-${name}]`);
   const intro = page.locator(`[data-${name}-description]`);
   const toggle = page.locator(`[data-${name}-toggle]`);
-  await intro.waitFor({ state: "visible" });
+  const body = page.locator(`[data-${name}-body]`);
+  await intro.waitFor({ state: expanded ? "visible" : "hidden" });
   assert.equal(await intro.textContent(), text);
   const placement = await intro.evaluate(node => ({ id: node.id, tag: node.tagName,
-    parentInert: Boolean(node.closest("[inert]")), previous: node.previousElementSibling?.tagName,
-    next: node.nextElementSibling?.id, classes: [...node.classList] }));
+    parentInert: Boolean(node.closest("[inert]")), parentId: node.parentElement.id,
+    firstChild: node.parentElement.firstElementChild === node, classes: [...node.classList] }));
   assert.equal(placement.tag, "P");
-  assert.equal(placement.previous, "BUTTON");
+  assert.equal(placement.firstChild, true, "Description leads the expanded body");
   assert(placement.classes.includes("desk-data-rail__description"));
-  assert.equal(placement.next, await toggle.getAttribute("aria-controls"));
-  assert((await toggle.getAttribute("aria-describedby") || "").split(/\s+/).includes(placement.id));
-  assert.equal(placement.parentInert, false);
-  const alignment = await intro.evaluate(node => ({
-    introLeft: node.getBoundingClientRect().left + parseFloat(getComputedStyle(node).paddingLeft),
-    headingLeft: node.previousElementSibling.querySelector("strong").getBoundingClientRect().left,
-  }));
-  assert(Math.abs(alignment.introLeft - alignment.headingLeft) <= 1, `Intro aligns with its detail heading: ${JSON.stringify(alignment)}`);
+  assert.equal(placement.parentId, await toggle.getAttribute("aria-controls"));
+  assert.equal(await body.getAttribute("role"), "region");
+  assert.equal(await body.getAttribute("aria-labelledby"), await toggle.getAttribute("id"));
+  assert((await body.getAttribute("aria-describedby") || "").split(/\s+/).includes(placement.id));
+  assert.equal(await toggle.getAttribute("aria-describedby"), null, "Collapsed toggle must not announce hidden description text");
+  assert.equal(await toggle.getAttribute("aria-expanded"), String(expanded));
+  assert.equal(placement.parentInert, !expanded);
+  if (expanded) {
+    const alignment = await intro.evaluate(node => ({
+      introLeft: node.getBoundingClientRect().left + parseFloat(getComputedStyle(node).paddingLeft),
+      headingLeft: node.parentElement.previousElementSibling.querySelector("strong").getBoundingClientRect().left,
+    }));
+    assert(Math.abs(alignment.introLeft - alignment.headingLeft) <= 1, `Intro aligns with its detail heading: ${JSON.stringify(alignment)}`);
+    const wrapping = await intro.evaluate(node => {
+      const rect = node.getBoundingClientRect();
+      const style = getComputedStyle(node);
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return { scrollWidth: node.scrollWidth, clientWidth: node.clientWidth,
+        scrollHeight: node.scrollHeight, clientHeight: node.clientHeight,
+        left: rect.left + parseFloat(style.paddingLeft), right: rect.right - parseFloat(style.paddingRight),
+        top: rect.top, bottom: rect.bottom, width: innerWidth,
+        lines: [...range.getClientRects()].map(({ left, right, top, bottom }) => ({ left, right, top, bottom })) };
+    });
+    assert(wrapping.scrollWidth <= wrapping.clientWidth + 1 && wrapping.scrollHeight <= wrapping.clientHeight + 1,
+      "Expanded description must not clip or overflow");
+    assert(wrapping.lines.every(line => line.left >= wrapping.left - 1 && line.right <= wrapping.right + 1 &&
+      line.top >= wrapping.top - 1 && line.bottom <= wrapping.bottom + 1), "Every line stays within the description box");
+    if (wrapping.width === 390 && text.length > 75) assert(wrapping.lines.length >= 2, "Long descriptions wrap on mobile");
+  } else {
+    const toggleHeight = (await toggle.boundingBox()).height;
+    const railHeight = (await rail.boundingBox()).height;
+    assert.equal(toggleHeight, 48, "Collapsed header retains its 48px height");
+    assert.equal(railHeight, toggleHeight + 2, "Collapsed rail reserves only the header and border");
+  }
   const other = name === "monitor-data" ? "deal-journey" : "monitor-data";
   assert.equal(await page.locator(`[data-${other}]`).isVisible(), false);
   assert(await rail.isVisible());
@@ -138,7 +175,7 @@ async function capture(page, name) {
 }
 
 for (const width of [1440, 390]) {
-  test(`Chart descriptions stay visible outside collapsed details and navigate cleanly (${engine}, ${width})`, { timeout: 90000 }, async t => {
+  test(`Chart descriptions appear only inside expanded details and navigate cleanly (${engine}, ${width})`, { timeout: 90000 }, async t => {
     const page = await makePage(t, { width });
     await allViews(page);
     for (const [cardId, key, text] of chartCases) {
@@ -148,13 +185,16 @@ for (const width of [1440, 390]) {
       await expand(page, cardId, false);
       await assertIntro(page, cardId, text);
       await clearance(page, cardId);
-      if (["gpu-index", "sandbox-cost", "deal-view"].includes(cardId)) await capture(page, `${cardId}-collapsed`);
+      if (["gpu-index", "gpu-market-depth", "sandbox-cost", "deal-view"].includes(cardId)) await capture(page, `${cardId}-collapsed`);
       if (cardId === "gpu-index") await page.locator("[data-monitor-data]").screenshot({
         path: join(screenshotDir, `${engine}-${width}-gpu-detail-rail.png`),
       });
       await expand(page, cardId, true);
-      await assertIntro(page, cardId, text);
+      await assertIntro(page, cardId, text, true);
       await clearance(page, cardId);
+      if (["gpu-index", "gpu-market-depth"].includes(cardId)) await page.locator("[data-monitor-data]").screenshot({
+        path: join(screenshotDir, `${engine}-${width}-${cardId}-detail-rail-expanded.png`),
+      });
       if (cardId === "gpu-index") {
         assert(await page.locator("[data-monitor-data-command-shell]").isVisible());
         assert.match(await page.locator("[data-monitor-data-command]").textContent(), /desk/);
@@ -164,12 +204,12 @@ for (const width of [1440, 390]) {
         assert(await method.isVisible());
         assert.equal(await method.textContent(), "Median and range across 12 runs.");
       }
-      if (["gpu-index", "sandbox-cost", "deal-view"].includes(cardId)) await capture(page, `${cardId}-expanded`);
+      if (["gpu-index", "gpu-market-depth", "equities", "sandbox-cost", "deal-view"].includes(cardId)) await capture(page, `${cardId}-expanded`);
       await expand(page, cardId, false);
       await assertIntro(page, cardId, text);
     }
     await openChart(page, "deal-view", "preset-deal-view-deal-041");
-    await assertIntro(page, "deal-view", "Quote changes and deal activity.");
+    await assertIntro(page, "deal-view", descriptions.deal);
     if (width > 640) {
       await page.goto(new URL("/?card=gpu-index&view=card", baseUrl).href, { waitUntil: "networkidle" });
       await page.waitForFunction(() => document.documentElement.dataset.deskView === "catalog" &&
@@ -180,33 +220,54 @@ for (const width of [1440, 390]) {
     }
   });
 
-  test(`Range and chart-mode changes refresh descriptions without stale copy (${engine}, ${width})`, { timeout: 60000 }, async t => {
+  test(`Range and chart-mode changes refresh hidden and expanded descriptions (${engine}, ${width})`, { timeout: 60000 }, async t => {
     const page = await makePage(t, { width });
     await allViews(page);
     await openChart(page, "sandbox-cost", "preset-sandbox-cost-cost");
-    for (const [range, text] of [["7d", "Job costs over time, by provider."], ["now", "Job costs across providers."], ["all", "Job costs over time, by provider."]]) {
+    for (const [range, text] of [["7d", descriptions.sandboxHistory], ["now", descriptions.sandboxLatest], ["all", descriptions.sandboxHistory]]) {
       await page.locator(`[data-gpu-range="${range}"]`).click();
       await page.waitForFunction(range => new URL(location.href).searchParams.get("range") === range, range);
       await assertIntro(page, "sandbox-cost", text);
     }
     await expand(page, "sandbox-cost", true);
-    assert.equal(await page.locator("[data-monitor-data-source-description]").textContent(), "Daily batch medians; independent scales. Methodology varies across runs.");
+    await assertIntro(page, "sandbox-cost", descriptions.sandboxHistory, true);
+    assert.equal(await page.locator("[data-monitor-data-source-description]").textContent(), "Methodology varies across runs.");
+    await clearance(page, "sandbox-cost");
+    await capture(page, "sandbox-history-expanded");
+    await page.locator('[data-gpu-range="now"]').click();
+    await page.waitForFunction(() => new URL(location.href).searchParams.get("range") === "now");
+    await assertIntro(page, "sandbox-cost", descriptions.sandboxLatest, true);
+    assert.equal(await page.locator("[data-monitor-data-source-description]").textContent(), "Median and range across 12 runs.");
+    await clearance(page, "sandbox-cost");
+    await capture(page, "sandbox-latest-expanded");
     await openChart(page, "gpu-market-depth", "preset-gpu-market-depth-h100-us");
-    for (const [scale, text] of [["history", "Rates for your capacity target over time."], ["depth", "Available capacity at each hourly rate."]]) {
+    for (const [scale, text] of [["history", descriptions.depthHistory], ["depth", descriptions.depth]]) {
       await page.locator(`[data-depth-scale="${scale}"]`).click();
       await page.waitForFunction(scale => new URL(location.href).searchParams.get("scale") === scale, scale);
       await assertIntro(page, "gpu-market-depth", text);
+      await expand(page, "gpu-market-depth", true);
+      await assertIntro(page, "gpu-market-depth", text, true);
+      await expand(page, "gpu-market-depth", false);
     }
     for (const [cardId, key, text] of [
-      ["gpu-index", "preset-gpu-index-compute-market", "GPU and token prices, compared from the same day."],
-      ["gpu-index", "preset-gpu-index-h100-b200-spread", "The gap between two GPU price changes."],
-      ["power-basis", "preset-power-basis-pjm-west-spread", "Real-time minus day-ahead power prices."],
-      ["power-basis", "preset-power-basis-gpu-energy", "Power cost per H100 hour."],
-      ["equities", "preset-equities-chips", "Stock price changes from the same starting day."],
-      ["equities", "preset-equities-nvidia-compute", "Stocks and GPU rental prices, compared from the same day."],
+      ["gpu-index", "preset-gpu-index-compute-market", "GPU rental rates and the token-price benchmark, compared from a shared starting date."],
+      ["gpu-index", "preset-gpu-index-h100-b200-spread", "The difference between two GPUs’ rental-rate changes, in percentage points."],
+      ["power-basis", "preset-power-basis-pjm-dominion", "Hourly day-ahead and real-time wholesale electricity prices at PJM Dominion, in USD per MWh."],
+      ["power-basis", "preset-power-basis-ercot-north", "Hourly day-ahead and real-time wholesale electricity prices at ERCOT North, in USD per MWh."],
+      ["power-basis", "preset-power-basis-pjm-west-spread", "Real-time minus day-ahead wholesale electricity prices at PJM West, in USD per MWh."],
+      ["power-basis", "preset-power-basis-gpu-energy", "Estimated electricity cost per H100-hour, assuming a 10.2 kW eight-GPU system and 20% facility overhead."],
+      ["equities", "preset-equities-msft", "Daily share-price series for Microsoft, in USD per share."],
+      ["equities", "preset-equities-tsm", "Daily share-price series for Taiwan Semiconductor Manufacturing Company, in USD per share."],
+      ["equities", "preset-equities-nvda", "Daily share-price series for NVIDIA, in USD per share."],
+      ["equities", "preset-equities-chips", "Percentage changes in the selected share prices from a shared starting date."],
+      ["equities", "preset-equities-nvidia-compute", "Share prices and GPU rental rates compared as percentage changes over shared dates."],
     ]) {
       await openChart(page, cardId, key);
       await assertIntro(page, cardId, text);
+      await expand(page, cardId, true);
+      await assertIntro(page, cardId, text, true);
+      await clearance(page, cardId);
+      await expand(page, cardId, false);
     }
   });
 }
@@ -270,6 +331,6 @@ for (const settings of [
     if (settings.width === 390) await card.tap();
     else await card.click();
     await page.waitForFunction(() => document.documentElement.dataset.deskView === "monitor");
-    await assertIntro(page, "gpu-price-snapshot", "Hourly rental prices by GPU.");
+    await assertIntro(page, "gpu-price-snapshot", descriptions.snapshot);
   });
 }
