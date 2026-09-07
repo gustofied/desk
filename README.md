@@ -5,10 +5,10 @@
 </p>
 
 <p>
-  <img src="assets/showcase/desk-compute-comparison-frame-c264c3aba553.svg" alt="GPU rental price comparisons" width="49%" align="top">
-  <img src="assets/showcase/desk-clouds-compute-comparison-frame-c5f32e27a1cb.svg" alt="Cloud shares compared with GPU rental prices" width="49%" align="top"><br>
-  <img src="assets/showcase/desk-gallery-sidebar-light-frame-56937a79a57b.svg" alt="Desk gallery with the sidebar open" width="49%" align="top">
-  <img src="assets/showcase/desk-h100-depth-history-monitor-frame-1042058aeb4b.svg" alt="H100 market depth in Monitor" width="49%" align="top">
+  <img src="assets/showcase/desk-compute-comparison-frame-d712877f03f3.svg" alt="GPU rental price comparisons" width="49%" align="top">
+  <img src="assets/showcase/desk-clouds-compute-comparison-frame-fa5d13f10099.svg" alt="Cloud shares compared with GPU rental prices" width="49%" align="top"><br>
+  <img src="assets/showcase/desk-gallery-sidebar-light-frame-6e580e831d45.svg" alt="Desk gallery" width="49%" align="top">
+  <img src="assets/showcase/desk-h100-depth-history-monitor-frame-b00a743a624e.svg" alt="H100 market depth in Monitor" width="49%" align="top">
 </p>
 
 The workspace for compute desks.
