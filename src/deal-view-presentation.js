@@ -3,6 +3,7 @@ import {
   curveStepAfter,
   easeCubicOut,
   extent,
+  interpolateRgb,
   line,
   max,
   min,
@@ -20,6 +21,7 @@ import {
   VIEW_SUPPORT_DURATION,
 } from "./view-motion.js";
 import { animateChartDraw, animateChartSupport, cancelChartMotion } from "./chart-motion.js";
+import { viewArtifactHeaderMarkup } from "./view-artifact-header.js";
 
 const VALID_VARIANTS = Object.freeze(["static", "focus", "full"]);
 const QUOTE_CHART_WIDTH = 1200;
@@ -96,6 +98,43 @@ export function mountDealView(
 }
 
 export const renderDealView = mountDealView;
+
+// Build-only exports use the same step paths as the mounted negotiation charts.
+// No DOM, sequence IDs, event handlers, or additional deal metadata are needed.
+export function renderDealViewSvg(model, { palette } = {}) {
+  assertModel(model);
+  const history = Array.isArray(model.quoteHistory) ? model.quoteHistory : [];
+  if (history.length < 2) throw new TypeError("A negotiation export requires at least two revisions");
+  const raw = normalizePalette(palette);
+  const colors = Object.fromEntries(Object.entries(raw).map(([key, value]) => [key, escapeHtml(value)]));
+  const buyer = interpolateRgb(raw.paper, raw.line)(0.44);
+  const seller = interpolateRgb(raw.paper, raw.line)(0.68);
+  const desk = interpolateRgb(raw.paper, raw.line)(0.94);
+  const quote = model.viewKind === "quote";
+  const geometry = quote ? quoteNegotiationGeometry(history) : negotiationGeometry(history);
+  if (!geometry) throw new TypeError("Negotiation export requires finite price history");
+  const lines = quote
+    ? `<g transform="translate(0 190)" data-deal-export-geometry="quote">
+        <path data-deal-export-bid="" d="${geometry.bid}" fill="none" stroke="${buyer}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path data-deal-export-ask="" d="${geometry.ask}" fill="none" stroke="${seller}" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/>
+        ${geometry.connectors.map(connector => {
+          const tone = connector.role === "buyer" ? buyer : connector.role === "seller" ? seller : desk;
+          return `<line x1="${connector.x}" y1="${QUOTE_CHART_HEIGHT}" x2="${connector.x}" y2="${connector.y}" stroke="${tone}" stroke-width="3.5" opacity="${connector.role === "desk" ? 0.44 : 0.34}"/>
+            <circle cx="${connector.x}" cy="${connector.y}" r="${connector.role === "desk" ? 8 : 6}" fill="${connector.role === "desk" ? desk : colors.paper}" stroke="${connector.role === "desk" ? colors.paper : tone}" stroke-width="${connector.role === "desk" ? 2.5 : 2}"/>`;
+        }).join("")}
+      </g>`
+    : `<g data-deal-export-geometry="deal">
+        <path data-deal-export-area="" d="${geometry.spread}" fill="${colors.area}" opacity="0.32"/>
+        <path data-deal-export-bid="" d="${geometry.bid}" fill="none" stroke="${buyer}" stroke-width="3" stroke-dasharray="8 8" opacity="0.76" stroke-linecap="square" stroke-linejoin="bevel"/>
+        <path data-deal-export-ask="" d="${geometry.ask}" fill="none" stroke="${colors.line}" stroke-width="4" stroke-linecap="square" stroke-linejoin="bevel"/>
+      </g>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-label="${escapeHtml(model.ariaLabel)}">
+    <title>${escapeHtml(model.label)}</title><desc>${escapeHtml(model.ariaLabel)}</desc>
+    <rect width="1200" height="630" fill="${colors.paper}"/>
+    ${lines}
+    ${viewArtifactHeaderMarkup({ title: model.label, context: model.statusLabel, headline: model.quote.formatted, colors })}
+  </svg>`;
+}
 
 function dealViewMarkup(model, { variant, interactive }) {
   return variant === "full"

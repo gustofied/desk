@@ -26,6 +26,9 @@ import {
   THEMES,
 } from "../src/card-registry.js";
 import { shareRangeLabel } from "../src/share-range-label.js";
+import { CATALOG_SHARE_CARD_IDS, catalogShareStates } from "../src/catalog-share-previews.js";
+import { renderCatalogShareArtifact } from "./catalog-share-artifacts.mjs";
+import { renderCatalogSharePage } from "./catalog-share-page.mjs";
 import {
   chartYDomain,
   comparisonStrokeOpacity,
@@ -53,6 +56,7 @@ const cardDefinition = getCardDefinition("gpu-index");
 const barCardDefinition = getCardDefinition("gpu-price-snapshot");
 const depthCardDefinition = getCardDefinition("gpu-market-depth");
 const powerCardDefinition = getCardDefinition("power-basis");
+const catalogCards = CATALOG_SHARE_CARD_IDS.map(getCardDefinition);
 const gpuLayers = cardDefinition.layers.filter(
   (layer) => layer.unit === "usd-hour",
 );
@@ -76,6 +80,7 @@ const generatedRoots = [
   depthPageRoot,
   powerImageRoot,
   powerPageRoot,
+  ...catalogCards.flatMap(card => [join(root, card.previewImageDir), join(root, card.previewPageDir)]),
 ];
 const manifestPath = join(root, ".cache", "generated-card-files.json");
 const runtimeData = JSON.parse(
@@ -87,6 +92,13 @@ const depthRuntimeData = JSON.parse(
 const powerRuntimeData = JSON.parse(
   await readFile(join(root, powerCardDefinition.dataFile), "utf8"),
 );
+const catalogPayloads = new Map([[cardDefinition.id, runtimeData]]);
+for (const card of catalogCards) {
+  const sourceId = card.sourceCardId || card.id;
+  if (!catalogPayloads.has(sourceId)) {
+    catalogPayloads.set(sourceId, JSON.parse(await readFile(join(root, card.dataFile), "utf8")));
+  }
+}
 const depthTargets = Object.freeze(["64", "128", "256"]);
 const depthViews = Object.freeze(
   depthCardDefinition.visualizations.map((visualization) => visualization.id),
@@ -126,6 +138,7 @@ const publishedLineCount = await generatePublishedPreviews();
 const publishedBarCount = await generatePublishedBarPreviews();
 const publishedDepthCount = await generatePublishedDepthPreviews();
 const publishedPowerCount = await generatePublishedPowerPreviews();
+const catalogPreviewCount = await generateCatalogPreviews();
 await generateDefaultPreview();
 
 generatedFiles.sort();
@@ -141,6 +154,7 @@ await writeFile(
         prices: runtimeData.revision,
         marketDepth: depthRuntimeData.revision,
         powerBasis: powerRuntimeData.revision,
+        ...Object.fromEntries([...catalogPayloads].map(([id, payload]) => [id, payload.revision])),
       },
       files: generatedFiles,
     },
@@ -151,11 +165,30 @@ await writeFile(
 );
 
 console.log(
-  `Built ${publishedLineCount + publishedBarCount + publishedDepthCount + publishedPowerCount} exact view previews ` +
+  `Built ${publishedLineCount + publishedBarCount + publishedDepthCount + publishedPowerCount + catalogPreviewCount} exact view previews ` +
     `(${publishedLineCount} line, ${publishedBarCount} bar, ` +
-    `${publishedDepthCount} depth, ${publishedPowerCount} power) with ` +
+    `${publishedDepthCount} depth, ${publishedPowerCount} power, ${catalogPreviewCount} catalog) with ` +
     `${workerCount} workers.`,
 );
+
+async function generateCatalogPreviews() {
+  const entries = catalogCards.flatMap(card => catalogShareStates(card.id).map(state => ({ card, state })));
+  await runWithConcurrency(entries, workerCount, async ({ card, state }) => {
+    const artifact = renderCatalogShareArtifact(card.id, state, catalogPayloads);
+    const pageHref = publishedCardSharePath(card.id, state);
+    const imageHref = publishedCardPreviewPath(card.id, state, artifact.revision);
+    const imagePath = join(root, imageHref);
+    const pagePath = join(root, pageHref, "index.html");
+    const preview = await encodePreview(artifact.svg);
+    await Promise.all([mkdir(dirname(imagePath), { recursive: true }), mkdir(dirname(pagePath), { recursive: true })]);
+    await Promise.all([
+      writeFile(imagePath, preview),
+      writeFile(pagePath, renderCatalogSharePage(artifact, pageHref, imageHref, imageRevision(preview)), "utf8"),
+    ]);
+    track(imagePath, pagePath);
+  });
+  return entries.length;
+}
 
 async function installWebFonts() {
   const packageFontRoot = join(root, "node_modules", "geist", "dist", "fonts");
@@ -391,6 +424,7 @@ async function generatePublishedPowerPreviews() {
         title: model.energy ? "H100 power cost" : model.location.label,
         mode: model.scale,
         artifact: true,
+        artifactHeight: 630,
       }),
     );
     const previewRevision = imageRevision(previewImage);

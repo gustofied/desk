@@ -523,6 +523,8 @@ export const CARD_REGISTRY = Object.freeze([
       label: "Quote",
     }),
     sharePath: `/cards/${QUOTE_VIEW_SLUG}`,
+    previewImageDir: `assets/social/${QUOTE_VIEW_ID}`,
+    previewPageDir: `cards/${QUOTE_VIEW_SLUG}`,
     defaults: Object.freeze({
       layer: "B200",
       layers: Object.freeze(["B200"]),
@@ -572,6 +574,8 @@ export const CARD_REGISTRY = Object.freeze([
       label: "Deal",
     }),
     sharePath: `/cards/${DEAL_VIEW_SLUG}`,
+    previewImageDir: `assets/social/${DEAL_VIEW_ID}`,
+    previewPageDir: `cards/${DEAL_VIEW_SLUG}`,
     defaults: Object.freeze({
       layer: "B200",
       layers: Object.freeze(["B200"]),

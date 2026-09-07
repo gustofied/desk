@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderPowerBasisSvg } from "../src/power-basis-presentation.js";
+import { paintPowerBasisChart, renderPowerBasisSvg } from "../src/power-basis-presentation.js";
 import { createPowerBasisModel } from "../src/power-basis-model.js";
 import { getCardDefinition } from "../src/card-registry.js";
 
@@ -35,6 +35,56 @@ test("Power artifacts keep only the range and units in the compact header", () =
   assert.equal((markup.match(/data-power-basis-line=/g) || []).length, 2);
   assert.match(markup, /data-power-basis-area/);
   assert.doesNotMatch(markup, /data-power-basis-column/);
+});
+
+test("Power social exports use a real 1200 by 630 viewport and recompute plot geometry", () => {
+  for (const compact of [false, true]) {
+    for (const mode of ["price", "basis", "energy"]) {
+      const model = fixture({ energy: mode === "energy" });
+      const before = JSON.stringify(model);
+      const options = { compact, artifact: true, mode };
+      const original = render(model, options);
+      const social = render(model, { ...options, artifactHeight: 630 });
+      assert.match(social, /^<svg[^>]*width="1200" height="630" viewBox="0 0 1200 630"/);
+      assert.match(social, /<rect width="1200" height="630"/);
+      assert.notDeepEqual(paths(social), paths(original), "The extra height must reach the plot, not just its canvas");
+      const originalHeader = original.match(/<g data-view-artifact-header=""[\s\S]*?<\/g>/)?.[0];
+      const socialHeader = social.match(/<g data-view-artifact-header=""[\s\S]*?<\/g>/)?.[0];
+      assert(originalHeader);
+      assert.equal(socialHeader, originalHeader, "Export height must not scale or reposition the header");
+      assert.equal((social.match(/data-power-basis-line=/g) || []).length, mode === "basis" ? 1 : 2);
+      assert.doesNotMatch(social, /NaN|Infinity|data-power-basis-column/);
+      assert.equal(JSON.stringify(model), before);
+    }
+  }
+  assert.deepEqual(paths(render(fixture({ energy: true }), { artifact: true, artifactHeight: 630 })),
+    paths(render(fixture(), { artifact: true, artifactHeight: 630 })), "Energy retains the same scaled RT/DA geometry");
+});
+
+test("default export and mounted Power dimensions remain 600 or compact 675", () => {
+  for (const compact of [false, true]) {
+    const height = compact ? 675 : 600;
+    const original = render(fixture(), { compact });
+    assert.match(original, new RegExp(`height="${height}" viewBox="0 0 1200 ${height}"`));
+    assert.equal(render(fixture(), { compact, artifactHeight: height }), original);
+    assert.equal(render(fixture(), { compact, artifactHeight: undefined }), original);
+    const svg = {
+      attributes: new Map(), innerHTML: "",
+      setAttribute(name, value) { this.attributes.set(name, value); },
+      removeAttribute(name) { this.attributes.delete(name); },
+    };
+    paintPowerBasisChart(svg, fixture(), { colors, compact, interactive: false,
+      decorative: true, reducedMotion: true, artifactHeight: 630 });
+    assert.equal(svg.attributes.get("viewBox"), `0 0 1200 ${height}`,
+      "Mounted charts ignore the export-only height option");
+    assert.deepEqual(paths(svg.innerHTML), paths(original));
+  }
+});
+
+test("invalid export heights cannot create malformed or inverted Power plots", () => {
+  for (const artifactHeight of [null, 0, -1, 630.5, "630", NaN, Infinity, 1]) {
+    assert.throws(() => render(fixture(), { artifact: true, artifactHeight }), TypeError, String(artifactHeight));
+  }
 });
 
 test("H100 cost artifacts show four-decimal GPU-hour prices, with estimate semantics in accessibility", () => {

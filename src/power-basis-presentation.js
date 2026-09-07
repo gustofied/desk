@@ -12,8 +12,13 @@ const MAX_INTERACTION_COLUMNS = 180;
 const READOUT_DOT_RADIUS = 5;
 const READOUT_DOT_STROKE_WIDTH = 2.5;
 
-export function renderPowerBasisSvg(model, options = {}) {
-  const { inner, ariaLabel, height } = powerBasisMarkup(model, options);
+export function renderPowerBasisSvg(model, { artifactHeight, ...options } = {}) {
+  if (artifactHeight !== undefined && (!Number.isInteger(artifactHeight) || artifactHeight <= 0)) {
+    throw new TypeError("A positive integer Power artifact height is required");
+  }
+  // Only string exports may override the authored UI dimensions. Recompute
+  // the plot in that viewport instead of resizing a completed SVG.
+  const { inner, ariaLabel, height } = powerBasisMarkup(model, options, artifactHeight);
   const accessibility = options.decorative
     ? `aria-hidden="true"`
     : `role="img" aria-label="${escapeXml(ariaLabel)}"`;
@@ -88,11 +93,12 @@ function powerBasisMarkup(
     minimal = false,
     _renderScale = 1,
   } = {},
+  artifactHeight,
 ) {
   const normalized = normalizeModel(model);
   const palette = normalizeColors(colors);
   const chartMode = mode === "basis" ? "basis" : "price";
-  const height = compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
+  const height = artifactHeight ?? (compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT);
   const showArtifactHeader = Boolean(artifact);
   const showReadout = !showArtifactHeader && !minimal;
   const headerLayout = viewArtifactHeaderLayout(title, { compact });
@@ -102,6 +108,7 @@ function powerBasisMarkup(
       ? 48
       : 8;
   const plotBottom = showArtifactHeader ? height : height - 8;
+  if (plotBottom <= plotTop) throw new TypeError("Power artifact height must leave room for its plot");
   const plot = {
     left: 0,
     right: SVG_WIDTH,

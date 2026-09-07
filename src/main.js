@@ -1,6 +1,7 @@
 import * as d3 from "d3";
 import { animate } from "motion";
 import { cardUrl } from "./card-presentation.js";
+import { CATALOG_SHARE_CARD_IDS, supportsCatalogShareState } from "./catalog-share-previews.js";
 import { readSharedDeskUrl } from "./shared-desk.js";
 import { createDeskSharing } from "./desk-sharing-ui.js";
 import {
@@ -6025,6 +6026,20 @@ if (root) {
   }
 
   function shareUrl() {
+    if (CATALOG_SHARE_CARD_IDS.includes(cardId)) {
+      const cardState = normalizeCardState(cardId, currentCardState());
+      if (!supportsCatalogShareState(cardId, cardState)) {
+        return cardUrl(cardId, "monitor", cardState).toString();
+      }
+      const url = new URL(publishedCardSharePath(cardId, cardState), window.location.origin);
+      const sourceIds = [cardDefinition.sourceCardId || cardId];
+      if (cardId === "equities" && hasCrossMarketLayers(cardDefinition, cardState.layers)) {
+        sourceIds.push("gpu-index");
+      }
+      const revisions = sourceIds.map(id => state.runtimePayloads.get(id)?.revision).filter(Boolean);
+      if (revisions.length) url.searchParams.set("v", `${PUBLISHED_CARD_VERSION}-${revisions.join("-")}`);
+      return url.toString();
+    }
     if (isDealCard || cardDefinition.publishable === false) {
       return cardUrl(cardId, "monitor", currentCardState()).toString();
     }
