@@ -19,6 +19,7 @@ import {
   normalizeCardState,
   PALETTES,
   PUBLISHED_CARD_VERSION,
+  SHARE_COPY_VERSION,
   publishedCardPreviewPath,
   publishedCardSharePath,
   RANGES,
@@ -888,7 +889,7 @@ function renderPublishedSharePage(
   imageHref,
   previewRevision,
 ) {
-  const pageUrl = `${SITE_ORIGIN}${pageHref}?v=${PUBLISHED_CARD_VERSION}-${runtimeData.revision}`;
+  const pageUrl = `${SITE_ORIGIN}${pageHref}?v=${PUBLISHED_CARD_VERSION}-${SHARE_COPY_VERSION}-${runtimeData.revision}`;
   const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
   const rangeDescription = RANGES[model.range]?.longLabel || model.range;
   const cardTitle = model.comparisonTitle
@@ -963,7 +964,7 @@ function renderPublishedBarSharePage(
   imageHref,
   previewRevision,
 ) {
-  const pageUrl = `${SITE_ORIGIN}${pageHref}?v=${PUBLISHED_CARD_VERSION}-${runtimeData.revision}`;
+  const pageUrl = `${SITE_ORIGIN}${pageHref}?v=${PUBLISHED_CARD_VERSION}-${SHARE_COPY_VERSION}-${runtimeData.revision}`;
   const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
   const primary = model.bars.find((bar) => bar.id === model.gpu);
   const labels = model.bars.map((bar) => bar.label).join(", ");
@@ -1039,7 +1040,7 @@ function renderPublishedDepthSharePage(
 ) {
   const pageUrl =
     `${SITE_ORIGIN}${pageHref}?v=` +
-    `${PUBLISHED_CARD_VERSION}-${depthRuntimeData.revision}`;
+    `${PUBLISHED_CARD_VERSION}-${SHARE_COPY_VERSION}-${depthRuntimeData.revision}`;
   const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
   const region = model.instrument.regionLabel || model.instrument.region;
   const target = `${model.targetNodes} nodes`;
@@ -1145,7 +1146,7 @@ function renderPublishedPowerSharePage(
 ) {
   const pageUrl =
     `${SITE_ORIGIN}${pageHref}?v=` +
-    `${PUBLISHED_CARD_VERSION}-${powerRuntimeData.revision}`;
+    `${PUBLISHED_CARD_VERSION}-${SHARE_COPY_VERSION}-${powerRuntimeData.revision}`;
   const imageUrl = `${SITE_ORIGIN}${imageHref}?v=${previewRevision}`;
   const rangeLabel = RANGES[model.range]?.label || model.range.toUpperCase();
   const rangeDescription = RANGES[model.range]?.longLabel || model.range;
@@ -1153,8 +1154,8 @@ function renderPublishedPowerSharePage(
   const title = [model.energy ? "H100 power cost" : "", model.location.label,
     isBasis ? "spread" : model.energy ? "" : "power", rangeLabel].filter(Boolean).join(" ");
   const description = model.energy
-    ? `Estimated energy ${formatPowerPrice(model.latest.realTime, model)}. H100: 10.2 kW node max, 8 GPUs, assumed PUE 1.2. Generated power data; not a delivered bill.`
-    : "Demo data. " + (isBasis
+    ? `H100 power cost ${formatPowerPrice(model.latest.realTime, model)} per GPU-hour. Based on a 10.2 kW, eight-GPU system with 20% facility overhead.`
+    : (isBasis
     ? `${formatPowerBasis(model.latest.basis)} spread over ${rangeDescription}. ` +
       `Real time ${formatPowerPrice(model.latest.realTime)}.`
     : `Real time ${formatPowerPrice(model.latest.realTime)} against ` +

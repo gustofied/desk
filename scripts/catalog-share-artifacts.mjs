@@ -35,7 +35,7 @@ export function renderCatalogShareArtifact(cardId, stateParams = {}, payloads = 
   let svg;
   let title;
   let imageAlt;
-  let description = cardDetailDescription(card, normalized);
+  const description = cardDetailDescription(card, normalized);
 
   if (cardId === "equities") {
     const runtime = requirePayload(cardId);
@@ -68,10 +68,6 @@ export function renderCatalogShareArtifact(cardId, stateParams = {}, payloads = 
     const start = Math.min(...series.map(candidate => +candidate.rows[0].date));
     const end = Math.max(...series.map(candidate => +candidate.rows.at(-1).date));
     imageAlt = `${title}. ${normalized.range.toUpperCase()}. ${normalized.symbol} ${headline}${normalized.scale === "price" ? " per share" : " from the shared starting date"}. ${day(start)} to ${day(end)}. ${description}`;
-    if (runtime.dataset.kind === "demo") {
-      description += " Synthetic equity history, not observed market prices.";
-      imageAlt += " Synthetic equity history.";
-    }
     svg = equitySvg(series, normalized, colors, { title, headline, imageAlt });
   } else if (cardId === "sandbox-cost") {
     const model = createSandboxCostModel(requirePayload(cardId), card, {

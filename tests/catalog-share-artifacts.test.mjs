@@ -5,6 +5,7 @@ import sharp from "sharp";
 import { renderCatalogShareArtifact } from "../scripts/catalog-share-artifacts.mjs";
 import { getCardDefinition, normalizeCardState } from "../src/card-registry.js";
 import { normalizeCardVisualization } from "../src/card-document.js";
+import { cardDetailDescription } from "../src/card-descriptions.js";
 import { createDealViewModel, DEAL_041_PAYLOAD } from "../src/deal-view-model.js";
 import { mountDealView, renderDealViewSvg } from "../src/deal-view-presentation.js";
 
@@ -39,7 +40,8 @@ test("equity price exports use real selected values, USD-per-share headlines, ca
   assert.equal(result.title, "NVDA");
   assert(result.svg.includes(">$115.00</text>"));
   assert.match(result.imageAlt, /115\.00 per share/);
-  assert.match(result.description, /Synthetic equity history/);
+  assert.equal(result.description, cardDetailDescription(getCardDefinition("equities"), result.state));
+  assert.doesNotMatch(result.description + result.imageAlt, /synthetic|not observed|demo/i);
   assert.equal(pathAttribute(result.svg, "NVDA", "data-first-value"), "100");
   assert.equal(pathAttribute(result.svg, "NVDA", "data-last-value"), "115");
   assert.deepEqual(result.state, normalizeCardVisualization("equities", { symbol: "NVDA", range: "7d" }));
@@ -62,6 +64,8 @@ test("equity index headline is percentage change, not a base-100 level or a doll
 test("CRWV, NBIS, H100 and H200 export uses one shared daily calendar and return baseline", () => {
   const result = renderCatalogShareArtifact("equities", { ...mixedState, scale: "price" }, payloads);
   assert.equal(result.title, "CRWV + NBIS + H100 + H200");
+  assert.equal(result.description, cardDetailDescription(getCardDefinition("equities"), result.state));
+  assert.doesNotMatch(result.description + result.imageAlt, /synthetic|not observed|demo/i);
   assert.equal(result.state.symbol, "CRWV");
   assert.equal(result.state.scale, "index", "Mixed hourly and share prices cannot use a dollar scale");
   assert(result.svg.includes(">+20.00%</text>"));

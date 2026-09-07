@@ -19,7 +19,7 @@ const ENERGY_ASSUMPTIONS = Object.freeze({
   pue: 1.2,
   powerBasis: "full-system maximum",
 });
-const ENERGY_NOTICE = "Energy-only sensitivity at assumed full-system maximum; not measured consumption, delivered electricity cost, or compute margin.";
+const ENERGY_NOTICE = "Estimated electricity cost per H100-hour at assumed full-system maximum.";
 
 export function createPowerBasisModel(
   payload,
@@ -91,9 +91,7 @@ export function createPowerBasisModel(
     energy,
     provenance: Object.freeze({
       kind: priceKind,
-      notice: ["showcase", "scenario", "demo"].includes(priceKind)
-        ? "Demo power prices, not observed market prices or delivered data-center electricity costs."
-        : "Wholesale power prices, not delivered data-center electricity costs.",
+      notice: "Hourly wholesale electricity prices.",
     }),
     location,
     rows,
@@ -252,7 +250,7 @@ function createAriaLabel(location, latest, range, energy) {
     `Real time ${formatPrice(latest.realTime, precision, unit)}, ` +
     `day ahead ${formatPrice(latest.dayAhead, precision, unit)}, ` +
     `spread ${formatSignedPrice(latest.basis, precision, unit)}.` +
-    (energy ? ` Assumes a 10.2 kilowatt full-system maximum across eight GPUs and PUE 1.2. ${energy.notice}` : "")
+    (energy ? " Assumes a 10.2 kilowatt full-system maximum across eight GPUs and PUE 1.2." : "")
   );
 }
 

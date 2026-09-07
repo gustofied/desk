@@ -3,7 +3,7 @@ import { mkdir } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import { pathToFileURL } from "node:url";
 import test, { after, before } from "node:test";
-import { cardStateParamIds, getCardDefinition, publishedCardSharePath } from "../../src/card-registry.js";
+import { cardStateParamIds, getCardDefinition, publishedCardSharePath, SHARE_COPY_VERSION } from "../../src/card-registry.js";
 import { normalizeCardVisualization } from "../../src/card-document.js";
 
 // Local generated pages and disposable browser storage only. Clipboard writes
@@ -202,6 +202,7 @@ for (const fixture of supported) {
     assert.equal(link.origin, new URL(baseUrl).origin);
     assert.equal(link.pathname, publishedCardSharePath(fixture.cardId, fixture.state));
     assert.match(link.pathname, /^\/cards\/[^/]+\/published\//);
+    assert(link.searchParams.get("v").includes(SHARE_COPY_VERSION), "New copy changes receive a fresh preview cache key");
     assert.equal(link.searchParams.has("entry"), false);
     if (fixture.entry) {
       const withEntry = await copyLink(page, fixture, fixture.entry);

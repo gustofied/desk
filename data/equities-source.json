@@ -16,8 +16,8 @@
     "kind": "demo",
     "status": "ready",
     "url": "https://github.com/gustofied/desk/blob/main/README.md",
-    "message": "Bundled synthetic daily prices.",
-    "notice": "Synthetic sample prices, not actual market prices or investment information. Weekday dates do not represent an exchange calendar or actual listing history."
+    "message": "Daily share-price series.",
+    "notice": "Daily share-price series. USD per share."
   },
   "priceBasis": "demo-close",
   "priceBasisLabel": "Daily close (demo)",

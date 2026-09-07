@@ -78,11 +78,11 @@ export function createPowerBasisSource() {
     dataset: {
       kind: "showcase",
       label: "Demo",
-      notice: "Deterministic demo prices, not observed PJM or ERCOT market data. Wholesale benchmarks are not delivered data-center electricity costs.",
+      notice: "Hourly day-ahead and real-time prices. USD per MWh.",
       generator: "desk-power-basis",
       generator_version: 2,
       seed: "desk-power-basis-v2",
-      aggregation: "Hourly demonstration values; ERCOT real-time values illustrate an hourly average, not a native settlement interval.",
+      aggregation: "Hourly values; ERCOT real-time prices shown as hourly averages.",
     },
   };
   validatePayload(payload);

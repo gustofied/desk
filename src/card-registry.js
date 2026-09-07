@@ -86,6 +86,7 @@ const PRIVATE_CAPACITY_OPTIONS = Object.freeze([
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
 export const PUBLISHED_CARD_VERSION = "v17";
+export const SHARE_COPY_VERSION = "copy2";
 export const DEFAULT_PALETTE = "linen";
 export const DEFAULT_THEME = "dark";
 

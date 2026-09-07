@@ -29,7 +29,7 @@ test("Power artifacts keep only the range and units in the compact header", () =
   assert.match(markup, /viewBox="0 0 1200 675"/);
   assert.match(markup, />1D<\/text>/);
   assert.doesNotMatch(markup, />DEMO|>ESTIMATE/);
-  assert.match(markup, /aria-label="Demo\./);
+  assert.doesNotMatch(markup, /aria-label="(?:Demo|Estimate)\./);
   assert.match(markup, />\$43\.36<\/text>/);
   assert.match(markup, /data-power-basis-unit=""[^>]*>\/MWh<\/text>/);
   assert.equal((markup.match(/data-power-basis-line=/g) || []).length, 2);
@@ -87,14 +87,14 @@ test("invalid export heights cannot create malformed or inverted Power plots", (
   }
 });
 
-test("H100 cost artifacts show four-decimal GPU-hour prices, with estimate semantics in accessibility", () => {
+test("H100 cost artifacts show four-decimal GPU-hour prices and matching accessible units", () => {
   const markup = render(fixture({ energy: true }), { compact: true });
   assert.match(markup, />1D<\/text>/);
   assert.doesNotMatch(markup, />DEMO|>ESTIMATE/);
   assert.match(markup, />\$0\.0663<\/text>/);
   assert.match(markup, /data-power-basis-unit=""[^>]*>\/GPU-h<\/text>/);
   assert.doesNotMatch(markup, /43\.36|USD per MWh|>\/MWh</);
-  assert.match(markup, /aria-label="Estimate\./);
+  assert.doesNotMatch(markup, /aria-label="(?:Demo|Estimate)\./);
   assert.match(markup, /USD per GPU-hour/);
 });
 
@@ -156,7 +156,8 @@ test("minimal mobile charts keep units without provenance badges or interactive 
   for (const energy of [false, true]) {
     const markup = render(fixture({ energy }), { minimal: true });
     assert(markup.includes(`>${energy ? "/GPU-h" : "/MWh"}</text>`));
-    assert.match(markup, /<desc>(?:Estimate|Demo)\./);
+    assert.doesNotMatch(markup, /<desc>(?:Estimate|Demo)\./);
+    assert.match(markup, energy ? /USD per GPU-hour/ : /USD per MWh/);
     assert.doesNotMatch(markup, /data-power-basis-readout|data-power-basis-column|data-view-artifact-header/);
     assert.match(markup, /viewBox="0 0 1200 600"/);
   }

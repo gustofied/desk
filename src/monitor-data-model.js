@@ -90,11 +90,10 @@ function createEquityHistoryModel(card, state, series, runtime, runtimes) {
   const sourceName = source?.name || "Source unavailable";
   const demo = dataset.kind === "demo";
   const computeSource = runtimes.get("gpu-index")?.dataset;
-  const computeAttribution = !computeSource ? "GPU data unavailable"
-    : computeSource.kind === "scenario" ? "GPU demo data" : "GPU prices by Desk";
+  const computeAttribution = !computeSource ? "GPU data unavailable" : "GPU rental rates";
   const label = "Equities";
   const provenance = [
-    demo ? "Synthetic price history" : sourceName,
+    demo ? "Share-price history" : sourceName,
     asOf ? `as of ${asOf.toISOString().slice(0, 10)}` : "no observations",
   ].join(" ");
   return finalizeModel(card, {

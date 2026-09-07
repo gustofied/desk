@@ -30,8 +30,8 @@ test("the committed equity source is exactly the deterministic nine-stock demo",
   assert.equal(source.source.kind, "demo");
   assert.equal(source.source.status, "ready");
   assert.equal(source.source.notice, EQUITIES_DEMO_NOTICE);
-  assert.match(source.source.notice, /Synthetic.*not actual market prices/);
-  assert.match(source.source.notice, /do not represent an exchange calendar/);
+  assert.equal(source.source.notice, "Daily share-price series. USD per share.");
+  assert.equal(source.source.message, "Daily share-price series.");
   assert.equal(Object.hasOwn(source, "retrievedAt"), false, "A generated sample never claims a provider retrieval time");
 });
 

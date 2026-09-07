@@ -32,6 +32,8 @@ test("the demo runtime preserves synthetic closes, USD/share units, weekday gaps
   assert.equal(runtime.dataset.priceBasisLabel, "Daily close (demo)");
   assert.equal(runtime.dataset.source.name, "Demo data");
   assert.equal(runtime.dataset.source.notice, source.source.notice);
+  assert.equal(runtime.dataset.source.notice, "Daily share-price series. USD per share.");
+  assert.equal(runtime.dataset.source.message, "Daily share-price series.");
   assert.deepEqual(runtime.dataset.generation, source.generation);
   assert.deepEqual(runtime.dataset.sampleWindow, source.sampleWindow);
   assert.equal(Object.hasOwn(runtime.dataset.source, "publicDisplayRights"), false);

@@ -202,7 +202,7 @@ function powerBasisMarkup(
     safeTitle,
     normalized,
   );
-  const ariaLabel = [normalized.marker, description].filter(Boolean).join(". ");
+  const ariaLabel = description;
   const minimalContext = minimal && !showArtifactHeader
     ? `<text data-power-basis-context="" x="2%" y="32" fill="${palette.line}"
         fill-opacity="0.68" font-family="Geist Mono, monospace" font-size="${headerLayout.contextSize}"
@@ -443,8 +443,6 @@ function normalizeModel(model) {
     unit,
     unitSuffix: unit === "USD per GPU-hour" ? "/GPU-h" : unit === "USD per MWh" ? "/MWh" : ` ${unit}`,
     precision: model.precision === 4 || energy ? 4 : 2,
-    marker: energy || model.kind === "estimate" ? "Estimate"
-      : ["showcase", "scenario"].includes(model.kind) ? "Demo" : "",
     ariaLabel: typeof model.ariaLabel === "string" ? model.ariaLabel.trim() : "",
   };
 }

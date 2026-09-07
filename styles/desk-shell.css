@@ -38,8 +38,7 @@
 
 [data-presentation="sidebar"] .desk-command-menu__surface,
 [data-presentation="sidebar"] .desk-command-menu__entry-header,
-[data-presentation="sidebar"] [data-desk-login-label],
-[data-presentation="sidebar"] #desk-login-note {
+[data-presentation="sidebar"] [data-desk-login-label] {
   display: none;
 }
 

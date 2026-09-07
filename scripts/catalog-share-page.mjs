@@ -1,4 +1,4 @@
-import { PUBLISHED_CARD_VERSION, SITE_ORIGIN } from "../src/card-registry.js";
+import { PUBLISHED_CARD_VERSION, SHARE_COPY_VERSION, SITE_ORIGIN } from "../src/card-registry.js";
 
 // Metadata is present in the first HTML response; unfurlers need no JavaScript.
 export function renderCatalogSharePage(artifact, pageHref, imageHref, imageRevision) {
@@ -14,7 +14,7 @@ export function renderCatalogSharePage(artifact, pageHref, imageHref, imageRevis
   }
   const target = `${destination.pathname}${destination.search}${destination.hash}`;
   const pageUrl = new URL(pageHref, SITE_ORIGIN);
-  pageUrl.searchParams.set("v", `${PUBLISHED_CARD_VERSION}-${artifact.revision}`);
+  pageUrl.searchParams.set("v", `${PUBLISHED_CARD_VERSION}-${SHARE_COPY_VERSION}-${artifact.revision}`);
   const imageUrl = new URL(imageHref, SITE_ORIGIN);
   imageUrl.searchParams.set("v", imageRevision);
   const background = artifact.state.theme === "dark" ? "#1c1c1c" : "#fafafa";

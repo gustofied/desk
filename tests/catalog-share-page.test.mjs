@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runInNewContext } from "node:vm";
-import { PUBLISHED_CARD_VERSION, SITE_ORIGIN } from "../src/card-registry.js";
+import { PUBLISHED_CARD_VERSION, SHARE_COPY_VERSION, SITE_ORIGIN } from "../src/card-registry.js";
 import { renderCatalogSharePage } from "../scripts/catalog-share-page.mjs";
 
 const pagePath = "/cards/equities/published/crwv/index/crwv~nbis~h100~h200/90d/sage/light/";
@@ -9,7 +9,7 @@ const imagePath = "/assets/social/equities/published/v17/equity-and-gpu-revision
 const artifact = {
   title: "CRWV + NBIS + H100 + H200",
   description: "Share prices and GPU rental rates compared as percentage changes over shared dates.",
-  imageAlt: "CRWV with NBIS, H100 and H200 over 90 days. Synthetic equity history.",
+  imageAlt: "CRWV with NBIS, H100 and H200 over 90 days.",
   revision: "equity-and-gpu-revision",
   state: { theme: "light" },
   destination: `${SITE_ORIGIN}/?card=equities&view=monitor&symbol=CRWV&layers=CRWV%2CNBIS%2CH100%2CH200&scale=index&range=90d&palette=sage&theme=light#gpu-benchmark-card`,
@@ -19,7 +19,7 @@ test("catalog share pages contain complete static Open Graph and Twitter metadat
   const html = renderCatalogSharePage(artifact, pagePath, imagePath, "image-bytes-revision");
   const head = html.slice(0, html.indexOf("<script>"));
   const canonical = new URL(pagePath, SITE_ORIGIN);
-  canonical.searchParams.set("v", `${PUBLISHED_CARD_VERSION}-${artifact.revision}`);
+  canonical.searchParams.set("v", `${PUBLISHED_CARD_VERSION}-${SHARE_COPY_VERSION}-${artifact.revision}`);
   const image = new URL(imagePath, SITE_ORIGIN);
   image.searchParams.set("v", "image-bytes-revision");
   const expected = {

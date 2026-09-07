@@ -21,6 +21,7 @@ import {
   PALETTES,
   paletteIds,
   PUBLISHED_CARD_VERSION,
+  SHARE_COPY_VERSION,
   publishedCardSharePath,
   RANGES,
   serializeLayerIds,
@@ -5473,11 +5474,11 @@ if (root) {
           : state.scale === "spread"
           ? `${spreadLabel}. The line shows the difference in price change, in percentage points. Positive values mean ${orderedLabels[0]} has risen more; negative values mean ${orderedLabels[1]} has risen more.`
           : hasCrossMarketLayers(cardDefinition, [...state.layers])
-          ? `${labels} percentage change from the same first shared date. Demo equity closes and GPU rental prices on each shared UTC day. Hover shows original prices in dollars per share or GPU hour.`
+          ? `${labels} percentage change from the same first shared date. Share prices and GPU rental rates on each shared UTC day. Hover shows original prices in dollars per share or GPU hour.`
           : state.scale === "index"
           ? `${labels} percentage change from the start of the selected range.`
           : cardId === "equities"
-          ? `${labels} ${state.runtimePayload?.dataset?.priceBasisLabel || "daily closing prices"}, in US dollars per share. Synthetic weekday history, not market prices.`
+          ? `${labels} daily share-price series, in US dollars per share.`
           : `${labels} hourly prices. The band shows the quoted price range for ${state.selected}.`;
     }
   }
@@ -6037,7 +6038,7 @@ if (root) {
         sourceIds.push("gpu-index");
       }
       const revisions = sourceIds.map(id => state.runtimePayloads.get(id)?.revision).filter(Boolean);
-      if (revisions.length) url.searchParams.set("v", `${PUBLISHED_CARD_VERSION}-${revisions.join("-")}`);
+      url.searchParams.set("v", [PUBLISHED_CARD_VERSION, SHARE_COPY_VERSION, ...revisions].join("-"));
       return url.toString();
     }
     if (isDealCard || cardDefinition.publishable === false) {
@@ -6060,7 +6061,7 @@ if (root) {
     if (state.dataRevision) {
       publishedUrl.searchParams.set(
         "v",
-        `${PUBLISHED_CARD_VERSION}-${state.dataRevision}`,
+        `${PUBLISHED_CARD_VERSION}-${SHARE_COPY_VERSION}-${state.dataRevision}`,
       );
     }
     return publishedUrl.toString();

@@ -107,7 +107,7 @@ test("equities monitor keeps source docs without a visible demo note or Desk API
   assert.deepEqual(model.breadcrumbs, ["Desk", "NVDA + MSFT", "1Y"]);
   assert.equal(model.description, "");
   assert.equal(model.detailDescription, "Daily share-price series for chipmakers and cloud providers, in USD per share.");
-  assert.match(model.provenance, /Synthetic price history.*as of 2026-08-31/);
+  assert.equal(model.provenance, "Share-price history as of 2026-08-31");
   assert.equal(model.priceBasis, "demo-close");
   assert.equal(model.unit, "USD per share");
   assert.deepEqual(model.source, source);
@@ -124,7 +124,7 @@ test("indexed equities retain source attribution without exposing SQL", () => {
   assert.equal(model.detailDescription, "Percentage changes in the selected share prices from a shared starting date.");
 });
 
-test("mixed market source details use the common chart date and one concise demo attribution", () => {
+test("mixed market source details use the common chart date and retain measurement metadata", () => {
   const mixedState = { ...state, symbol: "NVDA", layers: ["NVDA", "H100", "H200"], scale: "index", range: "90d" };
   const common = new Date("2026-08-28T00:00:00Z");
   const mixedSeries = mixedState.layers.map(id => ({
@@ -160,6 +160,26 @@ test("mixed market source details use the common chart date and one concise demo
   assert.equal(missing.detailDescription, model.detailDescription);
 });
 
+test("mixed source attribution describes GPU rental rates without adding a provider claim", () => {
+  const fixtureRuntime = { ...runtime, dataset: { ...runtime.dataset, kind: "fixture",
+    source: { ...source, name: "Test source" } } };
+  const mixedState = { ...state, layers: ["NVDA", "H100"], scale: "index" };
+  for (const kind of ["scenario", "observed"]) {
+    const compute = { dataset: { kind } };
+    const before = structuredClone(compute);
+    const model = createMonitorDataModel({ card, cardState: mixedState, series,
+      runtimePayload: fixtureRuntime,
+      runtimePayloads: new Map([["gpu-index", compute]]),
+    });
+    assert.equal(model.description, "Data by Test source GPU rental rates");
+    assert.equal(model.provenance, "Test source as of 2026-08-31");
+    assert.deepEqual(compute, before);
+  }
+  const missing = createMonitorDataModel({ card, cardState: mixedState, series,
+    runtimePayload: fixtureRuntime });
+  assert.equal(missing.description, "Data by Test source GPU data unavailable");
+});
+
 test("equity attribution links exclude credentials and unsafe protocols", () => {
   for (const url of ["file:///private/data", "javascript:alert(1)", "https://user:password@example.com"]) {
     const model = createMonitorDataModel({ card, cardState: state, series, runtimePayload: {
@@ -184,7 +204,7 @@ test("unavailable equity data reports no data without a fake date or export", ()
   assert.equal(model.status, "unavailable");
   assert.equal(model.summary, "No data");
   assert.equal(model.description, "");
-  assert.match(model.provenance, /Synthetic price history.*no observations/);
+  assert.equal(model.provenance, "Share-price history no observations");
   assert.equal(model.detailDescription, "Daily share-price series for chipmakers and cloud providers, in USD per share.");
   assert.doesNotMatch(model.provenance, /1970|2026|as of/);
   assert.equal(model.accessKind, "source");

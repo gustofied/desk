@@ -112,7 +112,7 @@ function markup(model, { colors, compact = false, artifact = compact, minimal = 
   const latestY = scaleBand().domain(ordered.map(provider => provider.id))
     .range([plotTop + (gallery ? 0 : gutter), plotBottom]).padding(gallery ? 0.24 : 0.42);
   const overview = ordered.map(provider => `${provider.label} ${formatCents(isLatest ? provider.median : latestHistory(provider))}`).join("; ");
-  const label = `${title}. Cost estimate in cents per job. ${gallery ? `${averageSummary} ` : ""}${overview}. ${isLatest ? "Latest replicate distributions" : "Batch median history; each provider has its own vertical scale. Shading follows the line for emphasis, not an uncertainty range"}. As of ${formatDay(normalized.asOf, true)}.`;
+  const label = `${title}. Cost estimate in cents per job. ${gallery ? `${averageSummary} ` : ""}${overview}. ${isLatest ? "Latest replicate distributions" : "Batch median history; each provider has its own vertical scale"}. As of ${formatDay(normalized.asOf, true)}.`;
   normalized.providers.forEach((provider, index) => {
     // Retain the original series-specific tonal hierarchy in the chosen theme.
     const order = PROVIDER_ORDER.indexOf(provider.id);

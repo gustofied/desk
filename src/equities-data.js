@@ -6,7 +6,7 @@ export const EQUITIES_DEMO_SEED = 0x44534b31;
 export const EQUITIES_DEMO_WINDOW = Object.freeze({ from: "2025-09-04", to: "2026-09-04" });
 export const EQUITIES_DEMO_ALGORITHM = "seeded-geometric-weekdays-v1";
 export const EQUITIES_DEMO_SOURCE_URL = "https://github.com/gustofied/desk/blob/main/README.md";
-export const EQUITIES_DEMO_NOTICE = "Synthetic sample prices, not actual market prices or investment information. Weekday dates do not represent an exchange calendar or actual listing history.";
+export const EQUITIES_DEMO_NOTICE = "Daily share-price series. USD per share.";
 const DAY_SECONDS = 86400;
 
 // Illustration parameters chosen independently of market observations. They are
@@ -80,7 +80,7 @@ export function createDemoEquitiesSource({ seed = EQUITIES_DEMO_SEED } = {}) {
       kind: "demo",
       status: "ready",
       url: EQUITIES_DEMO_SOURCE_URL,
-      message: "Bundled synthetic daily prices.",
+      message: "Daily share-price series.",
       notice: EQUITIES_DEMO_NOTICE,
     },
     priceBasis: EQUITIES_PRICE_BASIS,

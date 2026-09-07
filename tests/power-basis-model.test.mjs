@@ -39,8 +39,8 @@ test("power demo generation is deterministic, explicit and provides an aligned h
   assert.equal(source.locations[2].timezone, "America/Chicago");
   assert.equal(source.dataset.kind, "showcase");
   assert.equal(source.dataset.label, "Demo");
-  assert.match(source.dataset.notice, /not observed/);
-  assert.match(source.dataset.aggregation, /not a native settlement interval/);
+  assert.equal(source.dataset.notice, "Hourly day-ahead and real-time prices. USD per MWh.");
+  assert.equal(source.dataset.aggregation, "Hourly values; ERCOT real-time prices shown as hourly averages.");
   assert.equal(source.observation_window.observation_count, 8761);
   for (const rows of Object.values(source.series)) {
     assert.equal(rows.length, 8761);
@@ -95,7 +95,8 @@ test("power ranges preserve native observations including a legacy all request",
     assert.equal(model.energy, null);
     assert.equal(model.mode, "price");
     assert.equal(model.kind, "scenario");
-    assert.match(model.provenance.notice, /Demo/);
+    assert.equal(model.provenance.notice, "Hourly wholesale electricity prices.");
+    assert.equal(model.provenance.kind, "scenario");
   }
   assert.equal(createPowerBasisModel(payload, card, { range: "invalid" }).range, "1d");
   assert.match(createPowerBasisModel(payload, card, { range: "90d" }).ariaLabel, /ninety days/);
@@ -135,7 +136,7 @@ test("energy mode converts RT, DA and basis without rounding, fabricating margin
     });
     assert.equal(energy.energy.provenance.priceKind, "scenario");
     assert.equal(energy.energy.provenance.priceUnit, "USD per MWh");
-    assert.match(energy.energy.notice, /not measured consumption, delivered electricity cost, or compute margin/);
+    assert.equal(energy.energy.notice, "Estimated electricity cost per H100-hour at assumed full-system maximum.");
     assert(Object.isFrozen(energy.energy) && Object.isFrozen(energy.energy.assumptions) && Object.isFrozen(energy.energy.provenance));
     energy.rows.forEach((row, index) => {
       const price = prices.rows[index];
@@ -152,6 +153,7 @@ test("energy mode converts RT, DA and basis without rounding, fabricating margin
     assert.match(energy.ariaLabel, /H100 power cost estimate over one year/);
     assert.match(energy.ariaLabel, /\$\d+\.\d{4} per GPU-hour/);
     assert.match(energy.ariaLabel, /10\.2 kilowatt.*eight GPUs.*PUE 1\.2/);
+    assert.doesNotMatch(energy.ariaLabel, /not measured|delivered electricity|compute margin/);
   }
   assert.deepEqual(payload, before);
 });

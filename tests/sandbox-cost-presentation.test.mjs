@@ -687,11 +687,11 @@ test("Gallery resize preserves the average, enlarged graphics and fixed visual s
 });
 
 test("Gallery changes none of the default Focus, Monitor, export and pinned-preview bytes", () => {
-  // Captured before gallery:true was added. This intentionally protects exact
-  // default SVG output, beyond the individual responsive geometry assertions.
+  // Protect exact default SVG output beyond the responsive geometry assertions.
+  // The history baseline includes the accessibility-copy cleanup; geometry is unchanged.
   const baselines = {
     now: "08313aa9bc9b76a6618946dfcf08e608afae4c3fb4937cf9380ea0abf07085d6",
-    all: "b663af9602308f5fe3583faaddbc10fe0669986c1af714f69e1faeefacc62396",
+    all: "57ded879da19d8862fa616c9a9ee30c150d25b63560b80a895894efc5b407daf",
   };
   const surfaces = [
     {}, { minimal: true }, { compact: true },
@@ -700,6 +700,7 @@ test("Gallery changes none of the default Focus, Monitor, export and pinned-prev
   ];
   for (const range of ["now", "all"]) {
     const outputs = surfaces.map(options => render(fixture(range), options));
+    for (const output of outputs) assert.doesNotMatch(output, /not an uncertainty range/);
     assert.equal(createHash("sha256").update(JSON.stringify(outputs)).digest("hex"), baselines[range],
       "The Gallery option does not alter any pre-existing " + range + " surface");
     for (const [index, options] of surfaces.entries()) assert.equal(
