@@ -1,14 +1,14 @@
 # Desk
 
 <p>
-  <img src="assets/showcase/desk-hedge-catalog-overview.png" alt="Desk Hedge catalog" width="100%">
+  <img src="assets/showcase/desk-hedge-catalog-overview-0b3d845fe878.png" alt="Desk Hedge catalog" width="100%">
 </p>
 
 <p>
-  <img src="assets/showcase/desk-compute-comparison-frame.svg" alt="GPU rental price comparisons" width="49%" align="top">
-  <img src="assets/showcase/desk-clouds-compute-comparison-frame.svg" alt="Cloud shares compared with GPU rental prices" width="49%" align="top"><br>
-  <img src="assets/showcase/desk-gallery-sidebar-light-frame.svg" alt="Desk gallery with the sidebar open" width="49%" align="top">
-  <img src="assets/showcase/desk-h100-depth-history-monitor-frame.svg" alt="H100 market depth in Monitor" width="49%" align="top">
+  <img src="assets/showcase/desk-compute-comparison-frame-c264c3aba553.svg" alt="GPU rental price comparisons" width="49%" align="top">
+  <img src="assets/showcase/desk-clouds-compute-comparison-frame-c5f32e27a1cb.svg" alt="Cloud shares compared with GPU rental prices" width="49%" align="top"><br>
+  <img src="assets/showcase/desk-gallery-sidebar-light-frame-56937a79a57b.svg" alt="Desk gallery with the sidebar open" width="49%" align="top">
+  <img src="assets/showcase/desk-h100-depth-history-monitor-frame-1042058aeb4b.svg" alt="H100 market depth in Monitor" width="49%" align="top">
 </p>
 
 The workspace for compute desks.

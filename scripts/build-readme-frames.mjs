@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 
 // GitHub strips object-fit from README HTML. SVG frames contain the original
@@ -18,7 +19,10 @@ for (const [name, extension, title] of screenshots) {
   <image width="1600" height="900" preserveAspectRatio="xMidYMid meet" href="data:image/${extension};base64,${source.toString("base64")}"/>
 </svg>
 `;
-  await writeFile(new URL(`${name}-frame.svg`, assets), svg);
+  const revision = createHash("sha256").update(svg).digest("hex").slice(0, 12);
+  const filename = `${name}-frame-${revision}.svg`;
+  await writeFile(new URL(filename, assets), svg);
+  console.log(`assets/showcase/${filename}`);
 }
 
 console.log("Built four matching 16:9 README frames.");
