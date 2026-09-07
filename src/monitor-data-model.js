@@ -1,5 +1,6 @@
 import { SITE_ORIGIN } from "./card-registry.js";
 import { hasCrossMarketLayers } from "./cross-market-series.js";
+import { cardDetailDescription } from "./card-descriptions.js";
 
 export function createMonitorDataModel({
   card,
@@ -46,6 +47,7 @@ function createSandboxDataModel(card, state = {}, model) {
   const date = available ? asOf.toISOString().slice(0, 10) : null;
   return finalizeModel(card, {
     id: "sandbox-source",
+    detailDescription: cardDetailDescription(card, { ...state, range }),
     label: sourceName,
     summary: available ? date : "No observations",
     breadcrumbs: [sourceName, history ? "Daily batch medians" : "Latest batch", String(range).toUpperCase()],
@@ -97,6 +99,7 @@ function createEquityHistoryModel(card, state, series, runtime, runtimes) {
   ].join(" ");
   return finalizeModel(card, {
     id: "equities-source",
+    detailDescription: cardDetailDescription(card, state),
     label,
     summary: unavailable ? crossMarket && dataset.status === "ready" ? "No shared data" : "No data"
       : `${crossMarket ? "Compared through" : "Close"} ${asOf.toISOString().slice(0, 10)}`,
@@ -153,6 +156,7 @@ function createPriceHistoryModel(card, state, series) {
 
   return finalizeModel(card, {
     summary: `${seriesLabel} ${range}`,
+    detailDescription: cardDetailDescription(card, state),
     breadcrumbs: ["Desk", card.dataTable.label, seriesLabel, range],
     rowCount,
     asOf: latestDate,
@@ -199,6 +203,7 @@ function createPriceSpreadModel(card, state, series) {
 
   return finalizeModel(card, {
     summary: `${pairLabel} ${range}`,
+    detailDescription: cardDetailDescription(card, state),
     breadcrumbs: ["Desk", card.dataTable.label, pairLabel, range],
     rowCount: spreadSeries.rows.length,
     asOf: latestDate,
@@ -225,6 +230,7 @@ function createPriceSnapshotModel(card, model) {
   const gpuLabel = model.bars.length === 1 ? "GPU" : "GPUs";
   return finalizeModel(card, {
     summary: `${model.bars.length} ${gpuLabel}`,
+    detailDescription: cardDetailDescription(card),
     breadcrumbs: ["Desk", card.dataTable.label, "Snapshot"],
     rowCount: model.bars.length,
     asOf,
@@ -243,6 +249,7 @@ function createMarketDepthDataModel(card, state, model) {
 
   return finalizeModel(card, {
     summary: `${model.instrument.gpuLabel} ${model.targetNodes} nodes ${mode}`,
+    detailDescription: cardDetailDescription(card, state),
     breadcrumbs: [
       "Desk",
       card.dataTable.label,
@@ -272,6 +279,7 @@ function createPowerBasisDataModel(card, state, model) {
 
   return finalizeModel(card, {
     summary: `${locationLabel} ${model.energy ? "H100 " : ""}${range}`,
+    detailDescription: cardDetailDescription(card, state),
     breadcrumbs: ["Desk", model.energy ? "H100 power cost" : card.dataTable.label, locationLabel, range],
     accessKind: "cli",
     provenance: "",
@@ -308,6 +316,7 @@ function finalizeModel(card, values) {
     values.accessKind,
     values.provenance,
     values.description,
+    values.detailDescription,
     values.sourceUrl,
     values.source,
   ]);
@@ -316,6 +325,7 @@ function finalizeModel(card, values) {
     id: values.id || card.dataTable.id,
     label: values.label || card.dataTable.label,
     summary: values.summary,
+    detailDescription: values.detailDescription,
     breadcrumbs: Object.freeze([...values.breadcrumbs]),
     rowCount: values.rowCount,
     asOf: values.asOf,

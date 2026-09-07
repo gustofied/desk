@@ -50,7 +50,7 @@ function localFixture({ name = "Source research", id = "source-research", views 
   };
   return {
     [savedKey]: JSON.stringify({ version: 2, items: documents, documentSchema: "desk.card", documentVersion: 1 }),
-    [collectionsKey]: JSON.stringify({ version: 9, activeId: id, collections: [collection] }),
+    [collectionsKey]: JSON.stringify({ version: 10, activeId: id, collections: [collection] }),
   };
 }
 
@@ -233,7 +233,7 @@ for (const width of [1440, 390]) {
     assert.equal(stored[savedKey], existing[savedKey], "Save a copy overwrote the existing saved views");
     const envelope = JSON.parse(stored[collectionsKey]);
     const previous = JSON.parse(existing[collectionsKey]);
-    assert.equal(envelope.version, 9);
+    assert.equal(envelope.version, 10);
     assert.deepEqual(envelope.collections[0], previous.collections[0], "Save a copy changed an existing collection");
     const saved = envelope.collections[1];
     assert.notEqual(saved.id, previous.collections[0].id);

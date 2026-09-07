@@ -103,9 +103,9 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=96">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=65">
-    <link rel="stylesheet" href="./styles/monitor-data.css?v=17">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=97">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=66">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=18">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
     <link rel="stylesheet" href="./styles/deal-view.css?v=43">
     <link rel="stylesheet" href="./styles/command-palette.css?v=16">
@@ -386,12 +386,14 @@
                 type="button"
                 aria-expanded="false"
                 aria-controls="desk-data-body"
+                aria-describedby="desk-data-description"
                 data-monitor-data-toggle
               >
                 <strong data-monitor-data-label>Desk API</strong>
                 <span data-monitor-data-dataset>Compute prices</span>
                 <small data-monitor-data-context>H200 7D</small>
               </button>
+              <p class="desk-data-rail__description" id="desk-data-description" data-monitor-data-description></p>
               <div
                 class="desk-data-rail__body"
                 id="desk-data-body"
@@ -449,12 +451,14 @@
                 type="button"
                 aria-expanded="false"
                 aria-controls="deal-journey-body"
+                aria-describedby="deal-journey-description"
                 data-deal-journey-toggle
               >
                 <strong>Activity</strong>
                 <span data-deal-journey-summary></span>
                 <small data-deal-journey-count></small>
               </button>
+              <p class="desk-data-rail__description" id="deal-journey-description" data-deal-journey-description></p>
               <div
                 class="desk-data-rail__body deal-journey-rail__body"
                 id="deal-journey-body"
@@ -693,6 +697,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=240"></script>
+    <script type="module" src="./desk.js?v=244"></script>
   </body>
 </html>

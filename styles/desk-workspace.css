@@ -364,6 +364,7 @@
 
 .desk-gallery-card.compute-share-card-frame {
   position: relative;
+  isolation: isolate;
   display: block;
   width: 100%;
   height: 100%;
@@ -414,7 +415,17 @@
 }
 
 .desk-gallery-card.compute-share-card-frame::after {
-  display: none;
+  content: "";
+  position: absolute;
+  z-index: 1;
+  display: block;
+  inset: 0;
+  border: 0;
+  border-radius: inherit;
+  background: var(--desk-accent-deep);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 200ms var(--desk-ease-out);
 }
 
 .desk-gallery-card.compute-share-card-frame[data-selected="true"] {
@@ -621,15 +632,15 @@
     background: color-mix(in srgb, var(--desk-accent) 4%, transparent);
   }
 
-  .desk-gallery-card.compute-share-card-frame {
-    cursor: grab;
+  .desk-gallery-card.compute-share-card-frame:hover::after {
+    opacity: 0.03;
   }
 
-  .desk-gallery-card.compute-share-card-frame:hover {
-    z-index: 1;
-    border-color: var(--desk-accent-deep);
-    box-shadow: 0 8px 24px color-mix(in srgb, var(--desk-accent-deep) 10%, transparent);
-    transform: none;
+  :root[data-catalog-reordering="true"] .desk-gallery-card.compute-share-card-frame::after,
+  .desk-card-gallery__grid[data-reordering="true"] .desk-gallery-card.compute-share-card-frame::after,
+  .desk-gallery-item:is([data-dragging="true"], [data-reorder-ready="true"], [data-drop-target="true"]) .desk-gallery-card.compute-share-card-frame::after {
+    opacity: 0;
+    transition: none;
   }
 
   .desk-gallery-card.compute-share-card-frame:active {
@@ -758,6 +769,10 @@
   .compute-card-skin--market .desk-card-rail :is(.desk-card-tabs button, .desk-card-gallery-tab),
   .desk-gallery-card,
   .desk-gallery-item {
+    transition: none;
+  }
+
+  .desk-gallery-card.compute-share-card-frame::after {
     transition: none;
   }
 

@@ -168,10 +168,11 @@ test("equity comparison metadata and selections cannot spill into other cards", 
   }
 });
 
-test("each equity preset selects exactly its symbol and retains the one-year price view", () => {
+test("individual equity presets retain their symbol and one-year price view", () => {
   const card = getCardDefinition("equities");
-  assert.deepEqual(card.catalogPresets.map(preset => preset.id), SYMBOLS.map(symbol => symbol.toLowerCase()));
-  for (const [index, preset] of card.catalogPresets.entries()) {
+  const individuals = card.catalogPresets.slice(0, SYMBOLS.length);
+  assert.deepEqual(individuals.map(preset => preset.id), SYMBOLS.map(symbol => symbol.toLowerCase()));
+  for (const [index, preset] of individuals.entries()) {
     const state = normalizeCardVisualization(card.id, preset.state);
     assert.equal(preset.label, SYMBOLS[index]);
     assert.equal(state.symbol, SYMBOLS[index]);

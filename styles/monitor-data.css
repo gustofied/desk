@@ -82,6 +82,18 @@
   content: "−";
 }
 
+.desk-data-rail__description {
+  margin: 0;
+  padding: 0 16px 12px;
+  color: var(--index-ink-soft);
+  font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+  text-wrap: pretty;
+}
+
+.desk-data-rail__description:empty {
+  display: none;
+}
+
 .desk-data-rail__body {
   border-top: 1px solid var(--desk-data-rule);
   animation: desk-data-rail-enter 240ms cubic-bezier(0.32, 0.72, 0, 1);
@@ -319,6 +331,10 @@
 }
 
 @media (max-width: 640px) {
+  .desk-data-rail__description {
+    padding-inline: 12px;
+  }
+
   .desk-data-rail {
     margin-top: 16px;
     scroll-margin-block: 16px;
@@ -411,7 +427,8 @@
 }
 
 @media (max-width: 420px) {
-  .desk-data-rail__toggle {
+  .desk-data-rail__toggle,
+  .desk-data-rail:not(.deal-journey-rail) .desk-data-rail__description {
     padding-inline: 8px;
   }
 }

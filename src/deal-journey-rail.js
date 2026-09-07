@@ -1,3 +1,5 @@
+import { cardDetailDescription } from "./card-descriptions.js";
+
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "short",
@@ -21,6 +23,7 @@ export function createDealJourneyRail({ root, reducedMotion = false } = {}) {
     toggle: root.querySelector("[data-deal-journey-toggle]"),
     body: root.querySelector("[data-deal-journey-body]"),
     summary: root.querySelector("[data-deal-journey-summary]"),
+    description: root.querySelector("[data-deal-journey-description]"),
     count: root.querySelector("[data-deal-journey-count]"),
     activity: root.querySelector("[data-deal-journey-events-list]"),
     status: root.querySelector("[data-deal-journey-status]"),
@@ -131,6 +134,11 @@ export function createDealJourneyRail({ root, reducedMotion = false } = {}) {
       return;
     }
     root.dataset.dealId = String(model.id);
+    if (nodes.description) {
+      nodes.description.textContent = cardDetailDescription({
+        id: model.viewKind === "quote" ? "quote-view" : "deal-view",
+      });
+    }
 
     renderActivity();
     syncSummary();
@@ -481,6 +489,7 @@ export function createDealJourneyRail({ root, reducedMotion = false } = {}) {
     delete root.dataset.dealId;
     if (nodes.summary) nodes.summary.textContent = "";
     if (nodes.count) nodes.count.textContent = "";
+    if (nodes.description) nodes.description.textContent = "";
   }
 
   function eventsForModel() {

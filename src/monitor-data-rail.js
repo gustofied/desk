@@ -6,6 +6,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     label: root.querySelector("[data-monitor-data-label]"),
     dataset: root.querySelector("[data-monitor-data-dataset]"),
     context: root.querySelector("[data-monitor-data-context]"),
+    description: root.querySelector("[data-monitor-data-description]"),
     body: root.querySelector("[data-monitor-data-body]"),
     path: root.querySelector("[data-monitor-data-path]"),
     actionLabel: root.querySelector("[data-monitor-data-action-label]"),
@@ -71,6 +72,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     const previousAccess = model?.accessKind;
     model = nextModel;
     if (!model) {
+      if (nodes.description) nodes.description.textContent = "";
       setVisible(false);
       return;
     }
@@ -81,6 +83,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     nodes.dataset.textContent = model.label;
     nodes.context.textContent = sourceOnly ? model.summary : [model.summary, model.provenance].filter(Boolean).join(" ");
     nodes.context.title = nodes.context.textContent;
+    if (nodes.description) nodes.description.textContent = model.detailDescription || "";
     nodes.toggle?.setAttribute("aria-label", toggleLabel(model));
     for (const section of nodes.apiSections) section.hidden = sourceOnly;
     if (nodes.source) nodes.source.hidden = !model.description && !model.sourceUrl;

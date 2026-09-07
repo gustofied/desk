@@ -30,6 +30,7 @@ test("Sandbox detail attributes the dated benchmark without a Desk API or billin
   assert.equal(model.unit, "USD per job");
   assert.equal(model.summary, "2026-08-06");
   assert.equal(model.description, "Median and range across 12 runs.");
+  assert.equal(model.detailDescription, "Job costs across providers.");
   for (const field of ["endpoint", "command", "sql"]) assert.equal(model[field], undefined);
   assert(Object.isFrozen(model));
 });
@@ -42,6 +43,8 @@ test("Sandbox history describes batch medians and makes no cross-methodology tre
   assert.equal(week.rowCount, 2);
   assert.equal(week.summary, "2026-08-06");
   assert.equal(week.description, "Daily batch medians; independent scales. Methodology varies across runs.");
+  assert.equal(week.detailDescription, "Job costs over time, by provider.");
+  assert.equal(all.detailDescription, "Job costs over time, by provider.");
   assert.notEqual(week.key, all.key, "Range changes must update details even when observation counts match");
   assert.equal(week.breadcrumbs.at(-1), "7D");
   const missing = createMonitorDataModel({ card: sandbox });
@@ -49,6 +52,7 @@ test("Sandbox history describes batch medians and makes no cross-methodology tre
   assert.equal(missing.summary, "No observations");
   assert.equal(missing.status, "unavailable");
   assert.equal(missing.sourceUrl, week.sourceUrl);
+  assert.equal(missing.detailDescription, "Job costs across providers.");
 });
 
 test("latest-price details say GPU or GPUs without renaming the card or API", () => {
@@ -59,6 +63,7 @@ test("latest-price details say GPU or GPUs without renaming the card or API", ()
     } });
     assert.equal(model.summary, ids.length === 1 ? "1 GPU" : "4 GPUs");
     assert.equal(model.label, "Latest prices");
+    assert.equal(model.detailDescription, "Hourly rental prices by GPU.");
     assert.match(model.command, /accelerator-prices/);
     assert.match(model.endpoint, /accelerator-prices\.json$/);
   }
@@ -74,6 +79,7 @@ test("power details omit demo and estimate notes while retaining the matching SQ
   const price = createMonitorDataModel({ card: power, cardState, powerModel: model });
   assert.equal(price.provenance, "");
   assert.equal(price.description, "");
+  assert.equal(price.detailDescription, "Day-ahead and real-time power prices.");
   assert.match(price.command, /--range=1y/);
   assert.match(price.sql, /instrument = 'PJM-DOMINION'/);
   assert.doesNotMatch(price.sql, /usd_gpu_hour/);
@@ -81,6 +87,7 @@ test("power details omit demo and estimate notes while retaining the matching SQ
     cardState: { ...cardState, scale: "energy" }, powerModel: { ...model, energy: {} } });
   assert.equal(energy.provenance, "");
   assert.equal(energy.description, "");
+  assert.equal(energy.detailDescription, "Power cost per H100 hour.");
   assert.match(energy.sql, /real_time_price_usd_mwh \* 0\.00153 AS rt_usd_gpu_hour/);
   assert.match(energy.sql, /day_ahead_price_usd_mwh \* 0\.00153 AS da_usd_gpu_hour/);
   assert.match(energy.sourceUrl, /docs.nvidia.com/);
@@ -99,6 +106,7 @@ test("equities monitor keeps source docs without a visible demo note or Desk API
   assert.equal(model.sourceUrl, source.url);
   assert.deepEqual(model.breadcrumbs, ["Desk", "NVDA + MSFT", "1Y"]);
   assert.equal(model.description, "");
+  assert.equal(model.detailDescription, "Stock prices over time.");
   assert.match(model.provenance, /Synthetic price history.*as of 2026-08-31/);
   assert.equal(model.priceBasis, "demo-close");
   assert.equal(model.unit, "USD per share");
@@ -113,6 +121,7 @@ test("indexed equities retain source attribution without exposing SQL", () => {
   assert.equal(model.sql, undefined);
   assert.equal(model.accessKind, "source");
   assert.doesNotMatch(model.description, /gpu|\blower\b|\bupper\b/i);
+  assert.equal(model.detailDescription, "Stock price changes from the same starting day.");
 });
 
 test("mixed market source details use the common chart date and one concise demo attribution", () => {
@@ -131,6 +140,7 @@ test("mixed market source details use the common chart date and one concise demo
   assert.equal(model.label, "Equities");
   assert.equal(model.description, "");
   assert.equal(model.unit, "percent change");
+  assert.equal(model.detailDescription, "Stocks and GPU rental prices, compared from the same day.");
   assert.equal(model.priceBasis, "relative-change");
   assert.equal(model.accessKind, "source");
   assert.equal(model.command, undefined);
@@ -142,10 +152,12 @@ test("mixed market source details use the common chart date and one concise demo
     runtimePayloads: new Map([["gpu-index", { dataset: { kind: "scenario" } }]]),
   });
   assert.equal(queryModel.key, model.key);
+  assert.equal(queryModel.detailDescription, model.detailDescription);
   const missing = createMonitorDataModel({ card, cardState: mixedState, runtimePayload: runtime });
   assert.equal(missing.summary, "No shared data");
   assert.equal(missing.asOf, null);
   assert.equal(missing.status, "unavailable");
+  assert.equal(missing.detailDescription, model.detailDescription);
 });
 
 test("equity attribution links exclude credentials and unsafe protocols", () => {
@@ -173,6 +185,7 @@ test("unavailable equity data reports no data without a fake date or export", ()
   assert.equal(model.summary, "No data");
   assert.equal(model.description, "");
   assert.match(model.provenance, /Synthetic price history.*no observations/);
+  assert.equal(model.detailDescription, "Stock prices over time.");
   assert.doesNotMatch(model.provenance, /1970|2026|as of/);
   assert.equal(model.accessKind, "source");
   assert.equal(model.endpoint, undefined);
@@ -193,8 +206,40 @@ test("GPU monitor access retains its supported CLI command and GPU-hour SQL", ()
     series: [{ layer: gpu.layers.find(layer => layer.id === "H200"), rows: [{ date: first, value: 4 }, { date: latest, value: 5 }] }],
   });
   assert.equal(model.accessKind, undefined);
+  assert.equal(model.detailDescription, "GPU rental prices over time.");
   assert.match(model.command, /data sync/);
   assert.match(model.command, /compute-prices/);
   assert.match(model.command, /--series=H200/);
   assert.match(model.sql, /price_usd_gpu_hour/);
+});
+
+test("intro-only changes invalidate the data-panel key without altering equity provenance or source details", () => {
+  const options = { card, series, runtimePayload: runtime };
+  const price = createMonitorDataModel({ ...options, cardState: state });
+  const index = createMonitorDataModel({ ...options, cardState: { ...state, scale: "index" } });
+  const { key: priceKey, detailDescription: priceIntro, ...priceFields } = price;
+  const { key: indexKey, detailDescription: indexIntro, ...indexFields } = index;
+  assert.equal(priceIntro, "Stock prices over time.");
+  assert.equal(indexIntro, "Stock price changes from the same starting day.");
+  assert.deepEqual(priceFields, indexFields, "The introductory copy must not replace source metadata");
+  assert.notEqual(priceKey, indexKey, "An otherwise identical panel must not retain the previous intro");
+  const restored = createMonitorDataModel({ ...options, cardState: state });
+  assert.equal(restored.detailDescription, priceIntro);
+  assert.equal(restored.key, priceKey);
+  assert.equal(index.detailDescription, indexIntro, "Later calls must not mutate earlier models");
+});
+
+test("depth introductions follow the displayed mode while retaining their CLI and SQL", () => {
+  const depth = getCardDefinition("gpu-market-depth");
+  const depthModel = { current: { buckets: [{}, {}] }, history: [{}, {}],
+    instrument: { gpuLabel: "H100" }, targetNodes: 256, asOf: latest.getTime() / 1000 };
+  const now = createMonitorDataModel({ card: depth, cardState: { scale: "depth" }, depthModel });
+  const history = createMonitorDataModel({ card: depth, cardState: { scale: "history" }, depthModel });
+  assert.equal(now.detailDescription, "Available capacity at each hourly rate.");
+  assert.equal(history.detailDescription, "Rates for your capacity target over time.");
+  assert.match(now.command, /--view=now/);
+  assert.match(history.command, /--view=history/);
+  assert(now.sql && history.sql);
+  assert.notEqual(now.key, history.key);
+  assert.equal(now.rowCount, history.rowCount);
 });

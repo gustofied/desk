@@ -115,7 +115,7 @@ function createFallbackEventLog() {
  */
 export function createDealViewModel(
   dealPayload,
-  { kind = "deal", marketPayload = null, overrides = {} } = {},
+  { kind = "deal", viewName = "", marketPayload = null, overrides = {} } = {},
 ) {
   assertDealPayload(dealPayload);
 
@@ -127,6 +127,9 @@ export function createDealViewModel(
     overrides.gpu ?? dealPayload.asset ?? dealPayload.gpu ?? dealPayload.product,
     "Deal asset",
   ).toUpperCase();
+  const label = viewKind === "quote"
+    ? optionalText(viewName) || `Quote ${asset}`
+    : `Deal ${id}`;
   const quantity = positiveInteger(
     overrides.quantity ?? dealPayload.quantity ?? dealPayload.gpuCount,
     "Deal quantity",
@@ -245,7 +248,7 @@ export function createDealViewModel(
         stageModel.id,
         createAriaLabel({
           kind: viewKind,
-          id,
+          label,
           type: dealPayload.type ?? "Capacity",
           quantity,
           asset,
@@ -261,7 +264,7 @@ export function createDealViewModel(
     version: 1,
     viewKind,
     id,
-    label: `${viewKind === "quote" ? "Quote" : "Deal"} ${id}`,
+    label,
     statusLabel,
     priceStatusLabel: quoteStatus,
     checksStatusLabel,
@@ -751,7 +754,7 @@ function formatRfs(value) {
 
 function createAriaLabel({
   kind,
-  id,
+  label,
   type,
   quantity,
   asset,
@@ -766,12 +769,12 @@ function createAriaLabel({
       : "Contract";
   if (kind === "quote") {
     return (
-      `Quote ${id}, ${quantity} ${asset}, agreed at ${quote.formatted} ` +
+      `${label}, ${quantity} ${asset}, agreed at ${quote.formatted} ` +
       "per GPU hour."
     );
   }
   return (
-    `Deal ${id}, ${type}, ${quantity} ${asset}, quote ${quote.formatted} ` +
+    `${label}, ${type}, ${quantity} ${asset}, quote ${quote.formatted} ` +
     `per GPU hour, ready for service ${rfs}, ${stageLabel} stage.`
   );
 }

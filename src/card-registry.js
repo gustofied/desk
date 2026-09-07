@@ -512,7 +512,7 @@ export const CARD_REGISTRY = Object.freeze([
     viewKind: "quote",
     sourceCardId: DEAL_VIEW_ID,
     publishable: false,
-    title: "Quote 041",
+    title: "Quote",
     craftLabel: "Quote",
     description: "Buyer bid and seller ask across a private negotiation.",
     dataFile: DEAL_VIEW_DATA_FILE,
@@ -539,8 +539,15 @@ export const CARD_REGISTRY = Object.freeze([
     allowComparisons: false,
     layers: PRIVATE_CAPACITY_LAYERS,
     stateOptions: PRIVATE_CAPACITY_OPTIONS,
-    // Retain the legacy route without duplicating Deal 041 in the default catalog.
-    catalogPresets: Object.freeze([]),
+    // GPU-specific starting points share the private negotiation source.
+    catalogPresets: Object.freeze([
+      Object.freeze({ id: "b200", label: "Quote B200" }),
+      Object.freeze({
+        id: "h200",
+        label: "Quote H200",
+        state: Object.freeze({ gpu: "H200", layers: Object.freeze(["H200"]), quote: 2.85 }),
+      }),
+    ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Negotiation", unit: "usd-hour" }),
     ]),
@@ -619,16 +626,53 @@ export const CARD_REGISTRY = Object.freeze([
     ranges: Object.freeze(["7d", "90d", "1y"]),
     allowComparisons: true,
     layers: Object.freeze([...EQUITY_LAYERS, ...EQUITY_COMPARISON_LAYERS]),
-    catalogPresets: Object.freeze(EQUITY_LAYERS.map((layer) => Object.freeze({
-      id: layer.id.toLowerCase(),
-      label: layer.label,
-      state: Object.freeze({
-        symbol: layer.id,
-        layers: Object.freeze([layer.id]),
-        scale: "price",
-        range: "1y",
+    catalogPresets: Object.freeze([
+      ...EQUITY_LAYERS.map((layer) => Object.freeze({
+        id: layer.id.toLowerCase(),
+        label: layer.label,
+        state: Object.freeze({
+          symbol: layer.id,
+          layers: Object.freeze([layer.id]),
+          scale: "price",
+          range: "1y",
+        }),
+      })),
+      Object.freeze({
+        id: "chips",
+        label: "Chips",
+        state: Object.freeze({
+          symbol: "NVDA", layers: Object.freeze(["NVDA", "AMD", "TSM"]), scale: "index", range: "1y",
+        }),
       }),
-    }))),
+      Object.freeze({
+        id: "hyperscalers",
+        label: "Hyperscalers",
+        state: Object.freeze({
+          symbol: "MSFT", layers: Object.freeze(["MSFT", "AMZN", "GOOGL", "ORCL"]), scale: "index", range: "1y",
+        }),
+      }),
+      Object.freeze({
+        id: "neoclouds",
+        label: "Neoclouds",
+        state: Object.freeze({
+          symbol: "CRWV", layers: Object.freeze(["CRWV", "NBIS"]), scale: "index", range: "1y",
+        }),
+      }),
+      Object.freeze({
+        id: "nvidia-compute",
+        label: "NVIDIA + compute",
+        state: Object.freeze({
+          symbol: "NVDA", layers: Object.freeze(["NVDA", "H100", "H200"]), scale: "index", range: "90d",
+        }),
+      }),
+      Object.freeze({
+        id: "clouds-compute",
+        label: "Clouds + compute",
+        state: Object.freeze({
+          symbol: "CRWV", layers: Object.freeze(["CRWV", "NBIS", "H100", "H200"]), scale: "index", range: "90d",
+        }),
+      }),
+    ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Price", unit: "usd-share" }),
       Object.freeze({ id: "index", label: "Change", unit: "index" }),

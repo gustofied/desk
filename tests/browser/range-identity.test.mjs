@@ -188,7 +188,7 @@ for (const kind of ["embedded", "saved"]) {
       storage[savedKey] = JSON.stringify({ version: 2, items: documents, documentSchema: "desk.card", documentVersion: 1 });
       query.item = documents[0].id;
     }
-    storage[collectionKey] = JSON.stringify({ version: 9, activeId: collection.id, collections: [collection] });
+    storage[collectionKey] = JSON.stringify({ version: 10, activeId: collection.id, collections: [collection] });
     const page = await makePage(t, { url: monitorUrl("sandbox-cost", sandboxEntries[0].state, query), storage, collection: collection.id });
     await exerciseRanges(page, { cardId: "sandbox-cost", key: collection.keys[0], ranges: ["7d", "now", "all"],
       siblingKey: collection.keys[1], siblingRange: "7d" });

@@ -15,6 +15,20 @@ The idea behind Desk is that you can compose what you want to see: compute marke
 See [The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar) for
 my wider work on compute markets.
 
+## Catalogs
+
+The public showcase starts with **Overview**, a six-card selection. **Compute**,
+**Hedge**, **Power**, **Equities**, **Deals** and **Sandbox** explore each area;
+**Private** and **Team** are composed starting points for a personal watchlist
+and a shared daily desk. **All views** keeps the full library available.
+
+Hedge contains comparison charts, not hedge sizing or execution. Private and
+Team are ordinary browser-local collections, not access controls or live team
+workspaces. Sharing either follows the same explicit sharing flow below.
+
+Catalog upgrades refresh only unchanged starter selections. Custom names,
+selections, ordering, imported views and deleted older catalogs are preserved.
+
 ## Share a desk
 
 Select a catalog, open Desk with **Cmd/Ctrl-G**, and choose **Share desk**.
@@ -32,8 +46,10 @@ Up to 32 views are supported; oversized links are rejected rather than truncated
 
 ## Equities
 
-The **Equities** catalog includes MSFT, AMZN, GOOGL, ORCL, CRWV, NBIS, NVDA,
-AMD and TSM (the US-listed depositary share). Cards support **7D, 90D and 1Y**,
+The **Equities** catalog combines NVIDIA with Chips, Hyperscalers, Neoclouds,
+and NVIDIA versus H100/H200. Individual MSFT, AMZN, GOOGL, ORCL, CRWV, NBIS,
+NVDA, AMD and TSM (the US-listed depositary share) views remain in **All views**.
+Cards support **7D, 90D and 1Y**,
 daily demo prices or percentage change, comparisons, saved views and desk sharing.
 **1Y** is the default and supports drag-to-zoom. Older equities links and saved
 views using ALL open as 1Y.

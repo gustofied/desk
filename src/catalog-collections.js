@@ -7,8 +7,8 @@ import { EQUITY_LAYERS, paletteIds, THEMES } from "./card-registry.js";
 import { createSharedDesk } from "./shared-desk.js";
 
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 9;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8]);
+const STORAGE_VERSION = 10;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
@@ -16,8 +16,107 @@ const PRIVATE_CATALOG_ID = "private";
 const EQUITIES_CATALOG_ID = "equities";
 const POWER_CATALOG_ID = "power";
 const SANDBOX_CATALOG_ID = "sandbox";
+const COMPUTE_CATALOG_ID = "compute";
+const DEALS_CATALOG_ID = "deals";
+const TEAM_CATALOG_ID = "team";
 const LEGACY_QUOTE_KEY = "preset-quote-view-quote-041";
 const STARTER_CATALOGS = Object.freeze([
+  Object.freeze({
+    id: OVERVIEW_CATALOG_ID,
+    name: "Overview",
+    keys: Object.freeze([
+      "preset-gpu-price-snapshot-prices",
+      "preset-gpu-index-h200",
+      "preset-gpu-market-depth-h100-us",
+      "preset-power-basis-pjm-dominion",
+      "preset-equities-nvda",
+      "preset-sandbox-cost-cost",
+    ]),
+  }),
+  Object.freeze({
+    id: COMPUTE_CATALOG_ID,
+    name: "Compute",
+    keys: Object.freeze([
+      "preset-gpu-price-snapshot-prices",
+      "preset-gpu-index-h100",
+      "preset-gpu-index-h200",
+      "preset-gpu-index-b200",
+      "preset-gpu-index-compute-market",
+      "preset-gpu-market-depth-h100-us",
+    ]),
+  }),
+  Object.freeze({
+    id: HEDGE_CATALOG_ID,
+    name: "Hedge",
+    keys: Object.freeze([
+      "preset-gpu-index-h100-b200-spread",
+      "preset-gpu-index-h200-b300-spread",
+      "preset-power-basis-pjm-west-spread",
+      "preset-equities-nvidia-compute",
+      "preset-equities-clouds-compute",
+    ]),
+  }),
+  Object.freeze({
+    id: POWER_CATALOG_ID,
+    name: "Power",
+    keys: Object.freeze([
+      "preset-power-basis-pjm-dominion",
+      "preset-power-basis-ercot-north",
+      "preset-power-basis-pjm-west-spread",
+    ]),
+  }),
+  Object.freeze({
+    id: EQUITIES_CATALOG_ID,
+    name: "Equities",
+    keys: Object.freeze([
+      "preset-equities-nvda",
+      "preset-equities-chips",
+      "preset-equities-hyperscalers",
+      "preset-equities-neoclouds",
+      "preset-equities-nvidia-compute",
+    ]),
+  }),
+  Object.freeze({
+    id: DEALS_CATALOG_ID,
+    name: "Deals",
+    keys: Object.freeze([
+      "preset-quote-view-b200",
+      "preset-deal-view-deal-041",
+      "preset-gpu-index-b200",
+    ]),
+  }),
+  Object.freeze({
+    id: SANDBOX_CATALOG_ID,
+    name: "Sandbox",
+    keys: Object.freeze([
+      "preset-sandbox-cost-cost",
+      "preset-sandbox-cost-history",
+    ]),
+  }),
+  Object.freeze({
+    id: PRIVATE_CATALOG_ID,
+    name: "Private",
+    keys: Object.freeze([
+      "preset-quote-view-h200",
+      "preset-gpu-index-h200",
+      "preset-equities-nvidia-compute",
+    ]),
+  }),
+  Object.freeze({
+    id: TEAM_CATALOG_ID,
+    name: "Team",
+    keys: Object.freeze([
+      "preset-gpu-price-snapshot-prices",
+      "preset-gpu-index-compute-market",
+      "preset-gpu-market-depth-h100-us",
+      "preset-power-basis-pjm-dominion",
+      "preset-deal-view-deal-041",
+    ]),
+  }),
+]);
+// Keep the previous definitions for a conservative upgrade: authored catalogs
+// are never replaced just because they happen to use a starter's ID or name.
+const LEGACY_STARTER_CATALOGS = Object.freeze([
   Object.freeze({
     id: OVERVIEW_CATALOG_ID,
     name: "Overview",
@@ -610,7 +709,8 @@ function migrateLegacyState(value) {
   let collections = [...legacyState.collections];
   // Introduce only starters newer than the stored schema; current-version
   // removals remain intentional and must not recreate a user's deleted catalog.
-  const additions = STARTER_CATALOGS.filter((catalog) => {
+  const additions = LEGACY_STARTER_CATALOGS.filter((catalog) => {
+    if (sourceVersion >= 9) return false;
     if (sourceVersion >= 8) return catalog.id === SANDBOX_CATALOG_ID;
     if (sourceVersion >= 7) return [POWER_CATALOG_ID, SANDBOX_CATALOG_ID].includes(catalog.id);
     if (sourceVersion >= 4) return [EQUITIES_CATALOG_ID, POWER_CATALOG_ID, SANDBOX_CATALOG_ID].includes(catalog.id);
@@ -632,8 +732,7 @@ function migrateLegacyState(value) {
       updatedAt: now,
     });
   }
-  if (sourceVersion >= 5) return { ...legacyState, collections };
-  collections = collections.map((collection) => {
+  if (sourceVersion < 5) collections = collections.map((collection) => {
     if (
       ![OVERVIEW_CATALOG_ID, PRIVATE_CATALOG_ID].includes(collection.id) ||
       !collection.keys.includes(LEGACY_QUOTE_KEY)
@@ -646,10 +745,45 @@ function migrateLegacyState(value) {
       updatedAt: now,
     };
   });
-  return {
-    ...legacyState,
-    collections,
-  };
+  return composeStarterUpgrade({ ...legacyState, collections }, now);
+}
+
+function matchesStarter(collection, starter) {
+  return collection.id === starter.id && collection.name === starter.name &&
+    !Object.hasOwn(collection, "views") &&
+    !Object.hasOwn(collection, "palette") && !Object.hasOwn(collection, "theme") &&
+    JSON.stringify(collection.keys) === JSON.stringify(starter.keys);
+}
+
+function composeStarterUpgrade(state, now) {
+  const legacyById = new Map(LEGACY_STARTER_CATALOGS.map((starter) => [starter.id, starter]));
+  const starterById = new Map(STARTER_CATALOGS.map((starter) => [starter.id, starter]));
+  // Only the untouched original ordering is replaced with the new showcase
+  // order. A user's reordered, renamed, or custom collection list stays put.
+  const originalOrder = LEGACY_STARTER_CATALOGS.filter((starter) =>
+    state.collections.some((collection) => collection.id === starter.id));
+  const pristineOrder = state.collections.length === originalOrder.length &&
+    state.collections.every((collection, index) => matchesStarter(collection, originalOrder[index]));
+  const collections = state.collections.map((collection) => {
+    const previous = legacyById.get(collection.id);
+    const next = starterById.get(collection.id);
+    if (!previous || !next || !matchesStarter(collection, previous)) return collection;
+    if (JSON.stringify(collection.keys) === JSON.stringify(next.keys)) return collection;
+    return { ...collection, keys: [...next.keys], updatedAt: now };
+  });
+  for (const id of [COMPUTE_CATALOG_ID, DEALS_CATALOG_ID, TEAM_CATALOG_ID]) {
+    const starter = starterById.get(id);
+    if (collections.length >= MAX_COLLECTIONS || collections.some((collection) =>
+      collection.id === id || collection.name.toLocaleLowerCase() === starter.name.toLocaleLowerCase())) continue;
+    collections.push({
+      id, name: starter.name, keys: [...starter.keys], createdAt: now, updatedAt: now,
+    });
+  }
+  if (pristineOrder) {
+    const order = new Map(STARTER_CATALOGS.map((starter, index) => [starter.id, index]));
+    collections.sort((a, b) => order.get(a.id) - order.get(b.id));
+  }
+  return { ...state, collections };
 }
 
 function cloneState(state) {

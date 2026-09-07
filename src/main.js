@@ -556,6 +556,7 @@ if (root) {
     if (definition.renderer === "deal") {
       const model = createDealViewModel(marketEntryPayload(entry), {
         kind: definition.viewKind,
+        viewName: entry.label,
         marketPayload: state.runtimePayloads.get("gpu-index"),
         overrides: dealModelOverrides(display),
       });
@@ -673,6 +674,7 @@ if (root) {
         if (definition.renderer === "deal") {
           const model = createDealViewModel(payload, {
             kind: definition.viewKind,
+            viewName: pin.label,
             marketPayload: state.runtimePayloads.get("gpu-index"),
             overrides: dealModelOverrides(cardState),
           });
@@ -888,7 +890,6 @@ if (root) {
         return button;
       });
     nodes.craftTypeList.replaceChildren(...nodes.craftTypeButtons);
-    nodes.craftTypeList.style.setProperty("--craft-type-count", nodes.craftTypeButtons.length);
   }
 
   function configureComposerControls() {
@@ -1352,16 +1353,20 @@ if (root) {
       }
       if (event.key === SAVED_CATALOG_STORAGE_KEY) {
         state.savedCatalog = loadSavedCatalog(cardId);
+        const activeItem = state.savedCatalog.find((item) => item.id === state.activeCatalogId);
         if (
           state.activeCatalogId &&
-          !state.savedCatalog.some((item) => item.id === state.activeCatalogId)
+          !activeItem
         ) {
           state.activeCatalogId = null;
           state.activeViewKey = currentCardRailKey();
           state.catalogName = "";
+        } else if (activeItem) {
+          state.catalogName = activeItem.name;
         }
         refreshCatalogWorkspace("Views updated");
         syncSavedCatalogCommands();
+        if (isQuoteCard && state.layout === "focus") render(false);
         return;
       }
       if (event.key === CATALOG_ORDER_STORAGE_KEY) {
@@ -1455,6 +1460,7 @@ if (root) {
       candidate.tabIndex = candidate === option ? 0 : -1;
     }
     option.focus({ preventScroll: true });
+    option.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
 
   function catalogCollectionOptions() {
@@ -1577,8 +1583,8 @@ if (root) {
   function availableCatalogCollections() {
     return [
       ...(state.sharedDesk ? [sharedCatalogCollection()] : []),
-      { id: ALL_CARDS_CATALOG_ID, name: "All views", keys: null, system: true },
       ...state.catalogCollections.collections,
+      { id: ALL_CARDS_CATALOG_ID, name: "All views", keys: null, system: true },
     ];
   }
 
@@ -1922,6 +1928,7 @@ if (root) {
       savedCard?.button.scrollIntoView({ block: "nearest", inline: "nearest" });
       savedCard?.button.focus({ preventScroll: true });
     } else {
+      if (isQuoteCard) render(false);
       updateLocation();
       nodes.saveButton?.focus({ preventScroll: true });
     }
@@ -2011,8 +2018,7 @@ if (root) {
         : state.scale === "basis" ? `${location} spread` : location;
     }
     if (isQuoteCard) {
-      const id = state.runtimePayload?.id || "041";
-      return `Quote ${id} ${state.options.gpu}`;
+      return `Quote ${state.options.gpu}`;
     }
     if (isTransactionCard) {
       const id = state.runtimePayload?.id || "041";
@@ -2478,7 +2484,7 @@ if (root) {
         id: "catalog.quote-041",
         group: "Catalog",
         order: 4,
-        title: "Open Quote 041",
+        title: "Open Quote",
         subtitle: "B200 bid and ask",
         hint: "Quote",
         keywords: [
@@ -5132,7 +5138,7 @@ if (root) {
       } catch {}
       if (nodes.mobileSummaryLabel) {
         nodes.mobileSummaryLabel.textContent =
-          model?.label || (isQuoteCard ? "Quote 041" : "Deal 041");
+          model?.label || workspaceLabel();
       }
       if (nodes.mobileSummaryValue) {
         const quantity = Number(state.options.quantity || payload?.quantity || 256);
@@ -5805,6 +5811,7 @@ if (root) {
   function workspaceLabel() {
     if (state.craftEmpty) return "Craft";
     if (state.catalogName) return state.catalogName;
+    if (isQuoteCard) return `Quote ${state.options.gpu}`;
     if (isPowerCard) {
       if (state.scale === "energy") return "H100 power cost";
       return getLayerDefinition(cardDefinition, state.selected)?.label || cardDefinition.title;
@@ -6072,7 +6079,7 @@ if (root) {
       const observed = new Date(state.runtimePayload.asOf * 1000);
       if (nodes.shareStatus) {
         nodes.shareStatus.textContent = isQuoteCard
-          ? `Quote ${state.runtimePayload.id || "041"} agreed ${formatUsd(state.options.quote)}`
+          ? `${workspaceLabel()} agreed ${formatUsd(state.options.quote)}`
           : `${state.runtimePayload.label || "Deal 041"} terms review`;
       }
       if (nodes.shareObserved) {
@@ -6364,10 +6371,11 @@ if (root) {
 
   function createDealModel(cardState = currentCardState(), payload = null) {
     const sourcePayload =
-      payload || state.runtimePayloads.get(cardDefinition.id);
+      payload || state.runtimePayloads.get(cardDefinition.sourceCardId || cardDefinition.id);
     const marketPayload = state.runtimePayloads.get("gpu-index");
     return createDealViewModel(sourcePayload, {
       kind: cardDefinition.viewKind,
+      viewName: state.catalogName,
       marketPayload,
       overrides: dealModelOverrides(cardState),
     });
@@ -6743,6 +6751,7 @@ if (root) {
         if (!payload || !cardNodes.dealHost) continue;
         const model = createDealViewModel(payload, {
           kind: entryCard.viewKind,
+          viewName: title,
           marketPayload: state.runtimePayloads.get("gpu-index"),
           overrides: dealModelOverrides(cardState),
         });
