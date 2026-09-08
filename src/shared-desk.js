@@ -135,7 +135,9 @@ function normalizeState(card, value, strict) {
   const extraKeys = card.stateKind === "deal"
     ? ["layers", "scale", "range"]
     : card.primaryParam && card.primaryParam !== "gpu" ? ["gpu"] : [];
-  requireKeys(value, strict ? canonicalKeys : [...canonicalKeys, ...extraKeys], strict ? canonicalKeys : []);
+  // Equity links created before the optional chart style used lines implicitly.
+  const requiredKeys = card.id === "equities" ? canonicalKeys.filter(key => key !== "style") : canonicalKeys;
+  requireKeys(value, strict ? canonicalKeys : [...canonicalKeys, ...extraKeys], strict ? requiredKeys : []);
   const compatible = migrateCardVisualizationState(card.id, value);
   const input = {};
   const layerIds = card.layers.map((layer) => layer.id);

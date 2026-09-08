@@ -61,12 +61,18 @@ function catalog(cardId) {
                 palette: palette.id,
                 theme,
               });
-              const path = publishedCardSharePath(cardId, normalized);
-              if (!statesByPath.has(path)) {
-                statesByPath.set(path, Object.freeze({
-                  ...normalized,
-                  layers: Object.freeze([...normalized.layers]),
-                }));
+              const styles = cardId === "equities" && normalized.scale === "index" && normalized.layers.some(
+                id => card.layers.find(layer => layer.id === id)?.sourceCardId === "gpu-index",
+              ) ? ["lines", "bars"] : [undefined];
+              for (const style of styles) {
+                const variant = style ? { ...normalized, style } : normalized;
+                const path = publishedCardSharePath(cardId, variant);
+                if (!statesByPath.has(path)) {
+                  statesByPath.set(path, Object.freeze({
+                    ...variant,
+                    layers: Object.freeze([...variant.layers]),
+                  }));
+                }
               }
             }
           }

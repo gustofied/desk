@@ -94,6 +94,16 @@ body {
   aspect-ratio: 1200 / 630;
 }
 
+/* The type picker is content, not an empty chart. It must size itself at every
+   viewport rather than inherit the plot's fixed height or aspect ratio. */
+.desk-stage .gpu-index[data-craft-empty="true"] .gpu-benchmark__chart {
+  height: auto;
+  min-height: 0;
+  aspect-ratio: auto;
+  margin-top: 0;
+  border: 0;
+}
+
 /* Anchor the chart independently of the expanding details below it. */
 :root[data-desk-view="monitor"][data-desk-layout="focus"] body {
   align-items: start;

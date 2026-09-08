@@ -169,7 +169,7 @@ export function paintForwardPricesChart(svg, model, options = {}) {
 
 function markup(model, { colors, compact = false, gallery = false, title, height = 675, mobile = false } = {}) {
   const history = model.range !== 'now';
-  const palette = { ...colors, line: colors.theme === 'dark' ? colors.line : '#181818' };
+  const palette = colors;
   const font = mobile ? 36 : 24;
   const left = 0;
   const right = WIDTH;
@@ -184,7 +184,7 @@ function markup(model, { colors, compact = false, gallery = false, title, height
   const fraction = value => (value - model.low) / Math.max(0.01, model.high - model.low);
   const shade = value => palette.theme === 'dark'
     ? interpolateRgb(palette.paper, palette.line)(0.08 + 0.24 * fraction(value))
-    : interpolateRgb(palette.paper, interpolateRgb(colors.accent || colors.line, '#181818')(0.32))(0.12 + 0.72 * fraction(value));
+    : interpolateRgb(palette.paper, palette.line)(0.04 + 0.24 * fraction(value));
   const levels = ticks(model.low, model.high, 6).filter(v => v > model.low && v < model.high);
   const path = line().x(p => p[0]).y(p => p[1]);
   const curveArea = area().x((v, i) => x(model.deliveries[i])).y0(bottom).y1(v => y(v)).curve(curveMonotoneX);

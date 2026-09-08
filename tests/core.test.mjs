@@ -9,6 +9,7 @@ import { normalizePricePoints, alignIndexedPriceSeries } from '../src/price-seri
 import { createForwardPricesModel } from '../src/forward-prices-model.js';
 import { forwardContours, nearestContour } from '../src/forward-contours.js';
 import { renderCatalogShareArtifact } from '../scripts/catalog-share-artifacts.mjs';
+import { renderForwardPricesSvg } from '../src/forward-prices-presentation.js';
 import sharp from 'sharp';
 
 function storage() {
@@ -106,6 +107,12 @@ test('forward curves and contours share valid quotes and render both modes', asy
     assert.equal(model.structure, 'Contango');
     assert.ok(model.deliveries[0] > model.asOf);
     for (const range of ['now', 'all']) {
+      const colors = { theme: 'light', paper: '#ffffff', line: '#849095', text: '#425661' };
+      const themed = renderForwardPricesSvg({ ...model, range }, { colors, gallery: true });
+      const strokes = [...themed.matchAll(/data-forward-line=""[^>]*stroke="([^"]+)"/g)];
+      assert.ok(strokes.length > 0 && strokes.every(([, stroke]) => stroke === colors.line));
+      assert.match(themed, /data-view-artifact-header/);
+      assert.doesNotMatch(themed, /#181818/);
       const artifact = renderCatalogShareArtifact('forward-prices', { gpu, range }, new Map([['forward-prices', payload]]));
       assert.match(artifact.svg, /data-forward-line/);
       assert.match(artifact.svg, /data-view-artifact-header/);

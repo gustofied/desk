@@ -23,7 +23,9 @@ export function alignWorkspaceToolbar({ stage, toolbar, mobileViewport }) {
     if (!frame) frame = window.requestAnimationFrame(update);
   }
 
-  const observer = new ResizeObserver(schedule);
+  // ResizeObserver runs before paint. Align here so an expanding editor never
+  // paints beneath the toolbar for a frame while another animation frame waits.
+  const observer = new ResizeObserver(update);
   observer.observe(stage);
   observer.observe(toolbar);
   observer.observe(document.body);

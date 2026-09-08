@@ -653,9 +653,20 @@ export const CARD_REGISTRY = Object.freeze([
       layers: Object.freeze(["NVDA"]),
       range: "1y",
       scale: "price",
+      style: "lines",
       palette: DEFAULT_PALETTE,
       theme: DEFAULT_THEME,
     }),
+    stateOptions: Object.freeze([
+      Object.freeze({
+        id: "style",
+        label: "Style",
+        values: Object.freeze(["lines", "bars"]),
+        valueLabels: Object.freeze({ lines: "Lines", bars: "Line + bars" }),
+        default: "lines",
+        skipDefaultPath: true,
+      }),
+    ]),
     ranges: Object.freeze(["7d", "90d", "1y"]),
     allowComparisons: true,
     layers: Object.freeze([...EQUITY_LAYERS, ...EQUITY_COMPARISON_LAYERS]),
@@ -994,6 +1005,11 @@ export function normalizeCardState(cardId, stateParams = {}) {
       options[option.id] = Math.min(options[option.id], options[option.maxField]);
     }
   }
+  if (card.id === EQUITIES_ID && (scale !== "index" || !layers.some(
+    layerId => getLayerDefinition(card, layerId)?.sourceCardId === GPU_INDEX_ID,
+  ))) {
+    options.style = "lines";
+  }
 
   return {
     gpu,
@@ -1130,6 +1146,7 @@ export function publishedCardPreviewPath(cardId, stateParams, revision) {
 
 function publishedOptionPath(card, state) {
   return (card.stateOptions || [])
+    .filter(option => !option.skipDefaultPath || state[option.id] !== (card.defaults[option.id] ?? option.default))
     .map((option) => `${pathSegment(option.id)}-${pathSegment(state[option.id])}`)
     .join("~");
 }

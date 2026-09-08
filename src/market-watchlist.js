@@ -153,7 +153,7 @@ function parseEnvelope(text) {
   const items = value.items.map((value) => {
     const normalized = entry(value);
     const compatible = migrateCardVisualizationState(normalized.cardId, value.state);
-    const legacyAll = compatible !== value.state;
+    const legacyAll = normalized.cardId === "equities" && value.state.range === "all";
     const stateKeys = Object.keys(normalized.state);
     // Stored entries are complete snapshots. Do not repair missing/unknown
     // fields or invalid state by overwriting them with normalizer defaults.

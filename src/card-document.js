@@ -102,11 +102,13 @@ export function normalizeCardVisualization(cardId, state = {}) {
   return visualization;
 }
 
-// This retired range is the only legacy value that strict saved states repair.
+// Only known legacy equity fields are repaired before strict snapshot checks.
 export function migrateCardVisualizationState(cardId, state) {
-  return cardId === "equities" && isRecord(state) && state.range === "all"
-    ? { ...state, range: "1y" }
-    : state;
+  if (cardId !== "equities" || !isRecord(state)) return state;
+  const changes = {};
+  if (state.range === "all") changes.range = "1y";
+  if (!Object.hasOwn(state, "style")) changes.style = "lines";
+  return Object.keys(changes).length ? { ...state, ...changes } : state;
 }
 
 export function normalizeCardDocumentName(value) {

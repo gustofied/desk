@@ -89,15 +89,21 @@ function provenanceKind(payload) {
 
 export function observationLabel(items) {
   if (!items.length) return "";
-  const times = items.map((item) => item.observedAt)
-    .sort((left, right) => Date.parse(left) - Date.parse(right));
-  const first = formatObservationTime(times[0]);
-  const last = formatObservationTime(times.at(-1));
-  return times[0] === times.at(-1)
-    ? `As of ${first}`
-    : `Observations ${first} – ${last}`;
+  const dates = items.map((item) => new Date(item.observedAt))
+    .sort((left, right) => left - right);
+  const first = dates[0];
+  const last = dates.at(-1);
+  if (first.toISOString().slice(0, 10) === last.toISOString().slice(0, 10)) {
+    return `As of ${formatObservationDate(first)}`;
+  }
+  const includeFirstYear = first.getUTCFullYear() !== last.getUTCFullYear();
+  return `${formatObservationDate(first, includeFirstYear)} to ${formatObservationDate(last)}`;
 }
 
-function formatObservationTime(iso) {
-  return `${iso.replace(/\.000Z$/, "").replace("T", " ").replace(/:00$/, "")} UTC`;
+function formatObservationDate(date, includeYear = true) {
+  const month = new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC",
+    month: "short",
+  }).format(date);
+  return `${date.getUTCDate()} ${month}${includeYear ? ` ${date.getUTCFullYear()}` : ""}`;
 }

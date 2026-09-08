@@ -51,6 +51,7 @@ export function cardDetailDescription(card, state = {}) {
     }
     case "equities":
       if (hasCrossMarketLayers(card, layers)) {
+        if (state.style === "bars") return "Share prices as lines and GPU rental rates as bars, showing percentage changes from the same starting date.";
         return "Share prices and GPU rental rates compared as percentage changes over shared dates.";
       }
       if (scale === "index") return "Percentage changes in the selected share prices from a shared starting date.";

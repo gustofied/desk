@@ -6,6 +6,7 @@ import { cardDetailDescription } from "../src/card-descriptions.js";
 import { chartYDomain, comparisonStrokeOpacity, INDEX_BASELINE, spreadLineLabels } from "../src/chart-domain.js";
 import { alignIndexedPriceSeries, createPriceSeriesIndex, priceRowsForRange } from "../src/price-series.js";
 import { createCrossMarketSeries, hasCrossMarketLayers } from "../src/cross-market-series.js";
+import { comparisonBarOpacity, comparisonBarSeries, isComputeSeries } from "../src/comparison-bars.js";
 import { createSandboxCostModel } from "../src/sandbox-cost-model.js";
 import { renderSandboxCostSvg } from "../src/sandbox-cost-presentation.js";
 import { createForwardPricesModel } from "../src/forward-prices-model.js";
@@ -144,16 +145,26 @@ function equitySvg(series, state, colors, { title, headline, imageAlt }) {
   const baseline = state.scale === "index" ? `<line data-share-baseline="100" x1="0" x2="1200" y1="${coord(y(INDEX_BASELINE))}" y2="${coord(y(INDEX_BASELINE))}" stroke="${colors.line}" stroke-opacity="0.18" stroke-width="1" stroke-dasharray="2 8"/>` : "";
   const shade = state.scale === "index" && series.length === 1
     ? `<path d="${area().x(row => x(row.date)).y0(y(INDEX_BASELINE)).y1(row => y(row.plotValue)).curve(curveMonotoneX)(primary.rows)}" fill="${colors.area}" opacity="0.10"/>` : "";
-  const lines = [...series].sort((a, b) => Number(a.primary) - Number(b.primary)).map(candidate => {
+  const bars = state.style === "bars" ? comparisonBarSeries(series, { x, y, maxX: 1200 }).map(({ candidate, path }) => {
+    const last = candidate.rows.at(-1);
+    return `<path data-comparison-bars="${escapeXml(candidate.layer.id)}" data-share-series="${escapeXml(candidate.layer.id)}" data-first-value="${candidate.rows[0].plotValue}" data-last-value="${last.plotValue}" data-start="${+candidate.rows[0].date}" data-end="${+last.date}" data-observation-count="${candidate.rows.length}" d="${path}" fill="${colors.secondary}" fill-opacity="${comparisonBarOpacity(candidate, { theme: state.theme })}"/>`;
+  }).join("") : "";
+  const lines = [...series].filter(candidate => state.style !== "bars" || !isComputeSeries(candidate)).sort((a, b) => Number(a.primary) - Number(b.primary)).map(candidate => {
     const last = candidate.rows.at(-1);
     return `<path data-share-series="${escapeXml(candidate.layer.id)}" data-first-value="${candidate.rows[0].plotValue}" data-last-value="${last.plotValue}" data-start="${+candidate.rows[0].date}" data-end="${+last.date}" data-observation-count="${candidate.rows.length}" d="${path(candidate.rows)}" fill="none" stroke="${candidate.primary ? colors.line : colors.secondary}" stroke-opacity="${candidate.primary ? 1 : comparisonStrokeOpacity(state.theme)}" stroke-width="${candidate.primary ? 3.5 : 2}" stroke-dasharray="${candidate.primary ? "" : escapeXml(candidate.layer.strokeDasharray || "")}" stroke-linecap="round" stroke-linejoin="round"/>`;
   }).join("");
   const labels = series.length > 1 ? spreadLineLabels(series.map(candidate => ({ candidate, lineY: y(candidate.rows.at(-1).plotValue) })), 232, 592, 26).map(({ candidate, lineY, labelY }) => {
     const color = candidate.primary ? colors.line : colors.secondary;
+    if (state.style === "bars") {
+      const width = Math.ceil(candidate.layer.id.length * 18 * 0.61) + 12;
+      return `<path d="M1200,${coord(lineY)}H1192V${coord(labelY)}" fill="none" stroke="${color}" stroke-width="1.5"/>
+        <rect data-comparison-label="${escapeXml(candidate.layer.id)}" x="${1194 - width}" y="${coord(labelY - 12)}" width="${width}" height="24" rx="2" fill="${colors.paper}" fill-opacity="0.96"/>
+        <text x="1188" y="${coord(labelY + 6)}" text-anchor="end" fill="${color}" fill-opacity="${isComputeSeries(candidate) ? comparisonBarOpacity(candidate, { theme: state.theme, label: true }) : 1}" font-family="Geist Mono, monospace" font-size="18" font-weight="${candidate.primary ? 600 : 500}">${escapeXml(candidate.layer.id)}</text>`;
+    }
     return `<path d="M1200,${coord(lineY)}H1192V${coord(labelY)}" fill="none" stroke="${color}" stroke-width="1.5"/>
       <text x="1188" y="${coord(labelY + 6)}" text-anchor="end" fill="${color}" stroke="${colors.paper}" stroke-width="8" stroke-linejoin="round" style="paint-order:stroke fill" font-family="Geist Mono, monospace" font-size="18" font-weight="${candidate.primary ? 600 : 500}">${escapeXml(candidate.layer.id)}</text>`;
   }).join("") : "";
-  return svgFrame(colors, title, imageAlt, `${shade}${baseline}${lines}${labels}${viewArtifactHeaderMarkup({ title, context: state.range.toUpperCase(), headline, colors })}`);
+  return svgFrame(colors, title, imageAlt, `${shade}${bars}${baseline}${lines}${labels}${viewArtifactHeaderMarkup({ title, context: state.range.toUpperCase(), headline, colors })}`);
 }
 
 function themeColors(paletteId, theme) {

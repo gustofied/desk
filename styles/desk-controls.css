@@ -884,6 +884,16 @@ button.compute-share-card-frame:focus-visible {
   border-radius: 0;
 }
 
+.gpu-benchmark__tooltip-row i[data-mark="bar"] {
+  width: 4px;
+  height: 12px;
+  justify-self: center;
+}
+
+.gpu-index .gpu-benchmark__tooltip-row[data-active="true"] :is(b, strong) {
+  color: var(--desk-accent-deep);
+}
+
 .gpu-benchmark__band {
   fill: var(--desk-comparison-line);
   opacity: 0.075;
@@ -1140,8 +1150,8 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__compare-panel {
-  position: absolute;
-  top: 100%;
+  position: relative;
+  top: auto;
   right: 0;
   left: 0;
   z-index: 4;
@@ -1337,9 +1347,7 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__craft-empty {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
+  position: relative;
   display: grid;
   padding: 32px;
   place-items: center;
@@ -1352,39 +1360,29 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__craft-types {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  background: color-mix(in srgb, var(--desk-canvas) 94%, var(--desk-accent));
-  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .gpu-benchmark__craft-types button {
-  min-width: 0;
+  flex: 1 1 calc((100% - 24px) / 4);
+  min-width: min(100%, 9rem);
   min-height: 64px;
   padding: 16px 12px;
   color: inherit;
-  font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
+  font: 500 14px/20px "Geist Mono", ui-monospace, monospace;
   letter-spacing: 0.02em;
   white-space: normal;
-  overflow-wrap: anywhere;
   cursor: pointer;
-  background: transparent;
-  border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
+  background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
+  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
+  border-radius: 4px;
   transition:
-    background-color 180ms var(--desk-ease-out),
-    color 180ms var(--desk-ease-out),
-    opacity 180ms var(--desk-ease-out),
-    transform 140ms var(--desk-ease-out);
-}
-
-.gpu-benchmark__craft-types button:nth-child(-n + 5) {
-  border-top: 0;
-}
-
-.gpu-benchmark__craft-types button:nth-child(5n + 1) {
-  border-left: 0;
+    background-color 200ms var(--desk-ease-out),
+    border-color 200ms var(--desk-ease-out),
+    color 200ms var(--desk-ease-out),
+    transform 200ms var(--desk-ease-out);
 }
 
 .gpu-benchmark__craft-types button:active {
@@ -1404,37 +1402,14 @@ button.compute-share-card-frame:focus-visible {
 
 @media (hover: hover) and (pointer: fine) {
   .gpu-benchmark__craft-types button:not(:disabled):hover {
-    background: color-mix(in srgb, var(--desk-accent) 14%, transparent);
+    background: color-mix(in srgb, var(--desk-canvas) 90%, var(--desk-accent));
+    border-color: color-mix(in srgb, var(--desk-accent-deep) 40%, transparent);
   }
 }
 
 @media (max-width: 800px) {
   .gpu-benchmark__craft-empty {
     padding: 24px;
-  }
-
-  .gpu-benchmark__craft-types {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .gpu-benchmark__craft-types button:nth-child(n + 3) {
-    border-top: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
-  }
-
-  .gpu-benchmark__craft-types button:nth-child(even) {
-    border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
-  }
-
-  .gpu-benchmark__craft-types button:nth-child(-n + 2) {
-    border-top: 0;
-  }
-
-  .gpu-benchmark__craft-types button:nth-child(odd) {
-    border-left: 0;
-  }
-
-  .gpu-benchmark__craft-types button:nth-child(odd):last-child {
-    grid-column: 1 / -1;
   }
 }
 
@@ -1788,23 +1763,17 @@ button.compute-share-card-frame:focus-visible {
     grid-template-columns: auto auto minmax(0, 1fr) auto;
   }
 
-  .gpu-index[data-craft-empty="true"] .gpu-benchmark__chart {
-    height: auto;
-    min-height: 0;
-    margin-top: 0;
-    aspect-ratio: auto;
-    border: 0;
-  }
-
   .gpu-index[data-craft-empty="true"] .gpu-benchmark__craft-empty {
-    position: relative;
-    inset: auto;
     padding: 16px;
   }
 
-  .gpu-index[data-craft-empty="true"] .gpu-benchmark__craft-types {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    border: 0;
+  .gpu-benchmark__craft-types button {
+    flex-basis: calc((100% - 8px) / 2);
+    min-width: 0;
+    min-height: 48px;
+    padding: 12px 8px;
+    font-size: 12px;
+    line-height: 16px;
   }
 
   .gpu-benchmark__depth-craft {
@@ -2024,6 +1993,7 @@ button.compute-share-card-frame:focus-visible {
   .gpu-benchmark__band,
   .gpu-benchmark__composer,
   .gpu-benchmark__composer button,
+  .gpu-benchmark__craft-types button,
   .gpu-benchmark__depth-view button {
     transition: none;
   }

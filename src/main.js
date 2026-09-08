@@ -31,6 +31,7 @@ import { paintGpuPriceBarChart } from "./gpu-price-bar-presentation.js";
 import { createGpuSpreadSeries } from "./gpu-spread-model.js";
 import { alignIndexedPriceSeries, createPriceSeriesIndex, priceRowsForRange } from "./price-series.js";
 import { createCrossMarketSeries, hasCrossMarketLayers } from "./cross-market-series.js";
+import { comparisonBarOpacity, comparisonBarSeries, isComputeSeries } from "./comparison-bars.js";
 import { createGpuMarketDepthModel } from "./gpu-market-depth-model.js";
 import { paintGpuMarketDepthChart } from "./gpu-market-depth-presentation.js";
 import { createPowerBasisModel } from "./power-basis-model.js";
@@ -152,7 +153,9 @@ if (root) {
   const catalogScrollStorageKey = "desk.catalog-scroll.v1";
   const activeCatalogSessionKey = "desk.active-catalog.v1";
   const railFocusStorageKey = "desk.rail-focus.v1";
+  const craftFocusStorageKey = "desk.craft-focus.v1";
   let pendingRailFocusKey = takePendingRailFocus();
+  const pendingCraftFocusCardId = takePendingCraftFocus();
   const motionPreference = window.matchMedia(
     "(prefers-reduced-motion: reduce)",
   );
@@ -261,14 +264,14 @@ if (root) {
   const initialPreset = (cardDefinition.catalogPresets || []).find((preset) =>
     presetCatalogKey(cardId, preset.id) === params.get("entry"));
   const hasCompleteCatalogSnapshot = cardStateParamIds(cardDefinition).every(
-    (name) => params.has(name),
+    (name) => params.has(name) || cardDefinition.stateOptions?.some(option => option.id === name && option.skipDefaultPath),
   );
   const requestedCatalogItem =
     !initialCraftEmpty && hasCompleteCatalogSnapshot
       ? savedCatalog.find((item) => item.id === params.get("item")) || null
       : null;
   const initialCraftDraft =
-    initialMode === "craft" ? null : loadCraftDraft(savedCatalog);
+    initialMode === "craft" && !initialCraftEmpty ? null : loadCraftDraft(savedCatalog);
   const initialViewNeedsRepair =
     mobileCardView ||
     (params.has("card") && requestedCard !== cardId) ||
@@ -629,7 +632,8 @@ if (root) {
       const series = cardSeriesForState(display, { definition });
       if (!series.length) return false;
       drawShareArtifact(svg, series, display.gpu, {
-        compact: true, scale: display.scale, range: display.range,
+        compact: true, minimal: true, scale: display.scale, range: display.range,
+        style: display.style,
         title: item.label, palette, theme: display.theme,
       });
     }
@@ -786,7 +790,6 @@ if (root) {
 
   function initialize() {
     syncCardAppearance();
-    if (state.craftEmpty) clearStoredCraftDraft();
     state.craftBaseline = state.craftEmpty
       ? null
       : requestedCatalogItem
@@ -1032,8 +1035,10 @@ if (root) {
         const label = document.createElement("span");
         const buttons = document.createElement("div");
         label.className = "gpu-benchmark__compare-label";
+        label.dataset.optionRow = option.id;
         label.textContent = option.label;
         buttons.className = "gpu-benchmark__options";
+        buttons.dataset.optionRow = option.id;
         buttons.setAttribute("role", "radiogroup");
         buttons.setAttribute("aria-label", option.label);
         const optionButtons = option.values.map((value) => {
@@ -1053,7 +1058,7 @@ if (root) {
         configureChoiceButtons(
           optionButtons,
           (button) => button.dataset.cardOptionValue,
-          (value) => selectCardOption(option.id, value),
+          (value, event) => selectCardOption(option.id, value, event),
           "aria-checked",
           "radio",
         );
@@ -1370,12 +1375,13 @@ if (root) {
     });
   }
 
-  function selectCardOption(optionId, value) {
+  function selectCardOption(optionId, value, event) {
     if (state.mode !== "craft" || state.craftEmpty) return;
+    if (state.options[optionId] === value) return;
     mutateComposition({
       ...currentCardState(),
       [optionId]: value,
-    });
+    }, { drawAnimation: event?.detail !== 0 && event?.type !== "keydown" });
   }
 
   function configureDealCraftControls() {
@@ -2372,7 +2378,7 @@ if (root) {
     }
 
     if (cardId === "gpu-index") {
-      await beginNewComposition(focusNavigation);
+      await beginNewComposition(focusNavigation, { keepDraft: true });
       return;
     }
 
@@ -2390,7 +2396,7 @@ if (root) {
   }
 
   function preserveCraftDraft() {
-    if (!state.craftDirty || state.craftEmpty) return;
+    if (state.mode !== "craft" || !state.craftDirty || state.craftEmpty) return;
     state.craftDraft = {
       cardState: currentCardState(),
       activeCatalogId: state.activeCatalogId,
@@ -2417,7 +2423,13 @@ if (root) {
     clearStoredCraftDraft();
     state.zoomWindow = null;
     setCompareOpen(false);
-    await showPanel("detail", true, "focus", false, "craft");
+    if (state.mode === "craft" && state.panel === "detail" && state.layout === "focus") {
+      syncControls();
+      render(false);
+      updateLocation();
+    } else {
+      await showPanel("detail", true, "focus", false, "craft");
+    }
     if (focusNavigation) {
       nodes.modeButtons
         .find((button) => button.dataset.deskMode === "craft")
@@ -2486,6 +2498,11 @@ if (root) {
     });
 
     if (nextCard.id !== cardId) {
+      if (focusEditor) {
+        try {
+          window.sessionStorage.setItem(craftFocusStorageKey, nextCard.id);
+        } catch {}
+      }
       window.location.assign(withSharedDeskLocation(cardUrl(nextCard.id, "craft", next)));
       return;
     }
@@ -2508,16 +2525,24 @@ if (root) {
     updateLocation();
 
     if (focusEditor) {
-      window.requestAnimationFrame(() => {
-        const target = isDealCard
-          ? nodes.compareToggle
-          : isDepthCard
-            ? nodes.depthTargetTrigger
-            : nodes.compareToggle;
-        target?.focus({ preventScroll: true });
-      });
+      window.requestAnimationFrame(focusCraftEditor);
     }
     announceWorkspace(`${nextCard.craftLabel || nextCard.title} ready in Craft`);
+  }
+
+  function focusCraftEditor() {
+    const target = isDepthCard ? nodes.depthTargetTrigger : nodes.compareToggle;
+    (target?.disabled ? nodes.detailPanel : target)?.focus({ preventScroll: true });
+  }
+
+  function takePendingCraftFocus() {
+    try {
+      const key = window.sessionStorage.getItem(craftFocusStorageKey) || "";
+      window.sessionStorage.removeItem(craftFocusStorageKey);
+      return key;
+    } catch {
+      return "";
+    }
   }
 
   function selectPrimaryData(layerId) {
@@ -4467,6 +4492,10 @@ if (root) {
       console.error("Desk market data failed to load", error);
       showFailure("Market data is temporarily unavailable.");
     } finally {
+      if (
+        pendingCraftFocusCardId === cardId && state.mode === "craft" &&
+        !state.craftEmpty && document.activeElement === document.body
+      ) focusCraftEditor();
       signalReady();
     }
   }
@@ -5674,6 +5703,11 @@ if (root) {
       button.tabIndex = selected || (!hasSelectedOption && index === 0) ? 0 : -1;
       button.disabled = !state.shareReady || empty;
     });
+    if (cardId === "equities" && nodes.optionGroup) {
+      const available = state.scale === "index" && hasCrossMarketLayers(cardDefinition, [...state.layers]);
+      nodes.optionGroup.querySelectorAll('[data-option-row="style"]').forEach(node => { node.hidden = !available; });
+      nodes.optionGroup.hidden = !available;
+    }
     nodes.optionInputs.forEach((input) => {
       const option = cardDefinition.stateOptions?.find(option => option.id === input.dataset.cardOptionInput);
       if (option?.maxField) input.max = String(Math.min(option.max, state.options[option.maxField]));
@@ -5874,9 +5908,11 @@ if (root) {
       }
       return;
     }
-    if (mode !== "craft") setDepthCraftMenu(null);
-    if (mode === "catalog") {
+    if (mode !== "craft") {
       preserveCraftDraft();
+      setDepthCraftMenu(null);
+    }
+    if (mode === "catalog") {
       await showPanel(
         "share",
         true,
@@ -7340,6 +7376,8 @@ if (root) {
       );
       drawShareArtifact(cardNodes.artifact, cardSeries, cardState.gpu, {
         compact: true,
+        minimal: true,
+        style: cardState.style,
         scale: cardState.scale,
         range: cardState.range,
         title,
@@ -7506,6 +7544,7 @@ if (root) {
   function renderShareArtifact(series, motion) {
     drawShareArtifact(nodes.shareArtifactSvg, series, state.selected, {
       compact: true,
+      style: state.options.style,
       scale: state.scale,
       title: state.catalogName || (isCrossMarketSeries(series) ? workspaceLabel() : undefined),
       reveal: revealShareArtifact(motion),
@@ -7560,6 +7599,7 @@ if (root) {
     svg.attr("viewBox", "0 0 1200 675");
 
     const palette = options.palette || {
+      theme: options.theme || currentCardTheme(),
       paper: currentPaperColor(),
       line: currentLineColor(),
       secondary: currentSecondaryLineColor(),
@@ -7567,6 +7607,7 @@ if (root) {
     };
     const compact = options.compact === true;
     const scale = options.scale || state.scale;
+    const showBars = options.style === "bars" && scale === "index" && series.some(isComputeSeries);
     const range = options.range || state.range;
     const allRows = series.flatMap((candidate) => candidate.rows);
     const yValues = scale === "price" && series.length === 1
@@ -7650,6 +7691,7 @@ if (root) {
         .attr("aria-hidden", "true");
     }
     if (
+      !showBars &&
       (series.length === 1 || isCrossMarketSeries(series)) &&
       (scale === "index" || scale === "spread")
     ) {
@@ -7676,7 +7718,17 @@ if (root) {
         .attr("stroke-width", 1)
         .attr("stroke-dasharray", "2 8");
     }
-    const orderedSeries = [...series].sort(
+    if (showBars) {
+      comparisonBarSeries(series, { x, y, minX: chart.x, maxX: chart.x + chart.width }).forEach(({ candidate, path }) => {
+        svg.append("path")
+          .attr("data-comparison-bars", candidate.layer.id)
+          .attr("d", path)
+          .attr("fill", palette.secondary)
+          .attr("fill-opacity", comparisonBarOpacity(candidate, { theme: options.theme || currentCardTheme() }))
+          .attr("aria-hidden", "true");
+      });
+    }
+    const orderedSeries = series.filter(candidate => !showBars || !isComputeSeries(candidate)).sort(
       (left, right) => Number(isPrimary(left)) - Number(isPrimary(right)),
     );
     orderedSeries.forEach((candidate) => {
@@ -7709,11 +7761,12 @@ if (root) {
         .attr("stroke-linejoin", "round")
         .attr("stroke-width", strokeWidth);
     });
-    if (hasComparisons && (!compact || isCrossMarketSeries(series))) {
-      appendShareEndpointLabels(svg, series, palette, chart, x, y, isPrimary);
+    if (hasComparisons && (!compact || isCrossMarketSeries(series)) && !(showBars && options.minimal)) {
+      appendShareEndpointLabels(svg, series, palette, chart, x, y, isPrimary, { bars: showBars });
     }
     if (options.reveal) {
       animateChartDraw(svgNode.querySelector("[data-chart-draw]"));
+      svgNode.querySelectorAll("[data-comparison-bars]").forEach(node => animateChartDraw(node));
       svgNode.querySelectorAll("[data-chart-support]").forEach((node) => animateChartSupport(node));
     }
     const headerLayer = svg
@@ -7772,6 +7825,7 @@ if (root) {
     const selectedRows = primary?.rows || [];
     const allRows = series.flatMap((candidate) => candidate.rows);
     if (!selectedRows.length || !allRows.length) return;
+    const showBars = state.options.style === "bars" && state.scale === "index" && series.some(isComputeSeries);
     const width = Math.max(300, Math.round(nodes.chart.clientWidth));
     const height = Math.max(180, Math.round(nodes.chart.clientHeight));
     const margin = {
@@ -7865,7 +7919,7 @@ if (root) {
       const baseline = state.scale === "spread"
         ? SPREAD_BASELINE
         : INDEX_BASELINE;
-      if (series.length === 1 || isCrossMarketSeries(series)) {
+      if (!showBars && (series.length === 1 || isCrossMarketSeries(series))) {
         const relativeArea = d3
           .area()
           .x((row) => x(row.date))
@@ -7895,7 +7949,17 @@ if (root) {
       .x((row) => x(row.date))
       .y((row) => y(row.plotValue))
       .curve(d3.curveMonotoneX);
-    const orderedSeries = [...series].sort(
+    const barGroups = showBars ? comparisonBarSeries(series, { x, y, maxX: innerWidth }) : [];
+    barGroups.forEach(({ candidate, path }) => {
+      plot.append("path")
+        .attr("class", "gpu-benchmark__comparison-bars")
+        .attr("data-comparison-bars", candidate.layer.id)
+        .attr("d", path)
+        .attr("fill", currentSecondaryLineColor())
+        .attr("fill-opacity", comparisonBarOpacity(candidate, { theme: currentCardTheme() }))
+        .attr("aria-hidden", "true");
+    });
+    const orderedSeries = series.filter(candidate => !showBars || !isComputeSeries(candidate)).sort(
       (left, right) => Number(left.primary) - Number(right.primary),
     );
     orderedSeries.forEach((candidate) => {
@@ -7929,6 +7993,7 @@ if (root) {
 
     if (reveal) {
       animateChartDraw(plot.select(".gpu-benchmark__line.is-selected").node());
+      plot.selectAll("[data-comparison-bars]").each(function revealBars() { animateChartDraw(this); });
       plot
         .selectAll(
           ".gpu-benchmark__band, .gpu-benchmark__value-area, " +
@@ -7966,7 +8031,8 @@ if (root) {
             `M${endpointX},${lineY}H${innerWidth - 8}V${labelY}`,
           )
           .attr("stroke", color);
-        plot
+        const label = plot.append("g");
+        const text = label
           .append("text")
           .attr("class", `gpu-benchmark__line-label ${stateClass}`)
           .attr("aria-hidden", "true")
@@ -7976,6 +8042,10 @@ if (root) {
           .attr("text-anchor", "end")
           .attr("fill", color)
           .text(seriesEndpointLabel(candidate, series));
+        if (showBars && isComputeSeries(candidate)) {
+          text.style("opacity", comparisonBarOpacity(candidate, { theme: currentCardTheme(), label: true })).style("stroke", "none");
+          appendComparisonLabelBacking(label, text, currentPaperColor(), 4, 2);
+        }
       });
     }
 
@@ -8001,6 +8071,16 @@ if (root) {
       .append("circle")
       .attr("class", "gpu-benchmark__point is-selected")
       .attr("r", 3.8);
+    const barFocus = interaction.selectAll("rect[data-bar-focus]")
+      .data(barGroups).join("rect")
+      .attr("data-bar-focus", ({ candidate }) => candidate.layer.id)
+      .attr("fill", currentSecondaryLineColor())
+      .attr("fill-opacity", ({ candidate }) => {
+        // Account for the resting bar underneath instead of doubling its tint.
+        const resting = comparisonBarOpacity(candidate, { theme: currentCardTheme() });
+        const active = comparisonBarOpacity(candidate, { theme: currentCardTheme(), active: true });
+        return (active - resting) / (1 - resting);
+      });
     let focusIndex = selectedRows.length - 1;
     const overlay = plot
       .append("rect")
@@ -8040,12 +8120,13 @@ if (root) {
         showPoint();
       });
 
+    const observationZones = horizontalHitZones(selectedRows, (row) => x(row.date), innerWidth);
     const hitZones = plot
       .append("g")
       .attr("class", "gpu-benchmark__hit-zones")
       .attr("aria-hidden", "true")
       .selectAll("rect")
-      .data(horizontalHitZones(selectedRows, (row) => x(row.date), innerWidth))
+      .data(observationZones)
       .join("rect")
       .attr("x", (zone) => zone.x)
       .attr("width", (zone) => zone.width)
@@ -8066,6 +8147,52 @@ if (root) {
     let zoomDrag = null;
     if (zoomEnabled) {
       hitZones.on("pointerdown.zoom", beginZoom);
+    }
+    // Keep the whole bar region inspectable, including the tiny gaps between
+    // columns. Browser hit-testing avoids coordinate drift on scaled pages.
+    if (showBars) {
+      const dateIndices = new Map(selectedRows.map((row, index) => [+row.date, index]));
+      const zonesByIndex = new Map(observationZones.map(zone => [zone.index, zone]));
+      const extents = new Map();
+      const centers = new Map();
+      for (const { bars, index: groupIndex } of barGroups) for (const bar of bars) {
+        const extent = extents.get(+bar.date) || [bar.y, bar.y + bar.height];
+        extents.set(+bar.date, [Math.min(extent[0], bar.y), Math.max(extent[1], bar.y + bar.height)]);
+        const peers = centers.get(+bar.date) || [];
+        peers[groupIndex] = bar.x + bar.width / 2;
+        centers.set(+bar.date, peers);
+      }
+      const targets = barGroups.flatMap(({ candidate, index: groupIndex, bars }) => bars.flatMap(bar => {
+        const index = dateIndices.get(+bar.date);
+        const zone = zonesByIndex.get(index);
+        const [top, bottom] = extents.get(+bar.date);
+        if (!zone || bottom <= top) return [];
+        const peers = centers.get(+bar.date);
+        const left = Number.isFinite(peers[groupIndex - 1])
+          ? (peers[groupIndex - 1] + peers[groupIndex]) / 2 : zone.x;
+        const right = Number.isFinite(peers[groupIndex + 1])
+          ? (peers[groupIndex] + peers[groupIndex + 1]) / 2 : zone.x + zone.width;
+        return [{ ...bar, candidate, index, targetX: left,
+          targetWidth: right - left, targetY: top, targetHeight: bottom - top }];
+      }));
+      const barHits = plot.append("g")
+        .attr("class", "gpu-benchmark__bar-hit-zones")
+        .attr("aria-hidden", "true")
+        .selectAll("rect").data(targets)
+        .join("rect")
+        .attr("data-bar-hit", bar => bar.candidate.layer.id)
+        .attr("data-observation-index", bar => bar.index)
+        .attr("x", bar => bar.targetX).attr("y", bar => bar.targetY)
+        .attr("width", bar => bar.targetWidth).attr("height", bar => bar.targetHeight)
+        .attr("fill", "transparent")
+        .style("cursor", "crosshair")
+        .on("pointerenter", (_event, bar) => {
+          if (zoomDrag || bar.index === undefined) return;
+          focusIndex = bar.index;
+          interaction.style("display", null);
+          showPoint(bar);
+        });
+      if (zoomEnabled) barHits.on("pointerdown.zoom", beginZoom);
     }
     plot.on("pointerleave", hidePoint);
 
@@ -8175,7 +8302,7 @@ if (root) {
       cancelZoom({ pointerId: zoomDrag?.pointerId });
     }
 
-    function showPoint() {
+    function showPoint(activeBar = null) {
       const selectedRow = selectedRows[focusIndex];
       if (!selectedRow) return;
       const pointX = x(selectedRow.date);
@@ -8195,6 +8322,13 @@ if (root) {
         .filter(Boolean);
       crosshair.attr("x1", pointX).attr("x2", pointX);
       point.attr("cx", pointX).attr("cy", pointY);
+      barFocus.each(function focusBar({ bars }) {
+        const bar = bars.find(item => +item.date === +selectedRow.date);
+        d3.select(this)
+          .attr("visibility", bar ? null : "hidden")
+          .attr("x", bar?.x ?? 0).attr("y", bar?.y ?? 0)
+          .attr("width", bar?.width ?? 0).attr("height", bar?.height ?? 0);
+      });
       overlay
         .attr("aria-valuenow", focusIndex)
         .attr(
@@ -8217,13 +8351,13 @@ if (root) {
               )
               .join(". ")}.`,
         );
-      renderTooltip(selectedRow.date, tooltipRows);
+      renderTooltip(selectedRow.date, tooltipRows, activeBar?.candidate.layer.id);
       positionSvgTooltip({
         tooltipNode: nodes.tooltip,
         chartNode: nodes.chart,
         svgNode: nodes.svg,
-        svgX: pointX + margin.left,
-        svgY: pointY + margin.top,
+        svgX: (activeBar ? activeBar.x + activeBar.width / 2 : pointX) + margin.left,
+        svgY: (activeBar ? activeBar.y + activeBar.height / 2 : pointY) + margin.top,
       });
     }
 
@@ -8233,7 +8367,7 @@ if (root) {
     }
   }
 
-  function renderTooltip(dateValue, rows) {
+  function renderTooltip(dateValue, rows, activeLayerId = null) {
     const date = document.createElement("time");
     const crossMarket = hasCrossMarketLayers(cardDefinition, [...state.layers]);
     date.textContent = cardId === "equities"
@@ -8273,6 +8407,7 @@ if (root) {
       entry.className = "gpu-benchmark__tooltip-row";
       entry.dataset.layer = row.layer.id;
       if (row.primary) entry.dataset.selected = "true";
+      if (row.layer.id === activeLayerId) entry.dataset.active = "true";
       const lineColor = row.primary
         ? currentLineColor()
         : currentSecondaryLineColor();
@@ -8292,6 +8427,12 @@ if (root) {
           ? 1
           : comparisonStrokeOpacity(currentCardTheme()),
       );
+      if (state.options.style === "bars" && isComputeSeries(row)) {
+        swatch.dataset.mark = "bar";
+        swatch.style.backgroundImage = "none";
+        swatch.style.backgroundColor = lineColor;
+        swatch.style.opacity = String(comparisonBarOpacity(row, { theme: currentCardTheme() }));
+      }
       label.textContent = row.layer.shortLabel || row.layer.label;
       value.textContent = formatPlotValue(row.plotValue, state.scale);
       range.textContent =
@@ -8436,6 +8577,7 @@ if (root) {
     x,
     y,
     isPrimary,
+    { bars = false } = {},
   ) {
     const labelPositions = spreadLineLabels(
       series
@@ -8470,7 +8612,8 @@ if (root) {
           candidateIsPrimary ? null : candidate.layer.strokeDasharray || null,
         )
         .attr("aria-hidden", "true");
-      appendShareText(svg, {
+      const label = svg.append("g");
+      const text = appendShareText(label, {
         x: chartRight - 12,
         y: labelY + 6,
         text: seriesEndpointLabel(candidate, series),
@@ -8487,7 +8630,21 @@ if (root) {
         .attr("stroke-width", 8)
         .attr("stroke-linejoin", "round")
         .attr("aria-hidden", "true");
+      if (bars && isComputeSeries(candidate)) {
+        text.attr("fill-opacity", comparisonBarOpacity(candidate, { theme: palette.theme, label: true })).attr("stroke", "none");
+        appendComparisonLabelBacking(label, text, palette.paper, 6, 4);
+      }
     }
+  }
+
+  function appendComparisonLabelBacking(group, text, paper, paddingX, paddingY) {
+    const bounds = text.node().getBBox();
+    group.insert("rect", "text")
+      .attr("data-comparison-label-backing", "")
+      .attr("x", bounds.x - paddingX).attr("y", bounds.y - paddingY)
+      .attr("width", bounds.width + paddingX * 2).attr("height", bounds.height + paddingY * 2)
+      .attr("rx", 2).attr("fill", paper).attr("fill-opacity", 0.94)
+      .attr("aria-hidden", "true").style("pointer-events", "none");
   }
 
   function isCrossMarketSeries(series) {
