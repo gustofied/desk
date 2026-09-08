@@ -12,24 +12,52 @@ export function createMonitorDataModel({
   sandboxModel = null,
   forwardModel = null,
   hedgeModel = null,
+  leaseModel = null,
   runtimePayload = null,
   runtimePayloads = new Map(),
 }) {
+  if (card?.id === "gpu-lease" && leaseModel) {
+    const m = leaseModel;
+    const money = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+    const sourceUrl = "https://www.amcompute.com/blog/gpu-depreciation-residual-value-report-2026";
+    return finalizeModel(card, {
+      id: "gpu-lease-inputs", label: "Residual value", summary: `${m.term} months`,
+      detailDescription: cardDetailDescription(card, cardState),
+      breadcrumbs: ["Inputs"], rowCount: 0, asOf: null, accessKind: "source", status: "ready",
+      unit: "USD", provenance: "Your inputs", priceBasis: "calculator",
+      source: { name: "American Compute", url: sourceUrl }, sourceUrl,
+      description: "Payments are made at month-end. The squares split total lease payments and resale proceeds.",
+      calculationFields: [
+        ["Equipment cost", money(m.cost)], ["Lease term", `${m.term} months`],
+        ["Financing rate", `${m.apr}%`], ["Monthly payment", money(m.monthlyPayment)],
+        ["Lease payments", money(m.totalPayments)], ["Resale value", money(m.residual)],
+        ["Residual / equipment cost", `${m.residualPercent.toFixed(1)}%`],
+        ["Total receipts", money(m.totalReceipts)], ["Financing cost", money(m.financingCost)],
+      ],
+    });
+  }
   if (card?.id === "gpu-hedge" && hedgeModel) {
     const m = hedgeModel;
+    const coverageView = (cardState?.scale || card.defaults?.scale) === "coverage";
     const money = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
-    const calculationFields = [
+    const calculationFields = coverageView ? [
+      ["GPU-hours", m.hours.toLocaleString("en-US")], ["Hedged", `${m.coverage}%`],
+      ["Hedged GPU-hours", m.hedgedHours.toLocaleString("en-US")],
+      ["Exposed GPU-hours", m.exposedHours.toLocaleString("en-US")],
+    ] : [
       ["GPU-hours", m.hours.toLocaleString("en-US")], ["Revenue", money(m.revenue)],
       ["Hedge price", `${money(m.rate)}/GPU-h`], ["Hedged", `${m.coverage}%`],
       ["Other costs", money(m.costs)], ["Rental minus index", `${money(m.basis)}/GPU-h`],
       ["Profit at hedge price", money(m.headlineProfit)], ["Margin", m.margin === null ? "—" : `${m.margin.toFixed(1)}%`],
     ];
     return finalizeModel(card, {
-      id: "gpu-hedge-inputs", label: "GPU hedge", summary: `${m.gpu} ${m.delivery}`,
+      id: "gpu-hedge-inputs", label: coverageView ? "GPU coverage" : "GPU hedge", summary: `${m.gpu} ${m.delivery}`,
       detailDescription: cardDetailDescription(card, cardState),
       breadcrumbs: ["Inputs"], rowCount: 0, asOf: null, accessKind: "source", status: "ready",
-      unit: "USD", provenance: "Your inputs", priceBasis: "calculator",
-      description: "Fixed GPU-hours, revenue and rental-to-index difference. Hedge fees and financing excluded.",
+      unit: coverageView ? "GPU-hours" : "USD", provenance: "Your inputs", priceBasis: "calculator",
+      description: coverageView
+        ? "Coverage applies to the entered GPU-hours. Exposed hours remain sensitive to settlement prices."
+        : "Fixed GPU-hours, revenue and rental-to-index difference. Hedge fees and financing excluded.",
       calculationFields,
     });
   }

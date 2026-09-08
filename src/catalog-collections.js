@@ -7,11 +7,12 @@ import { EQUITY_LAYERS, paletteIds, THEMES } from "./card-registry.js";
 import { createSharedDesk } from "./shared-desk.js";
 
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 14;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+const STORAGE_VERSION = 16;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
+const LEASE_CATALOG_ID = "lease";
 const PRIVATE_CATALOG_ID = "private";
 const EQUITIES_CATALOG_ID = "equities";
 const POWER_CATALOG_ID = "power";
@@ -58,12 +59,18 @@ const STARTER_CATALOGS = Object.freeze([
     name: "Hedge",
     keys: Object.freeze([
       "preset-gpu-hedge-buyer",
+      "preset-gpu-hedge-coverage",
       "preset-gpu-index-h100-b200-spread",
       "preset-gpu-index-h200-b300-spread",
       "preset-power-basis-pjm-west-spread",
       "preset-equities-nvidia-compute",
       "preset-equities-clouds-compute",
     ]),
+  }),
+  Object.freeze({
+    id: LEASE_CATALOG_ID,
+    name: "Lease",
+    keys: Object.freeze(["preset-gpu-lease-residual"]),
   }),
   Object.freeze({
     id: POWER_CATALOG_ID,
@@ -715,15 +722,15 @@ function migrateLegacyState(value) {
     version: STORAGE_VERSION,
   });
   const now = new Date().toISOString();
-  // Version 14 only introduces the calculator in an untouched Hedge starter.
-  // Do not replay older starter additions against a user's current catalogs.
-  if (sourceVersion === 13) return upgradeHedgeStarter(legacyState, now);
+  // Introduce Lease once, without restoring removed older starters or views.
+  if (sourceVersion >= 15) return addLeaseStarter(legacyState, now);
+  if (sourceVersion >= 13) return addLeaseStarter(upgradeHedgeStarter(legacyState, now, sourceVersion), now);
   let collections = [...legacyState.collections];
   const forward = STARTER_CATALOGS.find(starter => starter.id === "forward");
   if (sourceVersion < 11 && collections.length < MAX_COLLECTIONS && !collections.some(collection => collection.id === forward.id || collection.name.toLowerCase() === "forward")) {
     collections.push({ ...forward, keys: [...forward.keys], createdAt: now, updatedAt: now });
   }
-  if (sourceVersion >= 10) return upgradeHedgeStarter(composeStarterUpgrade({ ...legacyState, collections }, now), now);
+  if (sourceVersion >= 10) return addLeaseStarter(upgradeHedgeStarter(composeStarterUpgrade({ ...legacyState, collections }, now), now, sourceVersion), now);
   // Introduce only starters newer than the stored schema; current-version
   // removals remain intentional and must not recreate a user's deleted catalog.
   const additions = LEGACY_STARTER_CATALOGS.filter((catalog) => {
@@ -762,12 +769,28 @@ function migrateLegacyState(value) {
       updatedAt: now,
     };
   });
-  return upgradeHedgeStarter(composeStarterUpgrade({ ...legacyState, collections }, now), now);
+  return addLeaseStarter(upgradeHedgeStarter(composeStarterUpgrade({ ...legacyState, collections }, now), now, sourceVersion), now);
 }
 
-function upgradeHedgeStarter(state, now) {
+function addLeaseStarter(state, now) {
+  const starter = STARTER_CATALOGS.find(catalog => catalog.id === LEASE_CATALOG_ID);
+  if (state.collections.length >= MAX_COLLECTIONS || state.collections.some(collection =>
+    collection.id === starter.id || collection.name.toLocaleLowerCase() === starter.name.toLocaleLowerCase())) {
+    return state;
+  }
+  const collections = [...state.collections];
+  const hedgeIndex = collections.findIndex(collection => collection.id === HEDGE_CATALOG_ID);
+  collections.splice(hedgeIndex < 0 ? collections.length : hedgeIndex + 1, 0, {
+    ...starter, keys: [...starter.keys], createdAt: now, updatedAt: now,
+  });
+  return { ...state, collections };
+}
+
+function upgradeHedgeStarter(state, now, sourceVersion) {
   const next = STARTER_CATALOGS.find(starter => starter.id === HEDGE_CATALOG_ID);
-  const previous = { ...next, keys: next.keys.filter(key => key !== "preset-gpu-hedge-buyer") };
+  const previous = { ...next, keys: next.keys.filter(key =>
+    key !== "preset-gpu-hedge-coverage" &&
+    (sourceVersion >= 14 || key !== "preset-gpu-hedge-buyer")) };
   return {
     ...state,
     collections: state.collections.map(collection => matchesStarter(collection, previous)

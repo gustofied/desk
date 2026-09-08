@@ -25,6 +25,12 @@ export function renderGpuHedgeSvg(model, options = {}) {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${chart.height}" viewBox="0 0 ${WIDTH} ${chart.height}" ${accessibility}>${chart.inner}</svg>`;
 }
 
+export function cancelGpuHedgeMotion(svg) {
+  chartUpdates.get(svg)?.cancel?.();
+  chartUpdates.delete(svg);
+  cancelChartMotion(svg);
+}
+
 export function paintGpuHedgeChart(svg, model, options = {}) {
   if (!svg) return;
   const previous = chartUpdates.get(svg);

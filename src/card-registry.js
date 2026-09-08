@@ -26,6 +26,8 @@ const SANDBOX_COST_ID = "sandbox-cost";
 const SANDBOX_COST_DATA_FILE = "data/sandbox-cost.json";
 const GPU_HEDGE_ID = "gpu-hedge";
 const GPU_HEDGE_DATA_FILE = "data/gpu-hedge.json";
+const GPU_LEASE_ID = "gpu-lease";
+const GPU_LEASE_DATA_FILE = "data/gpu-lease.json";
 
 export const SANDBOX_PROVIDER_LAYERS = Object.freeze([
   ["novita", "Novita"],
@@ -50,6 +52,13 @@ const PRIVATE_CAPACITY_LAYERS = Object.freeze(
       views: Object.freeze(["price"]),
     })
   ),
+);
+
+const GPU_HEDGE_LAYERS = Object.freeze(
+  PRIVATE_CAPACITY_LAYERS.map(layer => Object.freeze({
+    ...layer,
+    views: Object.freeze(["price", "coverage"]),
+  })),
 );
 
 const PRIVATE_CAPACITY_OPTIONS = Object.freeze([
@@ -94,6 +103,13 @@ const GPU_HEDGE_OPTIONS = Object.freeze([
   { id: "rate", label: "Hedge price", type: "decimal", min: 0.01, max: 100, precision: 2, default: 2.5 },
   { id: "coverage", label: "Hedged %", type: "decimal", min: 0, max: 100, precision: 1, default: 100 },
   { id: "basis", label: "Price difference", type: "decimal", min: -100, max: 100, precision: 2, default: 0 },
+].map(option => Object.freeze(option)));
+
+const GPU_LEASE_OPTIONS = Object.freeze([
+  { id: "cost", label: "Equipment cost", type: "decimal", min: 1, max: 1_000_000_000_000, precision: 2, default: 100_000_000 },
+  { id: "term", label: "Lease term", type: "integer", min: 1, max: 120, default: 36 },
+  { id: "apr", label: "Financing rate", type: "decimal", min: 0, max: 100, precision: 2, default: 10 },
+  { id: "residual", label: "Resale value", type: "decimal", min: 0, max: 1_000_000_000_000, maxField: "cost", precision: 2, default: 30_000_000 },
 ].map(option => Object.freeze(option)));
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
@@ -753,13 +769,50 @@ export const CARD_REGISTRY = Object.freeze([
     }),
     ranges: Object.freeze(["now"]),
     allowComparisons: false,
-    layers: PRIVATE_CAPACITY_LAYERS,
+    layers: GPU_HEDGE_LAYERS,
     stateOptions: GPU_HEDGE_OPTIONS,
     catalogPresets: Object.freeze([
       Object.freeze({ id: "buyer", label: "GPU hedge", state: Object.freeze({ gpu: "H100" }) }),
+      Object.freeze({ id: "coverage", label: "GPU coverage", state: Object.freeze({ gpu: "H100", scale: "coverage", coverage: 60 }) }),
     ]),
     visualizations: Object.freeze([
       Object.freeze({ id: "price", label: "Profit", unit: "usd" }),
+      Object.freeze({ id: "coverage", label: "Coverage", unit: "percent" }),
+    ]),
+  }),
+  Object.freeze({
+    id: GPU_LEASE_ID,
+    slug: GPU_LEASE_ID,
+    hash: "gpu-benchmark-card",
+    renderer: "gpu-lease",
+    stateKind: "calculator",
+    primaryParam: "asset",
+    title: "Residual value",
+    craftLabel: "Residual value",
+    description: "Lease payments and resale value at the end of the term.",
+    dataFile: GPU_LEASE_DATA_FILE,
+    dataUrl: `./${GPU_LEASE_DATA_FILE}`,
+    dataAdapter: "calculator",
+    publishable: false,
+    sharePath: `/cards/${GPU_LEASE_ID}`,
+    previewImageDir: `assets/social/${GPU_LEASE_ID}`,
+    previewPageDir: `cards/${GPU_LEASE_ID}`,
+    defaults: Object.freeze({
+      layer: "system", layers: Object.freeze(["system"]),
+      range: "now", scale: "price", palette: DEFAULT_PALETTE, theme: DEFAULT_THEME,
+      ...Object.fromEntries(GPU_LEASE_OPTIONS.map(option => [option.id, option.default])),
+    }),
+    ranges: Object.freeze(["now"]),
+    allowComparisons: false,
+    layers: Object.freeze([
+      Object.freeze({ id: "system", label: "GPU system", unit: "usd", views: Object.freeze(["price"]) }),
+    ]),
+    stateOptions: GPU_LEASE_OPTIONS,
+    catalogPresets: Object.freeze([
+      Object.freeze({ id: "residual", label: "Residual value", state: Object.freeze({ asset: "system" }) }),
+    ]),
+    visualizations: Object.freeze([
+      Object.freeze({ id: "price", label: "Residual value", unit: "usd" }),
     ]),
   }),
   Object.freeze({
@@ -935,6 +988,12 @@ export function normalizeCardState(cardId, stateParams = {}) {
       normalizeStateOption(option, stateParams[option.id], card.defaults[option.id]),
     ]),
   );
+
+  for (const option of card.stateOptions || []) {
+    if (option.maxField && Number.isFinite(options[option.maxField])) {
+      options[option.id] = Math.min(options[option.id], options[option.maxField]);
+    }
+  }
 
   return {
     gpu,

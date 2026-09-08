@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "cardId": "gpu-lease",
+  "revision": "gpu-lease-calculator-v1",
+  "dataset": {
+    "kind": "calculator",
+    "source": {
+      "name": "American Compute",
+      "url": "https://www.amcompute.com/blog/gpu-depreciation-residual-value-report-2026"
+    },
+    "description": "Lease payments and resale value, using the equipment cost, term and financing rate entered in Craft.",
+    "methodology": "Equal end-of-month payments are calculated so their present value plus the discounted final resale value equals the equipment cost. The monthly rate is the nominal annual percentage rate divided by 12. The tile split shows total nominal payments and resale proceeds; residual percent compares resale value with the original equipment cost. The starting inputs follow American Compute's 36-month lease example: $100 million cost, 10% annual financing and $30 million residual value.",
+    "currency": "USD",
+    "unit": "equipment"
+  }
+}

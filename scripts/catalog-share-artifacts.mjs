@@ -12,11 +12,14 @@ import { createForwardPricesModel } from "../src/forward-prices-model.js";
 import { renderForwardPricesSvg } from "../src/forward-prices-presentation.js";
 import { createGpuHedgeModel } from "../src/gpu-hedge-model.js";
 import { renderGpuHedgeSvg } from "../src/gpu-hedge-presentation.js";
+import { renderGpuCoverageSvg } from "../src/gpu-coverage-presentation.js";
+import { createGpuLeaseModel } from "../src/gpu-lease-model.js";
+import { renderGpuLeaseSvg } from "../src/gpu-lease-presentation.js";
 import { createDealViewModel } from "../src/deal-view-model.js";
 import { renderDealViewSvg } from "../src/deal-view-presentation.js";
 import { viewArtifactHeaderMarkup } from "../src/view-artifact-header.js";
 
-const SUPPORTED = new Set(["equities", "sandbox-cost", "quote-view", "deal-view", "forward-prices", "gpu-hedge"]);
+const SUPPORTED = new Set(["equities", "sandbox-cost", "quote-view", "deal-view", "forward-prices", "gpu-hedge", "gpu-lease"]);
 const RENDERER_VERSION = "catalog-share-v1";
 
 /** Pure, deterministic social SVGs from caller-supplied runtime snapshots. */
@@ -73,11 +76,21 @@ export function renderCatalogShareArtifact(cardId, stateParams = {}, payloads = 
     const end = Math.max(...series.map(candidate => +candidate.rows.at(-1).date));
     imageAlt = `${title}. ${normalized.range.toUpperCase()}. ${normalized.symbol} ${headline}${normalized.scale === "price" ? " per share" : " from the shared starting date"}. ${day(start)} to ${day(end)}. ${description}`;
     svg = equitySvg(series, normalized, colors, { title, headline, imageAlt });
+  } else if (cardId === "gpu-lease") {
+    const model = createGpuLeaseModel(requirePayload(cardId), normalized);
+    title = "Residual value";
+    imageAlt = `${title}. ${model.term}-month GPU equipment lease. ${usd(model.monthlyPayment)} per month, ${usd(model.residual)} resale value. ${description}`;
+    const content = renderGpuLeaseSvg(model, { colors, compact: true, gallery: true, height: 630, title });
+    svg = svgFrame(colors, title, imageAlt, svgInner(content));
   } else if (cardId === "gpu-hedge") {
     const model = createGpuHedgeModel(requirePayload(cardId), normalized);
-    title = "GPU hedge";
-    imageAlt = `${normalized.gpu} ${title.toLowerCase()}. Settlement month ${normalized.delivery}. ${normalized.hours.toLocaleString("en-US")} GPU-hours, ${normalized.coverage}% hedged at ${usd(normalized.rate)} per GPU-hour. ${description}`;
-    const content = renderGpuHedgeSvg(model, { colors, compact: true, gallery: true, height: 630, title });
+    const coverageView = normalized.scale === "coverage";
+    title = coverageView ? "GPU coverage" : "GPU hedge";
+    imageAlt = coverageView
+      ? `${model.gpu} GPU coverage. Settlement month ${model.delivery}. ${model.hours.toLocaleString("en-US")} GPU-hours: ${model.hedgedHours.toLocaleString("en-US")} hedged, ${model.exposedHours.toLocaleString("en-US")} exposed. ${description}`
+      : `${normalized.gpu} ${title.toLowerCase()}. Settlement month ${normalized.delivery}. ${normalized.hours.toLocaleString("en-US")} GPU-hours, ${normalized.coverage}% hedged at ${usd(normalized.rate)} per GPU-hour. ${description}`;
+    const render = coverageView ? renderGpuCoverageSvg : renderGpuHedgeSvg;
+    const content = render(model, { colors, compact: true, gallery: true, height: 630, title });
     svg = svgFrame(colors, title, imageAlt, svgInner(content));
   } else if (cardId === "forward-prices") {
     const model = createForwardPricesModel(requirePayload(cardId), normalized);

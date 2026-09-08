@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  CARD_REGISTRY,
   getCardDefinition,
   GPU_LAYERS,
 } from "../src/card-registry.js";
@@ -29,6 +30,16 @@ const sandboxCard = getCardDefinition("sandbox-cost");
 const forwardCard = getCardDefinition("forward-prices");
 const forwardRuntime = await readJson(join(projectRoot, forwardCard.dataFile));
 for (const layer of forwardCard.layers) createForwardPricesModel(forwardRuntime, { gpu: layer.id });
+const calculatorEntries = await Promise.all(CARD_REGISTRY
+  .filter(card => card.stateKind === "calculator")
+  .map(async card => {
+    const runtime = await readJson(join(projectRoot, card.dataFile));
+    if (runtime.cardId !== card.id || runtime.dataset?.kind !== "calculator" ||
+      typeof runtime.revision !== "string" || !runtime.revision) {
+      throw new TypeError(`Invalid calculator runtime: ${card.id}`);
+    }
+    return [card.id, { file: card.dataFile, revision: runtime.revision }];
+  }));
 const gpuLayers = GPU_LAYERS.filter((layer) => layer.unit === "usd-hour");
 const tokenLayer = GPU_LAYERS.find((layer) => layer.id === "TOKEN");
 
@@ -137,6 +148,7 @@ const dataManifest = {
     sandboxManifestAsOf,
   ),
   cards: {
+    ...Object.fromEntries(calculatorEntries),
     [forwardCard.id]: { file: forwardCard.dataFile, revision: forwardRuntime.revision, asOf: forwardRuntime.asOf },
     [priceCard.id]: {
       file: priceCard.dataFile,

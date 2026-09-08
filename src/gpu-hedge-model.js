@@ -38,6 +38,7 @@ export function createGpuHedgeModel(payload, state = {}) {
   ]).nice(8).domain();
   return Object.freeze({
     gpu, delivery, hours, revenue, costs, rate, coverage, basis,
+    hedgedHours, exposedHours: hours - hedgedHours,
     headlineProfit: headline.hedged, margin: headline.margin,
     breakEven, domain: Object.freeze(domain), profitAt,
   });

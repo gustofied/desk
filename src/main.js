@@ -39,7 +39,10 @@ import { createSandboxCostModel } from "./sandbox-cost-model.js";
 import { createForwardPricesModel } from "./forward-prices-model.js";
 import { paintForwardPricesChart } from "./forward-prices-presentation.js";
 import { createGpuHedgeModel } from "./gpu-hedge-model.js";
-import { paintGpuHedgeChart } from "./gpu-hedge-presentation.js";
+import { paintGpuHedgeChart, cancelGpuHedgeMotion } from "./gpu-hedge-presentation.js";
+import { paintGpuCoverageChart, cancelGpuCoverageMotion } from "./gpu-coverage-presentation.js";
+import { createGpuLeaseModel } from "./gpu-lease-model.js";
+import { paintGpuLeaseChart, cancelGpuLeaseMotion } from "./gpu-lease-presentation.js";
 import { createMonthPicker } from "./month-picker.js";
 import { paintSandboxCostChart } from "./sandbox-cost-presentation.js";
 import { createDealViewModel } from "./deal-view-model.js";
@@ -560,7 +563,7 @@ if (root) {
     return state.runtimePayloads.get(definition.sourceCardId || definition.id);
   }
 
-  function renderMarketPreview(host, item) {
+  function renderMarketPreview(host, item, { motion = "none" } = {}) {
     const entry = marketEntry(item);
     if (!entry || !marketEntryPayload(entry)) return false;
     const definition = getCardDefinition(entry.cardId);
@@ -581,10 +584,20 @@ if (root) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("aria-hidden", "true");
     host.append(svg);
-    if (definition.renderer === "gpu-hedge") {
-      paintGpuHedgeChart(svg, createGpuHedgeModel(marketEntryPayload(entry), display), {
-        colors: palette, compact: true, gallery: true, title: entry.label, reducedMotion: true, decorative: true,
+    if (definition.renderer === "gpu-lease") {
+      const previewMotion = motion === "reveal";
+      paintGpuLeaseChart(svg, createGpuLeaseModel(marketEntryPayload(entry), display), {
+        colors: palette, compact: true, gallery: true, title: entry.label,
+        motion, previewMotion, hoverMotion: true, reducedMotion: !previewMotion, decorative: true,
       });
+      return () => cancelGpuLeaseMotion(svg);
+    } else if (definition.renderer === "gpu-hedge") {
+      const previewMotion = display.scale === "coverage" && motion === "reveal";
+      paintHedgeView(svg, createGpuHedgeModel(marketEntryPayload(entry), display), display.scale, {
+        colors: palette, compact: true, gallery: true, title: entry.label,
+        motion: previewMotion ? "reveal" : "none", previewMotion, reducedMotion: !previewMotion, decorative: true,
+      });
+      if (display.scale === "coverage") return () => cancelGpuCoverageMotion(svg);
     } else if (definition.renderer === "forward-prices") {
       paintForwardPricesChart(svg, createForwardPricesModel(marketEntryPayload(entry), display), {
         colors: palette, compact: true, gallery: true, title: entry.label, reducedMotion: true, decorative: true,
@@ -717,10 +730,14 @@ if (root) {
           displayValue = low === high ? formatUsd(low) : `${formatUsd(low)}–${formatUsd(high)}`;
           displayUnit = "/GPU-h";
           timestamp = model.asOf;
+        } else if (definition.renderer === "gpu-lease") {
+          const model = createGpuLeaseModel(payload, cardState);
+          displayValue = formatHedgeProfit(model.residual);
+          displayUnit = "resale";
         } else if (definition.renderer === "gpu-hedge") {
           const model = createGpuHedgeModel(payload, cardState);
-          displayValue = formatHedgeProfit(model.headlineProfit);
-          displayUnit = "profit";
+          displayValue = cardState.scale === "coverage" ? `${model.coverage}%` : formatHedgeProfit(model.headlineProfit);
+          displayUnit = cardState.scale === "coverage" ? "hedged" : "profit";
         } else if (definition.renderer === "forward-prices") {
           const model = createForwardPricesModel(payload, cardState);
           displayValue = formatUsd(model.latest[0]);
@@ -750,7 +767,7 @@ if (root) {
             : "";
           timestamp = latest.date.getTime() / 1000;
         }
-        if (!Number.isFinite(timestamp) && definition.renderer !== "gpu-hedge") return null;
+        if (!Number.isFinite(timestamp) && definition.stateKind !== "calculator") return null;
         return {
           id: pin.id, label: pin.label, displayValue, displayUnit,
           observedAt: Number.isFinite(timestamp) ? new Date(timestamp * 1000).toISOString() : "",
@@ -1009,7 +1026,7 @@ if (root) {
     }
 
     if (nodes.optionGroup && !isDepthCard && !isDealCard) {
-      nodes.optionGroup.classList.toggle("gpu-benchmark__calculator-inputs", cardDefinition.renderer === "gpu-hedge");
+      nodes.optionGroup.classList.toggle("gpu-benchmark__calculator-inputs", cardDefinition.stateKind === "calculator");
       const optionControls = (cardDefinition.stateOptions || []).map((option) => {
         if (!option.values) return createNumericCraftField(option);
         const label = document.createElement("span");
@@ -1102,7 +1119,7 @@ if (root) {
     control.setAttribute("aria-label", option.label);
     if (option.type !== "month") control.inputMode = "decimal";
     control.dataset.cardOptionInput = option.id;
-    control.dataset.displayPrecision = ["rate", "basis"].includes(option.id) ? "2" : "0";
+    control.dataset.displayPrecision = ["rate", "basis", "apr"].includes(option.id) ? "2" : "0";
     const error = document.createElement("small");
     error.id = `craft-${cardId}-${option.id}-error`;
     error.className = "gpu-benchmark__input-error";
@@ -1138,7 +1155,7 @@ if (root) {
       if (!control.checkValidity()) {
         invalidCalculatorInputs.add(control);
         control.setAttribute("aria-invalid", "true");
-        error.textContent = `Enter ${option.min} to ${option.max}.`;
+        error.textContent = `Enter ${control.min} to ${control.max}.`;
         error.hidden = false;
         return;
       }
@@ -1146,7 +1163,7 @@ if (root) {
     });
     const value = document.createElement("div");
     value.className = "gpu-benchmark__input-value";
-    if (["revenue", "costs", "rate", "basis"].includes(option.id)) {
+    if (["revenue", "costs", "rate", "basis", "cost", "residual"].includes(option.id)) {
       const currency = document.createElement("span");
       currency.textContent = "$";
       currency.setAttribute("aria-hidden", "true");
@@ -1165,7 +1182,7 @@ if (root) {
       value.append(display);
       control.addEventListener("blur", () => syncCalculatorFieldDisplay(control));
     }
-    if (option.id === "coverage") {
+    if (["coverage", "apr"].includes(option.id)) {
       const percent = document.createElement("span");
       percent.textContent = "%";
       percent.setAttribute("aria-hidden", "true");
@@ -1189,7 +1206,7 @@ if (root) {
   }
 
   function validateCalculatorInputs() {
-    if (cardDefinition.renderer !== "gpu-hedge" || state.mode !== "craft" || state.craftEmpty) return true;
+    if (cardDefinition.stateKind !== "calculator" || state.mode !== "craft" || state.craftEmpty) return true;
     const inputs = nodes.optionInputs.filter(input => input.type !== "range");
     const invalid = inputs.find(input => {
       syncMonthFallbackValidity(input);
@@ -1197,6 +1214,9 @@ if (root) {
     });
     if (invalid) {
       const enteredValues = inputs.map(input => [input, input.value]);
+      if (state.scale === "coverage" && ["revenue", "rate", "costs", "basis"].includes(invalid.dataset.cardOptionInput)) {
+        mutateComposition({ ...currentCardState(), scale: "price" }, { drawAnimation: false });
+      }
       setCompareOpen(true);
       enteredValues.forEach(([input, value]) => { input.value = value; });
       const more = invalid.closest("details");
@@ -2218,6 +2238,8 @@ if (root) {
   }
 
   function suggestedCatalogName() {
+    if (cardDefinition.renderer === "gpu-lease") return "Residual value";
+    if (cardDefinition.renderer === "gpu-hedge") return state.scale === "coverage" ? "GPU coverage" : "GPU hedge";
     if (isSandboxCard) return "Sandbox cost";
     if (isBarCard) return "Latest prices";
     if (isDepthCard) return `H100 depth ${state.options.target} nodes`;
@@ -2521,7 +2543,7 @@ if (root) {
     });
   }
 
-  function selectScale(scale) {
+  function selectScale(scale, event) {
     if (state.craftEmpty || !cardDefinition.visualizations.some(
       (visualization) => visualization.id === scale,
     )) {
@@ -2543,6 +2565,7 @@ if (root) {
     const next = setCompositionScale(cardId, currentCardState(), scale);
     if (next.scale !== scale) return;
     mutateComposition(next, {
+      drawAnimation: event?.detail !== 0 && event?.type !== "keydown",
       message:
         scale === "price" && hadToken && !next.layers.includes("TOKEN")
           ? "Price view selected, Token Price Index removed"
@@ -3443,6 +3466,10 @@ if (root) {
     pendingSandboxGalleryCards.clear();
     cancelCatalogReorder();
     state.catalogDirty = true;
+    for (const card of catalogCards.values()) {
+      cancelGpuCoverageMotion(card.artifact);
+      cancelGpuLeaseMotion(card.artifact);
+    }
     catalogCards.clear();
     const entries = catalogEntries();
     nodes.galleryGrid.dataset.cardCount = String(Math.min(entries.length, 5));
@@ -4463,6 +4490,10 @@ if (root) {
     ) {
       throw new Error(`Unsupported card data at ${url}`);
     }
+    if (definition.renderer === "gpu-lease") {
+      createGpuLeaseModel(payload, definition.defaults);
+      return;
+    }
     if (definition.renderer === "gpu-hedge") {
       createGpuHedgeModel(payload, definition.defaults);
       return;
@@ -4836,6 +4867,8 @@ if (root) {
     }
 
     if (nodes.svg) {
+      cancelGpuCoverageMotion(nodes.svg);
+      cancelGpuLeaseMotion(nodes.svg);
       d3.select(nodes.svg).interrupt();
       d3.select(nodes.svg).selectAll("*").interrupt();
       nodes.svg.getAnimations?.().forEach((animation) => animation.cancel());
@@ -4853,6 +4886,8 @@ if (root) {
       nodes.svg.setAttribute("role", "img");
     }
     if (nodes.shareArtifactSvg) {
+      cancelGpuCoverageMotion(nodes.shareArtifactSvg);
+      cancelGpuLeaseMotion(nodes.shareArtifactSvg);
       d3.select(nodes.shareArtifactSvg).interrupt();
       d3.select(nodes.shareArtifactSvg).selectAll("*").interrupt();
       nodes.shareArtifactSvg
@@ -5164,7 +5199,7 @@ if (root) {
     );
     // A new saved/preset/draft composition replaces the editor contents. During
     // an in-place edit, other invalid fields retain what the user is correcting.
-    if (cardDefinition.renderer === "gpu-hedge" && !preserveCalculatorDrafts) {
+    if (cardDefinition.stateKind === "calculator" && !preserveCalculatorDrafts) {
       nodes.optionInputs.forEach(input => {
         invalidCalculatorInputs.delete(input);
         input.value = String(next[input.dataset.cardOptionInput] ?? "");
@@ -5355,11 +5390,19 @@ if (root) {
   }
 
   function syncMobileSummary() {
+    if (cardDefinition.renderer === "gpu-lease" && state.runtimePayload && !state.craftEmpty) {
+      const model = createGpuLeaseModel(state.runtimePayload, currentCardState());
+      if (nodes.mobileSummaryLabel) nodes.mobileSummaryLabel.textContent = "Residual value";
+      if (nodes.mobileSummaryValue) nodes.mobileSummaryValue.textContent = formatHedgeProfit(model.residual);
+      if (nodes.mobileSummaryRange) nodes.mobileSummaryRange.textContent = `${model.term} months`;
+      return;
+    }
     if (cardDefinition.renderer === "gpu-hedge" && state.runtimePayload && !state.craftEmpty) {
       const model = createGpuHedgeModel(state.runtimePayload, currentCardState());
-      if (nodes.mobileSummaryLabel) nodes.mobileSummaryLabel.textContent = `${model.gpu} hedge`;
-      if (nodes.mobileSummaryValue) nodes.mobileSummaryValue.textContent = formatHedgeProfit(model.headlineProfit);
-      if (nodes.mobileSummaryRange) nodes.mobileSummaryRange.textContent = `${model.coverage}%`;
+      const coverageView = state.scale === "coverage";
+      if (nodes.mobileSummaryLabel) nodes.mobileSummaryLabel.textContent = `${model.gpu} ${coverageView ? "coverage" : "hedge"}`;
+      if (nodes.mobileSummaryValue) nodes.mobileSummaryValue.textContent = coverageView ? `${model.coverage}%` : formatHedgeProfit(model.headlineProfit);
+      if (nodes.mobileSummaryRange) nodes.mobileSummaryRange.textContent = coverageView ? "hedged" : `${model.coverage}%`;
       return;
     }
     if (isSandboxCard) {
@@ -5487,7 +5530,7 @@ if (root) {
       nodes.primaryLabel.hidden = families.length <= 1;
     }
     if (nodes.layerLabel) nodes.layerLabel.textContent = isSandboxCard ? "Providers" : isBarCard ? "Bars" : "Compare";
-    if (nodes.primaryRow) nodes.primaryRow.hidden = isDepthCard || isDealCard;
+    if (nodes.primaryRow) nodes.primaryRow.hidden = isDepthCard || isDealCard || cardDefinition.renderer === "gpu-lease";
     if (nodes.primaryGroup) nodes.primaryGroup.hidden = families.length <= 1;
     if (nodes.layerRow) {
       nodes.layerRow.hidden = cardDefinition.allowComparisons === false;
@@ -5560,7 +5603,9 @@ if (root) {
       button.tabIndex = button.disabled ? -1 : 0;
       button.setAttribute(
         "aria-label",
-        button.dataset.cardScale === "price"
+        cardDefinition.renderer === "gpu-hedge"
+          ? button.dataset.cardScale === "coverage" ? "Show GPU coverage" : "Show hedge profit"
+        : button.dataset.cardScale === "price"
           ? isSandboxCard ? "Show estimated cost per job" : cardId === "equities" ? "Show daily close in USD per share" : "Show hourly price"
           : button.dataset.cardScale === "index"
             ? "Show percentage change from the range start"
@@ -5594,15 +5639,15 @@ if (root) {
         ? String(state.options.target)
         : String(dataCount);
       nodes.compareCount.hidden =
-        cardDefinition.renderer === "gpu-hedge" || isPowerCard || isDealCard || empty || (!isDepthCard && dataCount === 0);
+        cardDefinition.stateKind === "calculator" || isPowerCard || isDealCard || empty || (!isDepthCard && dataCount === 0);
     }
     if (nodes.compareToggle) {
       nodes.compareToggle.setAttribute("aria-expanded", String(state.compareOpen));
       nodes.compareToggle.disabled = !state.shareReady;
       nodes.compareToggle.setAttribute(
         "aria-label",
-        cardDefinition.renderer === "gpu-hedge"
-          ? `Data, ${state.selected} hedge inputs`
+        cardDefinition.renderer === "gpu-lease" ? "Data, lease inputs" : cardDefinition.renderer === "gpu-hedge"
+          ? `Data, ${state.selected} ${state.scale === "coverage" ? "coverage" : "hedge"} inputs`
         : isDepthCard
           ? `Target, ${state.options.target} nodes`
           : isDealCard
@@ -5630,6 +5675,8 @@ if (root) {
       button.disabled = !state.shareReady || empty;
     });
     nodes.optionInputs.forEach((input) => {
+      const option = cardDefinition.stateOptions?.find(option => option.id === input.dataset.cardOptionInput);
+      if (option?.maxField) input.max = String(Math.min(option.max, state.options[option.maxField]));
       const hasInvalidDraft = state.mode === "craft" && invalidCalculatorInputs.has(input) && !input.checkValidity();
       if (!hasInvalidDraft) syncDealCraftControlValue(input, state.options[input.dataset.cardOptionInput]);
       syncCalculatorFieldDisplay(input);
@@ -5689,8 +5736,10 @@ if (root) {
         : labels;
       nodes.svg?.setAttribute(
         "aria-label",
-        cardDefinition.renderer === "gpu-hedge"
-          ? `${state.selected} profit with and without a GPU price hedge`
+        cardDefinition.renderer === "gpu-lease" ? "Lease payments and resale value" : cardDefinition.renderer === "gpu-hedge"
+          ? state.scale === "coverage"
+            ? `${state.selected} GPU-hours, ${state.options.coverage}% hedged`
+            : `${state.selected} profit with and without a GPU price hedge`
         : isSandboxCard
           ? `${labels}, estimated sandbox cost per job, ${rangeControlLabel(state.range)}`
         : isPowerCard
@@ -5706,8 +5755,12 @@ if (root) {
           : `${labels} price history`,
       );
       nodes.chartDescription.textContent =
-        cardDefinition.renderer === "gpu-hedge"
-          ? "Profit across settlement prices with and without a hedge. Inputs are fixed across the price range."
+        cardDefinition.renderer === "gpu-lease"
+          ? "Lease payments and resale proceeds as shares of their combined total. Equipment cost, term, financing rate and resale value are set in Craft."
+        : cardDefinition.renderer === "gpu-hedge"
+          ? state.scale === "coverage"
+            ? "GPU-hours split between hedged and exposed. Each square represents one percent of total hours."
+            : "Profit across settlement prices with and without a hedge. Inputs are fixed across the price range."
         : isSandboxCard
           ? state.range === "now"
             ? "Estimated cost per benchmark job. Whiskers show minimum to maximum, bars show the middle half, and ticks mark the median."
@@ -6064,6 +6117,7 @@ if (root) {
   function workspaceLabel() {
     if (state.craftEmpty) return "Craft";
     if (state.catalogName) return state.catalogName;
+    if (cardDefinition.renderer === "gpu-hedge") return state.scale === "coverage" ? "GPU coverage" : "GPU hedge";
     if (isQuoteCard) return `Quote ${state.options.gpu}`;
     if (isPowerCard) {
       if (state.scale === "energy") return "H100 power cost";
@@ -6079,14 +6133,16 @@ if (root) {
   }
 
   function rangeControlLabel(range) {
-    if (cardDefinition.renderer === "gpu-hedge") return "PAYOFF";
+    if (cardDefinition.renderer === "gpu-lease") return `${state.options.term} MONTHS`;
+    if (cardDefinition.renderer === "gpu-hedge") return state.scale === "coverage" ? "COVERAGE" : "PAYOFF";
     if (cardDefinition.renderer === "forward-prices") return range === "now" ? "CURVE" : "HISTORY";
     if (isSandboxCard && range === "now") return "LATEST";
     return ranges[range]?.label || String(range || "").toUpperCase();
   }
 
   function rangeControlAriaLabel(range) {
-    if (cardDefinition.renderer === "gpu-hedge") return "Show hedge payoff";
+    if (cardDefinition.renderer === "gpu-lease") return "Show residual value";
+    if (cardDefinition.renderer === "gpu-hedge") return state.scale === "coverage" ? "Show GPU coverage" : "Show hedge payoff";
     if (cardDefinition.renderer === "forward-prices") return range === "now" ? "Show forward curve" : "Show forward history";
     if (range === "now") return isSandboxCard ? "Show latest run" : "Show current profile";
     if (range === "1d") return "Show one day";
@@ -6343,6 +6399,14 @@ if (root) {
   }
 
   function syncShareStatus() {
+    if (cardDefinition.renderer === "gpu-lease") {
+      if (nodes.shareStatus) nodes.shareStatus.textContent = "";
+      if (nodes.shareObserved) {
+        nodes.shareObserved.textContent = `${state.options.term} months`;
+        nodes.shareObserved.removeAttribute("datetime");
+      }
+      return;
+    }
     if (cardDefinition.renderer === "gpu-hedge") {
       if (nodes.shareStatus) nodes.shareStatus.textContent = "";
       if (nodes.shareObserved) {
@@ -6557,6 +6621,8 @@ if (root) {
   function render(drawAnimation) {
     // Retire the old surface's draw too when it becomes hidden (including Craft).
     cancelChartMotion(root);
+    cancelGpuLeaseMotion(nodes.svg);
+    cancelGpuLeaseMotion(nodes.shareArtifactSvg);
     if (state.mode === "craft" && state.craftEmpty) {
       syncComposerControls();
       return;
@@ -6584,6 +6650,10 @@ if (root) {
     }
     if (cardDefinition.renderer === "forward-prices") {
       renderForwardWorkspace(motion);
+      return;
+    }
+    if (cardDefinition.renderer === "gpu-lease") {
+      renderLeaseWorkspace(motion);
       return;
     }
     if (cardDefinition.renderer === "gpu-hedge") {
@@ -6776,21 +6846,51 @@ if (root) {
     return d3.format("$.3~s")(value).replace("G", "bn");
   }
 
+  function paintHedgeView(svg, model, scale, options) {
+    if (scale === "coverage") {
+      cancelGpuHedgeMotion(svg);
+      // Hover checks the live device preference separately from entry motion.
+      paintGpuCoverageChart(svg, model, { ...options, hoverMotion: true });
+    }
+    else {
+      cancelGpuCoverageMotion(svg);
+      paintGpuHedgeChart(svg, model, options);
+    }
+  }
+
   function renderHedgeWorkspace(motion) {
     if (!state.runtimePayload) return;
     const model = createGpuHedgeModel(state.runtimePayload, currentCardState());
     nodes.chartState.hidden = true;
     nodes.tooltip.hidden = true;
-    const options = { colors: cardPalette(currentCardState()), title: state.catalogName || "GPU hedge" };
-    paintGpuHedgeChart(nodes.shareArtifactSvg, model, {
-      ...options, compact: true, gallery: true, reducedMotion: !revealShareArtifact(motion), interactive: false,
+    const options = { colors: cardPalette(currentCardState()), title: workspaceLabel() };
+    paintHedgeView(nodes.shareArtifactSvg, model, state.scale, {
+      ...options, compact: true, gallery: true, motion, reducedMotion: !revealShareArtifact(motion), interactive: false,
     });
     syncMonitorDataModel({ hedgeModel: model });
     syncShareStatus();
     state.catalogDirty = true;
     if (state.layout === "all") renderWorkspaceGallery();
     if (state.layout === "focus" && state.panel === "detail" && nodes.chart.clientWidth > 0) {
-      paintGpuHedgeChart(nodes.svg, model, { ...options, motion, reducedMotion, interactive: true });
+      paintHedgeView(nodes.svg, model, state.scale, { ...options, motion, reducedMotion, interactive: true });
+    }
+  }
+
+  function renderLeaseWorkspace(motion) {
+    if (!state.runtimePayload) return;
+    const model = createGpuLeaseModel(state.runtimePayload, currentCardState());
+    nodes.chartState.hidden = true;
+    nodes.tooltip.hidden = true;
+    const options = { colors: cardPalette(currentCardState()), title: workspaceLabel(), hoverMotion: true };
+    paintGpuLeaseChart(nodes.shareArtifactSvg, model, {
+      ...options, compact: true, gallery: true, motion, reducedMotion: !revealShareArtifact(motion),
+    });
+    syncMonitorDataModel({ leaseModel: model });
+    syncShareStatus();
+    state.catalogDirty = true;
+    if (state.layout === "all") renderWorkspaceGallery();
+    if (state.layout === "focus" && state.panel === "detail" && nodes.chart.clientWidth > 0) {
+      paintGpuLeaseChart(nodes.svg, model, { ...options, motion, reducedMotion });
     }
   }
 
@@ -7167,15 +7267,28 @@ if (root) {
         cardNodes.button.setAttribute("aria-label", `Monitor ${title}, forward quotes from ${formatUsd(model.latest[0])} per GPU hour`);
         continue;
       }
+      if (entryCard.renderer === "gpu-lease") {
+        const payload = state.runtimePayloads.get(entryCard.id);
+        if (!payload) continue;
+        const model = createGpuLeaseModel(payload, cardState);
+        paintGpuLeaseChart(cardNodes.artifact, model, {
+          colors: cardPalette(displayState), compact: true, gallery: true, title,
+          reducedMotion: true, decorative: true, hoverMotion: true,
+        });
+        cardNodes.button.setAttribute("aria-label", `Monitor ${title}, ${model.term} months, ${formatHedgeProfit(model.residual)} resale value`);
+        continue;
+      }
       if (entryCard.renderer === "gpu-hedge") {
         const payload = state.runtimePayloads.get(entryCard.id);
         if (!payload) continue;
         const model = createGpuHedgeModel(payload, cardState);
-        paintGpuHedgeChart(cardNodes.artifact, model, {
+        paintHedgeView(cardNodes.artifact, model, cardState.scale, {
           colors: cardPalette(displayState), compact: true, gallery: true, title,
           reducedMotion: true, interactive: false, decorative: true,
         });
-        cardNodes.button.setAttribute("aria-label", `Monitor ${title}, ${model.gpu}, ${model.coverage}% hedged, ${formatHedgeProfit(model.headlineProfit)} profit at entry price`);
+        cardNodes.button.setAttribute("aria-label", cardState.scale === "coverage"
+          ? `Monitor ${title}, ${model.gpu}, ${model.coverage}% hedged, ${model.hedgedHours.toLocaleString()} hedged GPU-hours, ${model.exposedHours.toLocaleString()} exposed`
+          : `Monitor ${title}, ${model.gpu}, ${model.coverage}% hedged, ${formatHedgeProfit(model.headlineProfit)} profit at entry price`);
         continue;
       }
       if (entryCard.renderer === "sandbox-cost") {

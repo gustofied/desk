@@ -13,8 +13,12 @@ export function cardDetailDescription(card, state = {}) {
     : null;
 
   switch (card?.id) {
+    case "gpu-lease":
+      return "Lease payments and resale value at the end of the term.";
     case "gpu-hedge":
-      return "Profit across settlement prices, with and without a cash-settled GPU hedge. Capacity is purchased separately.";
+      return scale === "coverage"
+        ? "GPU-hours covered by the hedge versus hours exposed to settlement prices. Capacity is purchased separately."
+        : "Profit across settlement prices, with and without a cash-settled GPU hedge. Capacity is purchased separately.";
     case "forward-prices":
       return range === "now"
         ? "GPU rental quotes by delivery month. US East, 256 GPUs, 30-day InfiniBand rentals."

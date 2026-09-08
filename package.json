@@ -11,7 +11,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test tests/core.test.mjs tests/gpu-hedge.test.mjs",
+    "test": "node --test tests/core.test.mjs tests/gpu-hedge.test.mjs tests/gpu-lease.test.mjs",
     "test:browser": "node --test tests/browser/smoke.test.mjs",
     "check:data": "node scripts/refresh-market-data.mjs --check && node scripts/build-runtime-data.mjs --check",
     "refresh:data": "node scripts/refresh-market-data.mjs",
@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "d3": "7.9.0",
+    "gsap": "3.15.0",
     "motion": "12.42.2"
   },
   "devDependencies": {

@@ -107,7 +107,9 @@ export function createMarketStripPreview(root, { getItem, render, onSelect, onRe
       releaseArtifact?.();
       releaseArtifact = null;
       artifact.replaceChildren();
-      const result = render(artifact, item);
+      const result = render(artifact, item, {
+        motion: !keyboard && !reduced.matches && !wasOpen ? "reveal" : "none",
+      });
       if (result === false) { close(); return; }
       if (typeof result === "function") releaseArtifact = result;
     }

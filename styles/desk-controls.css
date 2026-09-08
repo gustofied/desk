@@ -2032,11 +2032,11 @@ button.compute-share-card-frame:focus-visible {
     animation: none;
   }
 }
-.gpu-index[data-card-renderer="gpu-hedge"] .gpu-benchmark__footer {
+.gpu-index:is([data-card-renderer="gpu-hedge"], [data-card-renderer="gpu-lease"]) .gpu-benchmark__footer {
   display: none;
 }
 
-.gpu-index[data-card-renderer="gpu-hedge"][data-workspace-surface="craft"] .gpu-benchmark__compare-panel {
+.gpu-index:is([data-card-renderer="gpu-hedge"], [data-card-renderer="gpu-lease"])[data-workspace-surface="craft"] .gpu-benchmark__compare-panel {
   position: relative;
   inset: auto;
   padding: 0 24px 16px;
@@ -2044,7 +2044,7 @@ button.compute-share-card-frame:focus-visible {
   border-bottom: 0;
 }
 
-.gpu-index[data-card-renderer="gpu-hedge"][data-workspace-surface="craft"] .gpu-benchmark__chart {
+.gpu-index:is([data-card-renderer="gpu-hedge"], [data-card-renderer="gpu-lease"])[data-workspace-surface="craft"] .gpu-benchmark__chart {
   border-top: 0;
 }
 
@@ -2054,8 +2054,25 @@ button.compute-share-card-frame:focus-visible {
   min-height: 64px;
 }
 
-.gpu-index[data-card-renderer="gpu-hedge"] .gpu-benchmark__primary button[aria-checked="true"] {
+.gpu-index[data-card-renderer="gpu-hedge"] .gpu-benchmark__primary button[aria-checked="true"],
+.gpu-index[data-card-renderer="gpu-hedge"] .gpu-benchmark__scales button[aria-pressed="true"] {
   box-shadow: none;
+}
+
+.gpu-index[data-card-renderer="gpu-hedge"] .gpu-benchmark__scale-control {
+  border-left: 0;
+}
+
+.gpu-index[data-card-renderer="gpu-hedge"] .gpu-benchmark__scale-control > .gpu-benchmark__compare-label {
+  display: none;
+}
+
+.gpu-index[data-card-renderer="gpu-hedge"][data-card-scale="coverage"] .gpu-benchmark__calculator-inputs {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.gpu-index[data-card-renderer="gpu-hedge"][data-card-scale="coverage"] :is([data-option-field="revenue"], [data-option-field="rate"], .gpu-benchmark__calculator-more) {
+  display: none;
 }
 
 .gpu-benchmark__calculator-contract {
@@ -2338,7 +2355,16 @@ button.compute-share-card-frame:focus-visible {
 }
 
 @media (max-width: 640px) {
-  .gpu-index[data-card-renderer="gpu-hedge"][data-workspace-surface="craft"] .gpu-benchmark__compare-panel { padding-inline: 16px; }
+  :root:is([data-desk-view="monitor"], [data-desk-view="craft"])[data-desk-layout="focus"]
+    .desk-stage .gpu-index:is([data-card-renderer="gpu-hedge"][data-card-scale="coverage"], [data-card-renderer="gpu-lease"]) .gpu-index-detail {
+    height: auto;
+  }
+  :root:is([data-desk-view="monitor"], [data-desk-view="craft"])[data-desk-layout="focus"]
+    .desk-stage .gpu-index:is([data-card-renderer="gpu-hedge"][data-card-scale="coverage"], [data-card-renderer="gpu-lease"]) .gpu-benchmark__chart {
+    height: auto;
+    aspect-ratio: 3 / 4;
+  }
+  .gpu-index:is([data-card-renderer="gpu-hedge"], [data-card-renderer="gpu-lease"])[data-workspace-surface="craft"] .gpu-benchmark__compare-panel { padding-inline: 16px; }
   .gpu-index[data-card-renderer="gpu-hedge"] [data-card-primary-row] { display: flex; }
   .gpu-benchmark__calculator-inputs { gap: 8px; }
   .gpu-benchmark__input-value { font-size: 20px; line-height: 28px; }
