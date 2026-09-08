@@ -4,9 +4,19 @@
   scroll-padding-bottom: calc(var(--desk-market-strip-space) + 16px);
 }
 
-@media (min-width: 641px) {
+@media (min-width: 961px) {
   :root[data-display-toolbar="expanded"] {
     --desk-gallery-top-space: 128px;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 960px) {
+  :root {
+    --desk-gallery-top-space: calc(96px + 48px);
+  }
+
+  :root[data-display-toolbar="expanded"] {
+    --desk-gallery-top-space: calc(96px + 96px);
   }
 }
 

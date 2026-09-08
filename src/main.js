@@ -97,7 +97,6 @@ import {
 } from "./chart-pointer.js";
 import { copyTextToClipboard } from "./card-transitions.js";
 import { createHeldKeyNavigation, nextGalleryIndex } from "./view-key-navigation.js";
-import { alignWorkspaceToolbar } from "./toolbar-alignment.js";
 import {
   chartYDomain,
   comparisonStrokeOpacity,
@@ -453,9 +452,6 @@ if (root) {
     craftEmpty: root.querySelector("[data-craft-empty]"),
     craftTypeList: root.querySelector("[data-craft-type-list]"),
     craftTypeButtons: [],
-    pageClock: document.querySelector("[data-desk-clock]"),
-    pageClockDate: document.querySelector("[data-desk-clock-date]"),
-    pageClockTime: document.querySelector("[data-desk-clock-time]"),
     displayToolbar: document.querySelector(".desk-display-controls"),
     themeButtons: Array.from(document.querySelectorAll("[data-theme-value]")),
     paletteButtons: Array.from(document.querySelectorAll("[data-palette-value]")),
@@ -809,11 +805,6 @@ if (root) {
         : true);
     configureWorkspaceControls();
     setInitialPanel();
-    alignWorkspaceToolbar({
-      stage: document.querySelector(".desk-stage"),
-      toolbar: document.querySelector(".desk-top-controls"),
-      mobileViewport,
-    });
     setShareReady(false);
     configureAppearanceControls();
     configureCraftStartControls();
@@ -828,7 +819,6 @@ if (root) {
     syncSavedCatalogCommands();
     syncCatalogCollectionCommands();
     commandPalette.initializeSidecar?.();
-    configureUtcClock();
     if (initialStateNeedsRepair || initialViewNeedsRepair) updateLocation();
     configureChoiceButtons(
       nodes.rangeButtons,
@@ -2645,7 +2635,6 @@ if (root) {
         group: "Workspace",
         order: 0,
         title: "Open Catalog",
-        subtitle: cardDefinition.title,
         hint: "Catalog",
         keywords: ["catalog", "view", "views", "card", "cards", "gallery", "market", "accelerator", "prices", "compute", "gpu"],
         disabled: () => !state.shareReady,
@@ -2657,7 +2646,7 @@ if (root) {
         group: "Workspace",
         order: 1,
         title: "Open Monitor",
-        subtitle: () => state.craftEmpty ? "Choose a view type first" : cardDefinition.title,
+        subtitle: () => state.craftEmpty ? "Choose a view type first" : workspaceLabel(),
         hint: "Monitor",
         keywords: ["monitor", "inspect", "read", "zoom", "chart", "market", "prices", "compute", "gpu"],
         disabled: () => !state.shareReady || state.craftEmpty,
@@ -2672,7 +2661,7 @@ if (root) {
           state.craftDraft
             ? "Resume draft"
             : "Open Craft",
-        subtitle: () => state.craftDraft ? cardDefinition.title : "View types",
+        subtitle: () => state.craftDraft ? cardDefinition.title : "",
         hint: "Craft",
         keywords: ["craft", "edit", "compose", "compare", "layers", "chart", "compute", "gpu"],
         disabled: () => false,
@@ -2707,7 +2696,6 @@ if (root) {
         group: "Catalog",
         order: 1,
         title: "Show all views",
-        subtitle: "All views",
         hint: "All",
         keywords: ["catalog", "view", "views", "card", "cards", "all", "gallery", "export", "snapshot", "publish"],
         disabled: () => !state.shareReady,
@@ -2719,7 +2707,6 @@ if (root) {
         group: "Catalog",
         order: 2,
         title: "Open Latest prices",
-        subtitle: "Bar chart",
         hint: "Prices",
         keywords: ["bar", "bars", "ranking", "snapshot", "gpu", "market"],
         disabled: () => !state.shareReady,
@@ -2803,7 +2790,6 @@ if (root) {
         group: "Actions",
         order: 0,
         title: "Copy view link",
-        subtitle: "/actions/copy-view-link",
         hint: "Copy",
         keywords: ["share", "view", "card", "url", "clipboard"],
         disabled: () => !state.shareReady || state.craftEmpty,
@@ -2856,7 +2842,6 @@ if (root) {
           document.documentElement.dataset.displayToolbar === "collapsed"
             ? "Show display controls"
             : "Hide display controls",
-        subtitle: "/actions/toggle-display-controls",
         hint: "Display",
         keywords: ["toolbar", "theme", "palette", "controls"],
         run: () => {
@@ -3333,24 +3318,6 @@ if (root) {
 
   function currentCardTheme() {
     return currentTheme();
-  }
-
-  function configureUtcClock() {
-    const months = [
-      "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
-    ];
-    const tick = () => {
-      const now = new Date();
-      const iso = now.toISOString();
-      if (nodes.pageClockDate) {
-        nodes.pageClockDate.textContent = `${iso.slice(8, 10)} ${months[now.getUTCMonth()]} ${iso.slice(0, 4)}`;
-      }
-      if (nodes.pageClockTime) nodes.pageClockTime.textContent = iso.slice(11, 19);
-      nodes.pageClock?.setAttribute("datetime", iso);
-      window.setTimeout(tick, 1000 - now.getMilliseconds());
-    };
-    tick();
   }
 
   function currentPalette() {

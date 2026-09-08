@@ -12,6 +12,7 @@ let browser;
 before(async () => {
   browser = await playwright[process.env.DESK_BROWSER_ENGINE || 'chromium'].launch({
     headless: true, ...(process.env.DESK_BROWSER_PATH ? { executablePath: process.env.DESK_BROWSER_PATH } : {}),
+    ignoreDefaultArgs: ['--hide-scrollbars'],
   });
 });
 after(async () => { await browser?.close(); });
@@ -103,12 +104,13 @@ test('Craft type picker stays readable and reachable at every width', async t =>
   assert.equal(await picker.locator('button:disabled').count(), 0);
 });
 
-test('Craft drafts survive Monitor, the type picker and reloads', async t => {
+test('Desk commands keep keyboard control and preserve Craft drafts', async t => {
   const page = await pageFor(t);
   for (const [card, composition, range] of [
     ['gpu-index', 'gpu=H200&layers=H200,H100&scale=price', 'all'],
     ['equities', 'symbol=CRWV&layers=CRWV,H100,H200&scale=index&style=bars', '90d'],
   ]) {
+    await page.emulateMedia({ reducedMotion: card === 'gpu-index' ? 'no-preference' : 'reduce' });
     await open(page, `/?card=${card}&view=craft&${composition}&range=${range}`);
     await page.locator('[data-desk-mode="monitor"]').click();
     await page.waitForFunction(() => document.documentElement.dataset.deskView === 'monitor');
@@ -127,18 +129,53 @@ test('Craft drafts survive Monitor, the type picker and reloads', async t => {
     await page.reload({ waitUntil: 'networkidle' });
     await page.waitForFunction(() => document.querySelector('[data-card-ready="true"]'));
     assert.equal(await page.evaluate(key => sessionStorage.getItem(key), draftKey), storedDraft, 'reload preserves the draft');
+    assert.equal(await page.locator('.desk-brand, .desk-corners a, [data-desk-clock]').count(), 0, 'the page corner has no label, article link or clock');
     await page.locator('[data-command-open]').click();
-    await page.locator('[data-desk-login]').click();
+    const entry = page.locator('[data-desk-entry]');
+    assert.equal(await entry.locator('.desk-command-menu__byline').count(), 0, 'login has no byline');
+    await page.waitForFunction(() => document.querySelector('[data-desk-login]') === document.activeElement);
+    if (card === 'gpu-index') {
+      await page.locator('[data-desk-login]').click();
+      assert.equal(await page.locator('[data-command-content]').evaluate(node => !node.hidden && !node.inert), true, 'pointer login reveals commands without an artificial wait');
+    } else await page.keyboard.press('Enter');
+    await page.waitForFunction(() => document.querySelector('[data-command-input]') === document.activeElement);
+    await entry.waitFor({ state: 'hidden' });
+    assert.equal(await entry.evaluate(node => node.hidden && node.inert), true, 'keyboard login hides and disables the entry');
+    if (card === 'gpu-index') {
+      const search = page.locator('[data-command-input]');
+      const rows = page.locator('[data-command-results] [role="option"]');
+      assert.equal(await page.locator('.desk-command-menu__shortcut').count(), 0);
+      assert.doesNotMatch(await page.locator('.desk-command-menu__footer').textContent(), /Resource index/);
+      await search.fill('prices');
+      await page.waitForFunction(() => document.querySelector('[data-command-results] [role="option"] strong')?.textContent === 'Open Latest prices');
+      assert.equal(await rows.first().getAttribute('aria-selected'), 'true', 'new query selects its most relevant match');
+      assert.equal(await page.locator('[data-command-results] .desk-command-menu__group').count(), 0, 'search does not repeat group headings');
+      assert.equal(await rows.evaluateAll(nodes => nodes.every(node => node.tabIndex === -1)), true);
+      await search.press('Tab');
+      assert.equal(await page.evaluate(() => document.activeElement.matches('[data-command-content] [data-command-close]')), true);
+      await page.keyboard.press('Shift+Tab');
+      assert.equal(await search.evaluate(node => node === document.activeElement), true);
+      await rows.first().focus();
+      assert.equal(await search.evaluate(node => node === document.activeElement), true, 'option focus returns to search');
+      const active = await search.getAttribute('aria-activedescendant');
+      await search.press('ArrowDown');
+      assert.notEqual(await search.getAttribute('aria-activedescendant'), active);
+      await search.fill('Copy view link');
+      await page.getByRole('option', { name: 'Copy view link', exact: true }).waitFor();
+      assert.equal(await rows.first().getAttribute('aria-selected'), 'true');
+      assert.equal(await rows.first().locator('small, .desk-command-menu__meta').count(), 0, 'simple actions have no path or repeated hint');
+    }
     await page.locator('[data-command-input]').fill('Resume draft');
     await page.getByRole('option', { name: /Resume draft/ }).click();
     await page.waitForFunction(() => document.documentElement.dataset.deskView === 'craft' && document.querySelector('[data-gpu-benchmark-card]').dataset.craftEmpty === 'false');
+    await page.waitForURL(url => url.searchParams.get('view') === 'craft' && url.searchParams.get('range') === range);
     assert.equal(new URL(page.url()).searchParams.get('card'), card);
     assert.equal(new URL(page.url()).searchParams.get('range'), range, 'the authored range returns, not the later Monitor range');
     assert.equal(await page.evaluate(key => sessionStorage.getItem(key), draftKey), null, 'resuming consumes the stored draft');
   }
 });
 
-test('Craft Data controls keep their own space above the chart', async t => {
+test('Data controls and source disclosures keep the chart in place', async t => {
   const page = await pageFor(t);
   await open(page, '/?card=equities&symbol=CRWV&view=craft&scale=index&layers=CRWV,H100,H200&range=90d&style=bars');
   const toggle = page.locator('[data-card-compare-toggle]');
@@ -154,6 +191,36 @@ test('Craft Data controls keep their own space above the chart', async t => {
     assert.ok(Math.abs(expanded.height - closed.height) <= 1, `opening Data keeps the chart height at ${width}px`);
     await toggle.click();
     assert.ok(Math.abs((await chart.boundingBox()).height - closed.height) <= 1, `closing Data restores the chart height at ${width}px`);
+  }
+
+  const geometry = () => page.evaluate(() => ({
+    scrolls: document.documentElement.scrollHeight > innerHeight,
+    overflows: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    boxes: ['.desk-stage', '.gpu-index-detail', '.desk-top-controls'].map(selector => {
+      const { x, y, width } = document.querySelector(selector).getBoundingClientRect();
+      return { x, y: y + (selector === '.desk-top-controls' ? 0 : scrollY), width };
+    }),
+  }));
+  for (const [card, width] of [['gpu-index', 1440], ['equities', 1440], ['gpu-index', 320]]) {
+    await page.setViewportSize({ width, height: 850 });
+    await open(page, `/?card=${card}&view=monitor`);
+    // Exercise classic scrollbars even on hosts that use overlay scrollbars.
+    await page.addStyleTag({ content: 'html::-webkit-scrollbar { width: 16px; }' });
+    const disclosure = page.locator('[data-monitor-data-toggle]');
+    const before = await geometry();
+    assert.equal(before.scrolls, false, 'collapsed source fits without scrolling');
+    await disclosure.focus();
+    await page.keyboard.press('Enter');
+    const expanded = await geometry();
+    assert.equal(expanded.scrolls, true, 'expanded source introduces vertical scrolling');
+    assert.deepEqual(expanded.boxes, before.boxes, `${card} chart and navigation stay fixed on open at ${width}px`);
+    assert.equal(expanded.overflows, false, 'no horizontal overflow with a scrollbar');
+    await page.keyboard.press('Escape');
+    const closed = await geometry();
+    assert.deepEqual(closed.boxes, before.boxes, `${card} chart and navigation stay fixed on close at ${width}px`);
+    assert.equal(closed.overflows, false);
+    assert.equal(await disclosure.getAttribute('aria-expanded'), 'false');
+    assert.equal(await disclosure.evaluate(node => node === document.activeElement), true);
   }
 });
 
@@ -208,17 +275,70 @@ test('range switching keeps the same view and document', async t => {
   }
 });
 
-test('a shared desk opens without importing over personal views', async t => {
+test('a shared desk preserves personal views and stable mode navigation', async t => {
   const page = await pageFor(t);
-  const desk = createSharedDesk({ name: 'Shared desk', palette: 'sage', theme: 'dark', entries: [
-    { cardId: 'gpu-index', name: 'H200', state: { gpu: 'H200', range: '7d' } },
-    { cardId: 'sandbox-cost', name: 'Sandbox', state: { range: '7d' } },
-  ] });
   await open(page, '/');
   const before = await page.evaluate(() => [localStorage.getItem('desk.catalog.v2'), localStorage.getItem('desk.catalog-collections.v1')]);
-  await open(page, `/?view=gallery#desk=${encodeSharedDesk(desk)}`);
-  assert.equal(await page.locator('[data-shared-desk-name]').innerText(), 'Shared desk Shared');
-  assert.equal(await page.locator('[data-card-gallery-grid] .desk-gallery-card:visible').count(), 2);
+  const navigationLayout = () => page.evaluate(() => {
+    const toolbar = document.querySelector('.desk-top-controls').getBoundingClientRect();
+    const desk = document.querySelector('.desk-search').getBoundingClientRect();
+    const modes = document.querySelector('.desk-view-actions__group').getBoundingClientRect();
+    const buttons = [...document.querySelectorAll('[data-desk-mode]')].map(node => {
+      const { x, y, width, height } = node.getBoundingClientRect();
+      return { x, y, width, height };
+    });
+    return {
+      top: toolbar.top, bottom: toolbar.bottom, center: toolbar.x + toolbar.width / 2, buttons,
+      deskCenterY: desk.y + desk.height / 2, modesCenterY: modes.y + modes.height / 2,
+      stageTop: document.querySelector('.desk-stage').getBoundingClientRect().top + window.scrollY,
+    };
+  });
+  const referenceByWidth = new Map();
+  for (const name of ['Shared desk', 'Worldwide compute and energy market observations']) {
+    const desk = createSharedDesk({ name, palette: 'sage', theme: 'dark', entries: [
+      { cardId: 'gpu-index', name: 'H200', state: { gpu: 'H200', range: '7d' } },
+      { cardId: 'sandbox-cost', name: 'Sandbox', state: { range: '7d' } },
+    ] });
+    for (const width of [320, 390, 641, 768, 1440]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await open(page, `/?view=gallery#desk=${encodeSharedDesk(desk)}`);
+      await page.evaluate(() => document.fonts.ready);
+      assert.equal(await page.locator('[data-shared-desk-name]').innerText(), `${name} Shared`);
+      assert.equal(await page.locator('[data-catalog-switcher-name]').textContent(), name);
+      assert.equal(await page.locator('[data-card-gallery-grid] .desk-gallery-card:visible').count(), 2);
+      if (!referenceByWidth.has(width)) referenceByWidth.set(width, await navigationLayout());
+      const reference = referenceByWidth.get(width);
+      const assertStableNavigation = async mode => {
+        const current = await navigationLayout();
+        const label = `${mode}, ${name}, ${width}px`;
+        assert.ok(Math.abs(current.top - reference.top) <= 1, `toolbar top stays fixed: ${label}`);
+        assert.ok(Math.abs(current.center - reference.center) <= 1, `toolbar center stays fixed: ${label}`);
+        if (width > 960) assert.ok(Math.abs(current.deskCenterY - current.modesCenterY) <= 1, `Desk is vertically centered with navigation: ${label}`);
+        assert.ok(current.bottom <= current.stageTop + 1, `toolbar clears workspace content: ${label}`);
+        for (const [index, box] of current.buttons.entries()) {
+          for (const key of ['x', 'y', 'width', 'height']) {
+            assert.ok(Math.abs(box[key] - reference.buttons[index][key]) <= 1, `mode button ${index} ${key} stays fixed: ${label}`);
+          }
+          assert.ok(box.x >= 0 && box.x + box.width <= width, `mode button ${index} fits viewport: ${label}`);
+        }
+      };
+      for (const mode of ['catalog', 'monitor', 'craft']) {
+        if (mode !== 'catalog') await page.locator(`[data-desk-mode="${mode}"]`).click();
+        await page.waitForFunction(mode => document.documentElement.dataset.deskView === mode, mode);
+        if (mode === 'craft') await page.locator('[data-craft-type-list]').waitFor({ state: 'visible' });
+        await assertStableNavigation(`${mode}, collapsed`);
+        await page.locator('[data-command-open]').click();
+        if (await page.locator('[data-desk-login]').isVisible()) await page.locator('[data-desk-login]').click();
+        await page.locator('[data-command-input]').fill('Show display controls');
+        await page.getByRole('option', { name: /^Show display controls/ }).click();
+        await page.waitForFunction(() => document.documentElement.dataset.displayToolbar === 'expanded');
+        await assertStableNavigation(`${mode}, expanded`);
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(() => document.documentElement.dataset.displayToolbar === 'collapsed');
+        await assertStableNavigation(`${mode}, collapsed again`);
+      }
+    }
+  }
   assert.deepEqual(await page.evaluate(() => [localStorage.getItem('desk.catalog.v2'), localStorage.getItem('desk.catalog-collections.v1')]), before);
 });
 

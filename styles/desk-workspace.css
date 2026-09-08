@@ -163,12 +163,12 @@
   z-index: 2;
   width: min(18rem, calc(100vw - 16px));
   padding: 4px;
-  color: var(--desk-accent-deep);
+  color: var(--desk-control-ink);
   letter-spacing: normal;
   text-transform: none;
-  background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
-  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
-  border-radius: 4px;
+  background: var(--desk-chrome-surface);
+  border: 1px solid var(--desk-chrome-rule);
+  border-radius: var(--desk-radius-panel);
   box-shadow: 0 16px 40px color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
   translate: -50% 0;
 }
@@ -199,7 +199,7 @@
   cursor: pointer;
   background: transparent;
   border: 0;
-  border-radius: 2px;
+  border-radius: var(--desk-radius-field);
 }
 
 .desk-catalog-option small {
@@ -217,8 +217,8 @@
 }
 
 .desk-catalog-option[aria-selected="true"] {
-  background: color-mix(in srgb, var(--desk-accent-pale) 48%, transparent);
-  box-shadow: inset 2px 0 0 var(--desk-accent-deep);
+  background: var(--desk-chrome-selected);
+  font-weight: 600;
 }
 
 .desk-catalog-option[data-system] {
@@ -237,7 +237,7 @@
   .desk-catalog-option:hover,
   .desk-catalog-menu__create button:hover:not(:disabled),
   .desk-catalog-menu footer button:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--desk-accent-pale) 36%, transparent);
+    background: var(--desk-chrome-hover);
   }
 }
 
@@ -700,9 +700,6 @@
 }
 
 :root[data-theme="dark"] .desk-catalog-menu {
-  color: #f5f5f5;
-  background: #1f1f1f;
-  border-color: color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
   box-shadow: 0 16px 40px rgb(0 0 0 / 32%);
 }
 

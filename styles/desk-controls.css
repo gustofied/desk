@@ -5,6 +5,13 @@
   --desk-accent-pale: color-mix(in srgb, var(--desk-accent) 28%, #fff);
   --desk-canvas: color-mix(in srgb, var(--desk-accent) 5%, #fff);
   --desk-control-ink: var(--desk-accent-deep);
+  --desk-chrome-surface: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-control-ink));
+  --desk-chrome-rule: color-mix(in srgb, var(--desk-control-ink) 12%, transparent);
+  --desk-chrome-hover: color-mix(in srgb, var(--desk-control-ink) 6%, transparent);
+  --desk-chrome-selected: color-mix(in srgb, var(--desk-control-ink) 10%, transparent);
+  --desk-radius-panel: 8px;
+  --desk-radius-control: 6px;
+  --desk-radius-field: 4px;
   --desk-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --desk-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --desk-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
@@ -191,31 +198,37 @@
   align-items: center;
   min-height: 40px;
   padding: 8px 12px;
-  color: #666;
+  color: var(--desk-control-ink);
   font: 500 12px/16px "Geist Mono", ui-monospace, monospace;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   cursor: pointer;
   background: transparent;
   border: 0;
-  opacity: 0.38;
+  border-radius: var(--desk-radius-panel);
+  opacity: 0.72;
   white-space: nowrap;
   transition:
     color 240ms var(--desk-ease-out),
+    background-color 200ms var(--desk-ease-out),
     opacity 240ms var(--desk-ease-out);
 }
 
 .desk-search__shortcut {
   font: inherit;
-  font-weight: 600;
+  opacity: 0.56;
 }
 
-:root[data-theme="dark"] .desk-search {
-  color: #9b9b9b;
+@media (min-width: 961px) {
+  .desk-search {
+    /* Center the 40px target against the navigation's 38px frame. */
+    top: 15px;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {
   .desk-search:hover {
+    background: var(--desk-chrome-hover);
     opacity: 1;
   }
 }
@@ -234,17 +247,18 @@
   position: relative;
   order: 1;
   display: flex;
-  gap: 0;
+  gap: 2px;
   padding: 2px;
   color: var(--desk-control-ink);
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 16px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  background: #fff;
-  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
+  background: var(--desk-chrome-surface);
+  border: 1px solid var(--desk-chrome-rule);
+  border-radius: var(--desk-radius-panel);
   transition:
     background-color 240ms var(--desk-ease-out),
     border-color 240ms var(--desk-ease-out);
@@ -276,15 +290,11 @@
   cursor: pointer;
   background: transparent;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--desk-radius-control);
   transition:
     color 200ms var(--desk-ease-out),
     background-color 200ms var(--desk-ease-out),
     transform 140ms var(--desk-ease-out);
-}
-
-.desk-display-option + .desk-display-option {
-  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
 }
 
 .desk-palette-option {
@@ -323,18 +333,19 @@
   color: var(--desk-control-ink);
   font-family: "Geist Mono", ui-monospace, monospace;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 16px;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .desk-view-actions > .desk-view-actions__group {
   display: flex;
-  gap: 0;
+  gap: 2px;
   padding: 2px;
-  background: color-mix(in srgb, var(--desk-canvas) 92%, transparent);
-  border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
+  background: var(--desk-chrome-surface);
+  border: 1px solid var(--desk-chrome-rule);
+  border-radius: var(--desk-radius-panel);
   transition:
     background-color 240ms var(--desk-ease-out),
     border-color 240ms var(--desk-ease-out);
@@ -357,7 +368,7 @@
   cursor: pointer;
   background: transparent;
   border: 0;
-  border-radius: 0;
+  border-radius: var(--desk-radius-control);
   box-shadow: none;
   transition:
     color 200ms var(--desk-ease-out),
@@ -368,8 +379,8 @@
 
 .desk-view-action[data-catalog-switcher] {
   display: flex;
-  width: auto;
-  min-width: 96px;
+  width: 140px;
+  min-width: 140px;
   max-width: 140px;
   gap: 7px;
   align-items: center;
@@ -394,18 +405,14 @@
   transform: translateY(-2px) rotate(45deg);
 }
 
-.desk-view-action + .desk-view-action {
-  border-left: 1px solid color-mix(in srgb, var(--desk-accent-deep) 14%, transparent);
-}
-
 .desk-view-action:not([aria-current="page"]) {
-  opacity: 0.68;
+  opacity: 0.72;
 }
 
 .desk-view-action[aria-current="page"] {
-  color: var(--desk-accent-deep);
-  background: color-mix(in srgb, var(--desk-accent-pale) 72%, var(--desk-canvas));
-  box-shadow: inset 0 -1px 0 var(--desk-accent-deep);
+  color: var(--desk-control-ink);
+  background: var(--desk-chrome-selected);
+  font-weight: 600;
   opacity: 1;
 }
 
@@ -429,16 +436,16 @@ button.compute-share-card-frame:focus-visible {
 
 @media (hover: hover) and (pointer: fine) {
   :is(.desk-theme-option, .desk-view-action:not([aria-current="page"])):not(:disabled):hover {
-    background: color-mix(in srgb, var(--desk-accent) 16%, transparent);
-    opacity: 0.84;
+    background: var(--desk-chrome-hover);
+    opacity: 1;
   }
 
   .desk-palette-option:hover {
-    background: color-mix(in srgb, var(--desk-accent) 16%, transparent);
+    background: var(--desk-chrome-hover);
   }
 
   .desk-view-action[aria-current="page"]:not(:disabled):hover {
-    background: color-mix(in srgb, var(--desk-accent) 60%, var(--desk-canvas));
+    background: color-mix(in srgb, var(--desk-control-ink) 14%, transparent);
   }
 }
 
@@ -449,13 +456,17 @@ button.compute-share-card-frame:focus-visible {
 
 .desk-display-option:focus-visible,
 .desk-view-action:focus-visible {
-  background: var(--desk-accent-pale);
-  outline: 2px solid var(--desk-accent-deep);
+  background: var(--desk-chrome-selected);
+  outline: 2px solid var(--desk-control-ink);
   outline-offset: -2px;
 }
 
+.desk-top-controls:has(:focus-visible) :is(.desk-display-option, .desk-view-action) {
+  transition: none;
+}
+
 .desk-palette-option:focus-visible {
-  background: var(--desk-accent-pale);
+  background: var(--desk-chrome-selected);
 }
 
 .desk-view-action:disabled {
@@ -466,12 +477,13 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .desk-theme-option[aria-pressed="true"] {
-  background: var(--desk-accent-pale);
+  background: var(--desk-chrome-selected);
+  font-weight: 600;
 }
 
 .desk-palette-option[aria-pressed="true"] {
-  background: var(--desk-accent-pale);
-  box-shadow: inset 0 0 0 1px var(--desk-accent-deep);
+  background: var(--desk-chrome-selected);
+  box-shadow: inset 0 0 0 1px var(--desk-chrome-rule);
 }
 
 .desk-corners {
@@ -482,132 +494,6 @@ button.compute-share-card-frame:focus-visible {
   transition:
     opacity 240ms var(--desk-ease-out),
     visibility 240ms var(--desk-ease-out);
-}
-
-.desk-corner {
-  position: absolute;
-  display: block;
-  min-height: 0;
-  padding: 0;
-  color: var(--desk-accent-deep);
-  font-family: "Geist Mono", ui-monospace, monospace;
-  font-size: 12px;
-  font-style: normal;
-  font-variant-numeric: tabular-nums;
-  font-weight: 500;
-  line-height: 16px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-  text-shadow:
-    0 2px 0 color-mix(in srgb, var(--desk-accent-deep) 10%, transparent),
-    0 8px 24px color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
-  transition:
-    color 240ms var(--desk-ease-out),
-    text-shadow 240ms var(--desk-ease-out);
-}
-
-.desk-corner--top-left {
-  top: 104px;
-  left: 24px;
-}
-
-.desk-brand.desk-corner--top-left {
-  top: 40px;
-  display: grid;
-  gap: 0;
-  justify-items: start;
-  line-height: 16px;
-  letter-spacing: 0.08em;
-  text-shadow: none;
-}
-
-.desk-brand__line {
-  display: flex;
-  gap: 4px;
-  align-items: baseline;
-  width: max-content;
-  white-space: nowrap;
-}
-
-.desk-brand .desk-brand__word {
-  color: #666;
-  font-weight: 600;
-  transition: color 240ms var(--desk-ease-out);
-}
-
-.desk-brand .desk-brand__accent {
-  font-family: inherit;
-  font-size: inherit;
-  color: var(--desk-accent-deep);
-  font-weight: 600;
-  line-height: inherit;
-  letter-spacing: inherit;
-  transition: color 240ms var(--desk-ease-out);
-}
-
-.desk-brand__byline {
-  margin-top: 0;
-  color: var(--desk-accent-deep);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 16px;
-  letter-spacing: 0.08em;
-  text-decoration-line: underline;
-  text-decoration-color: currentColor;
-  text-decoration-thickness: 1px;
-  text-underline-offset: 4px;
-  text-transform: none;
-  opacity: 0.56;
-  pointer-events: auto;
-  transition:
-    color 240ms var(--desk-ease-out),
-    opacity 240ms var(--desk-ease-out),
-    text-decoration-color 240ms var(--desk-ease-out);
-}
-
-.desk-brand__byline strong {
-  font: inherit;
-  font-weight: 600;
-}
-
-.desk-brand__byline:hover {
-  opacity: 0.9;
-}
-
-.desk-brand__byline:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 4px;
-  opacity: 1;
-}
-
-.desk-corner--top-right {
-  top: 104px;
-  right: 24px;
-}
-
-.desk-market-clock.desk-corner--top-left {
-  top: 16px;
-  display: flex;
-  gap: 8px;
-  align-items: baseline;
-  color: #666;
-  letter-spacing: 0.06em;
-  text-shadow: none;
-  white-space: nowrap;
-}
-
-.desk-market-clock__time {
-  color: var(--desk-accent-deep);
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
-.desk-market-clock__zone {
-  color: inherit;
-  font-weight: 600;
 }
 
 :root[data-theme="dark"] .gpu-index {
@@ -628,62 +514,12 @@ button.compute-share-card-frame:focus-visible {
 }
 
 :root[data-theme="dark"] .desk-display-controls,
-:root[data-theme="dark"] .desk-view-actions,
-:root[data-theme="dark"] .desk-corner {
+:root[data-theme="dark"] .desk-view-actions {
   color: var(--desk-accent-deep);
-}
-
-:root[data-theme="dark"] .desk-display-controls {
-  background: #272727;
-}
-
-:root[data-theme="dark"] .desk-view-actions > .desk-view-actions__group {
-  background: #272727;
-}
-
-:root[data-theme="dark"] .desk-brand .desk-brand__word {
-  color: #9b9b9b;
-}
-
-:root[data-theme="dark"] .desk-market-clock {
-  color: #9b9b9b;
-}
-
-:root[data-theme="dark"] .desk-palette-option {
-  background: transparent;
-}
-
-:root[data-theme="dark"] .desk-palette-option[aria-pressed="true"],
-:root[data-theme="dark"] .desk-palette-option:focus-visible {
-  background: var(--desk-accent-pale);
-}
-
-:root[data-theme="dark"] .desk-view-action[aria-current="page"],
-:root[data-theme="dark"] .desk-theme-option[aria-pressed="true"],
-:root[data-theme="dark"] .desk-view-action:focus-visible {
-  color: #f5f5f5;
-  background: var(--desk-accent-pale);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  :root[data-theme="dark"] .desk-view-action:not([aria-current="page"]):not(:disabled):hover {
-    background: rgb(255 255 255 / 8%);
-  }
-
-  :root[data-theme="dark"] .desk-view-action[aria-current="page"]:not(:disabled):hover {
-    background: color-mix(in srgb, var(--desk-accent) 24%, #272727);
-  }
 }
 
 :root[data-theme="dark"] .desk-view-action:focus-visible {
   outline-color: var(--desk-accent-deep);
-}
-
-:root[data-theme="dark"] .desk-corner {
-  background: transparent;
-  text-shadow:
-    0 2px 0 color-mix(in srgb, var(--desk-accent-deep) 8%, transparent),
-    0 8px 24px rgb(0 0 0 / 48%);
 }
 
 :root[data-theme="dark"] .desk-display-option:focus-visible {
@@ -760,6 +596,11 @@ button.compute-share-card-frame:focus-visible {
   background: var(--market-card-pale);
   border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 52%, transparent);
   box-shadow: 0 16px 40px color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
+}
+
+/* Round the shared perimeter; nested chart surfaces retain straight edges. */
+.compute-card-skin--market :is(.gpu-index-detail, .gpu-index-share__window, .compute-share-card-frame) {
+  border-radius: var(--desk-radius-panel);
 }
 
 .gpu-index,
@@ -1137,6 +978,7 @@ button.compute-share-card-frame:focus-visible {
   padding: 2px;
   background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
   border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 24%, transparent);
+  border-radius: var(--desk-radius-panel);
   box-shadow: 0 16px 40px color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
 }
 
@@ -1377,7 +1219,7 @@ button.compute-share-card-frame:focus-visible {
   cursor: pointer;
   background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
   border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 18%, transparent);
-  border-radius: 4px;
+  border-radius: var(--desk-radius-control);
   transition:
     background-color 200ms var(--desk-ease-out),
     border-color 200ms var(--desk-ease-out),
@@ -1456,7 +1298,7 @@ button.compute-share-card-frame:focus-visible {
   color: var(--desk-accent-deep);
   background: var(--desk-canvas);
   border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 38%, transparent);
-  border-radius: 4px;
+  border-radius: var(--desk-radius-panel);
   box-shadow: 0 24px 64px color-mix(in srgb, var(--desk-accent-deep) 16%, transparent);
   animation: desk-save-dialog-enter 200ms var(--desk-ease-out);
 }
@@ -1602,7 +1444,7 @@ button.compute-share-card-frame:focus-visible {
   font: 500 14px/20px "Geist", "Avenir Next", sans-serif;
   background: color-mix(in srgb, var(--desk-canvas) 94%, var(--desk-accent));
   border: 1px solid color-mix(in srgb, var(--desk-accent-deep) 28%, transparent);
-  border-radius: 2px;
+  border-radius: var(--desk-radius-field);
   outline: 0;
 }
 
@@ -1651,7 +1493,7 @@ button.compute-share-card-frame:focus-visible {
   cursor: pointer;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 2px;
+  border-radius: var(--desk-radius-control);
 }
 
 .desk-save-dialog__form button[type="submit"] {
@@ -1693,6 +1535,12 @@ button.compute-share-card-frame:focus-visible {
   }
 }
 
+@media (min-width: 641px) and (max-width: 960px) {
+  .desk-top-controls {
+    top: 96px;
+  }
+}
+
 @media (max-width: 640px) {
   .desk-top-controls {
     top: 84px;
@@ -1715,28 +1563,20 @@ button.compute-share-card-frame:focus-visible {
     height: 184px;
   }
 
-  .desk-corner {
-    z-index: 1;
-  }
-
   .desk-search__shortcut {
     display: none;
   }
 
   .desk-search {
     top: 8px;
-    color: var(--desk-accent-deep);
+    color: var(--desk-control-ink);
     font-weight: 600;
     letter-spacing: 0.06em;
-    opacity: 0.68;
-  }
-
-  :root[data-theme="dark"] .desk-search {
-    color: var(--desk-accent-deep);
+    opacity: 0.72;
   }
 
   .desk-display-controls {
-    gap: 0;
+    gap: 2px;
   }
 
   .desk-display-option {
@@ -1882,27 +1722,6 @@ button.compute-share-card-frame:focus-visible {
     font-size: 10px;
   }
 
-  .desk-corner--top-left,
-  .desk-corner--top-right {
-    top: 96px;
-  }
-
-  .desk-market-clock.desk-corner--top-left {
-    top: 8px;
-  }
-
-  .desk-brand.desk-corner--top-left {
-    top: 32px;
-  }
-
-  .desk-corner--top-left {
-    left: 12px;
-  }
-
-  .desk-corner--top-right {
-    right: 12px;
-  }
-
   .compute-card-skin--market .gpu-benchmark__ranges button {
     min-height: 40px;
   }
@@ -1953,8 +1772,8 @@ button.compute-share-card-frame:focus-visible {
   }
 
   .desk-view-action[data-catalog-switcher] {
-    width: auto;
-    min-width: 84px;
+    width: 112px;
+    min-width: 112px;
     max-width: 112px;
   }
 
@@ -1962,17 +1781,6 @@ button.compute-share-card-frame:focus-visible {
     width: 24px;
   }
 
-}
-
-@media (prefers-contrast: more) {
-  .desk-corner {
-    color: var(--desk-accent-deep);
-    text-shadow: none;
-  }
-
-  :root[data-theme="dark"] .desk-corner {
-    color: var(--desk-accent-deep);
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2114,8 +1922,12 @@ button.compute-share-card-frame:focus-visible {
   font-variant-numeric: tabular-nums;
   background: color-mix(in srgb, var(--desk-canvas) 96%, var(--desk-accent));
   border: 1px solid var(--market-card-rule);
-  border-radius: 2px;
+  border-radius: var(--desk-radius-panel);
   box-shadow: 0 16px 40px color-mix(in srgb, var(--desk-accent-deep) 12%, transparent);
+}
+
+.gpu-benchmark__composer .gpu-benchmark__month-panel button {
+  border-radius: var(--desk-radius-field);
 }
 
 .gpu-benchmark__month-header {
@@ -2217,7 +2029,7 @@ button.compute-share-card-frame:focus-visible {
   gap: 4px;
   min-width: 0;
   padding: 12px;
-  border-radius: 2px;
+  border-radius: var(--desk-radius-field);
   background: color-mix(in srgb, var(--desk-accent-deep) 4%, transparent);
   transition: background-color 200ms cubic-bezier(0.23, 1, 0.32, 1);
   font: 500 12px/16px "Geist Mono", monospace;

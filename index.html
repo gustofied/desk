@@ -95,15 +95,15 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=110">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=66">
-    <link rel="stylesheet" href="./styles/monitor-data.css?v=20">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=116">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=68">
+    <link rel="stylesheet" href="./styles/monitor-data.css?v=23">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
     <link rel="stylesheet" href="./styles/deal-view.css?v=43">
-    <link rel="stylesheet" href="./styles/command-palette.css?v=16">
-    <link rel="stylesheet" href="./styles/demo.css?v=28">
-    <link rel="stylesheet" href="./styles/desk-shell.css?v=10">
-    <link rel="stylesheet" href="./styles/market-strip.css?v=12">
+    <link rel="stylesheet" href="./styles/command-palette.css?v=21">
+    <link rel="stylesheet" href="./styles/demo.css?v=31">
+    <link rel="stylesheet" href="./styles/desk-shell.css?v=11">
+    <link rel="stylesheet" href="./styles/market-strip.css?v=13">
   </head>
   <body>
     <aside class="desk-market-strip" aria-label="Market prices" data-market-strip data-state="loading">
@@ -512,25 +512,7 @@
         <p class="desk-workspace-status" role="status" aria-live="polite" aria-atomic="true" data-workspace-status></p>
       </section>
     </main>
-    <aside class="desk-corners" aria-label="Desk status">
-      <span class="desk-corner desk-corner--top-left desk-brand">
-        <span class="desk-brand__line">
-          <span class="desk-brand__word">Market</span>
-          <strong class="desk-brand__accent">Data</strong>
-          <span class="desk-brand__word">For</span>
-        </span>
-        <span class="desk-brand__line">
-          <span class="desk-brand__word">Compute</span>
-          <strong class="desk-brand__accent">Desks</strong>
-        </span>
-        <a class="desk-brand__byline" href="https://www.adamsioud.com/exemplars/compute-desk/your_compute_desk.html">by <strong>ADAM</strong></a>
-      </span>
-      <time class="desk-corner desk-corner--top-left desk-market-clock" data-desk-clock>
-        <span class="desk-market-clock__date" data-desk-clock-date>pending</span>
-        <strong class="desk-market-clock__time" data-desk-clock-time>00:00:00</strong>
-        <span class="desk-market-clock__zone">UTC</span>
-      </time>
-    </aside>
+    <div class="desk-corners" aria-hidden="true"></div>
     <button class="desk-search" type="button" aria-label="Desk" aria-haspopup="dialog" aria-controls="desk-command-menu" aria-keyshortcuts="Meta+G" data-command-open>
       <kbd class="desk-search__shortcut" aria-hidden="true">⌘G</kbd>
       <span>Desk</span>
@@ -553,7 +535,6 @@
       <div class="desk-command-menu__stage">
       <section class="desk-command-menu__entry" aria-label="Desk login" data-desk-entry>
         <header class="desk-command-menu__entry-header">
-          <span>Desk</span>
           <span class="desk-command-menu__entry-actions">
             <button class="desk-command-menu__close" type="button" data-command-close>Close</button>
           </span>
@@ -586,7 +567,6 @@
             placeholder="Search views and commands"
             data-command-input
           >
-          <kbd class="desk-command-menu__shortcut" aria-hidden="true">⌘G</kbd>
           <button class="desk-command-menu__close" type="button" data-command-close>Close</button>
         </header>
         <div class="desk-command-menu__results" id="desk-command-results" role="listbox" aria-label="Desk commands" data-command-results></div>
@@ -594,7 +574,6 @@
           <span><kbd>↑↓</kbd> Move</span>
           <span><kbd>Enter</kbd> Select</span>
           <span><kbd>Esc</kbd> Close</span>
-          <span>Resource index</span>
         </footer>
         <p class="desk-command-menu__status" aria-live="polite" data-command-status></p>
       </section>
@@ -690,6 +669,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=267"></script>
+    <script type="module" src="./desk.js?v=270"></script>
   </body>
 </html>

@@ -5,7 +5,6 @@ import { createDeskLogoMotion } from "./desk-logo.js";
 // Kept in memory so a page refresh lets the login mock be tried again.
 export function createDeskEntry({
   entry, content, button, onReveal, onLogout, reducedMotion = false, animate = motionAnimate,
-  schedule = globalThis.setTimeout, cancel = globalThis.clearTimeout,
   motionDocument = globalThis.document,
 }) {
   let unlocked = !entry || !content || !button;
@@ -13,11 +12,8 @@ export function createDeskEntry({
   let presentation = "menu";
   let revision = 0;
   let animations = [];
-  let waiting = false;
   let logoutFading = false;
-  let waitTimer = null;
   const targets = new Set();
-  const label = button?.querySelector?.("[data-desk-login-label]");
   const buttonTabIndex = button?.getAttribute?.("tabindex") ?? null;
   const entryLabel = entry?.getAttribute?.("aria-label") || "Desk login";
   const motionPreference = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)");
@@ -28,7 +24,7 @@ export function createDeskEntry({
   }
 
   function startIdle() {
-    if (!opened || (unlocked && presentation !== "sidebar") || waiting) logoMotion.stop();
+    if (!opened || (unlocked && presentation !== "sidebar")) logoMotion.stop();
     else logoMotion.start();
   }
 
@@ -39,19 +35,12 @@ export function createDeskEntry({
     }
   }
 
-  function setWaiting(value) {
-    waiting = value;
-    button?.setAttribute("aria-busy", String(value));
-    button?.toggleAttribute("data-opening", value);
-    syncButton();
-  }
-
   function syncButton() {
     if (!button) return;
     const passive = presentation === "sidebar";
     button.disabled = passive;
     button.inert = passive;
-    button.setAttribute("aria-disabled", String(passive || waiting));
+    button.setAttribute("aria-disabled", String(passive));
     if (passive) {
       button.setAttribute("aria-hidden", "true");
       button.setAttribute("tabindex", "-1");
@@ -60,13 +49,6 @@ export function createDeskEntry({
       if (buttonTabIndex === null) button.removeAttribute("tabindex");
       else button.setAttribute("tabindex", buttonTabIndex);
     }
-    if (label) label.textContent = waiting ? "Opening…" : "Log in";
-  }
-
-  function cancelWait() {
-    if (waitTimer !== null) cancel(waitTimer);
-    waitTimer = null;
-    setWaiting(false);
   }
 
   function clearMotion() {
@@ -111,7 +93,6 @@ export function createDeskEntry({
     if (next === presentation) return;
     stopIdle();
     clearMotion();
-    cancelWait();
     presentation = next;
     sync();
     startIdle();
@@ -130,7 +111,6 @@ export function createDeskEntry({
   function open({ animateEntrance = false } = {}) {
     stopIdle();
     clearMotion();
-    cancelWait();
     opened = true;
     sync();
     if (!unlocked && presentation !== "sidebar" && animateEntrance && motionAllowed()) {
@@ -143,37 +123,19 @@ export function createDeskEntry({
   }
 
   function reveal(event) {
-    if (!opened || presentation === "sidebar" || unlocked || waiting) return;
+    if (!opened || presentation === "sidebar" || unlocked) return;
     const returning = logoutFading
       ? { entry: opacityOf(entry), content: opacityOf(content) }
       : null;
-    clearMotion();
-    // The delay exists only to demonstrate a waiting state in this mock.
-    // Keyboard activation and reduced motion skip the simulated wait.
-    if (!event.detail || !motionAllowed()) {
-      stopIdle();
-      revealMenu(false);
-      return;
-    }
-    if (returning) {
-      revealMenu(true, returning);
-      return;
-    }
-    setWaiting(true);
-    // Let the quiet ink pass continue through the mock wait without restarting.
-    const current = revision;
-    waitTimer = schedule(() => {
-      waitTimer = null;
-      if (!opened || current !== revision) return;
-      revealMenu(motionAllowed());
-    }, 600);
+    // Pointer activation begins the reveal immediately; keyboard and reduced
+    // motion activation settle directly into the command menu.
+    revealMenu(Boolean(event.detail) && motionAllowed(), returning);
   }
 
   function revealMenu(animateReveal, returning = null) {
     stopIdle();
     clearMotion();
     unlocked = true;
-    setWaiting(false);
     entry.inert = true;
     content.hidden = false;
     content.inert = false;
@@ -201,12 +163,11 @@ export function createDeskEntry({
   }
 
   function logout({ animate: animateReturn = true } = {}) {
-    if (!opened || presentation === "sidebar" || !entry || !content || !button || (!unlocked && !waiting)) return false;
+    if (!opened || presentation === "sidebar" || !entry || !content || !button || !unlocked) return false;
     const from = { entry: opacityOf(entry), content: opacityOf(content) };
     stopIdle();
     clearMotion();
     unlocked = false;
-    cancelWait();
     content.inert = true;
     entry.hidden = false;
     entry.inert = false;
@@ -229,7 +190,6 @@ export function createDeskEntry({
     opened = false;
     stopIdle();
     clearMotion();
-    cancelWait();
     sync();
   }
 

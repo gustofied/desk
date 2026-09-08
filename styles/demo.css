@@ -37,12 +37,18 @@ body {
   margin: 0;
 }
 
+html {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+}
+
 body {
   display: grid;
-  min-width: 320px;
+  min-width: min(320px, 100%);
   min-height: 100dvh;
   place-items: center;
   padding: clamp(20px, 5vw, 72px);
+  padding-top: max(clamp(20px, 5vw, 72px), var(--desk-gallery-top-space));
   background: var(--desk-canvas, #fff);
   color: #171717;
   transition:
@@ -69,16 +75,9 @@ body {
   padding-bottom: 96px;
 }
 
-@media (min-width: 641px) {
-  :root[data-display-toolbar="collapsed"] .desk-top-controls {
-    top: var(--desk-toolbar-center, calc(var(--desk-gallery-top-space) / 2));
-    transform: translate(-50%, -50%);
-  }
-}
-
 .desk-stage .gpu-index {
   margin: 0;
-  scroll-margin-top: 96px;
+  scroll-margin-top: max(96px, var(--desk-gallery-top-space));
 }
 
 .desk-stage .gpu-benchmark__chart {
@@ -107,7 +106,7 @@ body {
 /* Anchor the chart independently of the expanding details below it. */
 :root[data-desk-view="monitor"][data-desk-layout="focus"] body {
   align-items: start;
-  padding-top: max(clamp(20px, 5vw, 72px), calc((100dvh - var(--desk-monitor-chart-height) - 32px) / 2));
+  padding-top: max(var(--desk-gallery-top-space), calc((100dvh - var(--desk-monitor-chart-height) - 32px) / 2));
 }
 
 :root[data-desk-view="monitor"][data-desk-layout="focus"]

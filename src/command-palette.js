@@ -34,6 +34,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   let commandSnapshot = [];
   let visibleCommands = [];
   let activeIndex = -1;
+  let renderedQuery = null;
   let previousFocus = null;
   let renderFrame = null;
   let focusRevision = 0;
@@ -74,10 +75,13 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
 
   document.addEventListener("keydown", handleGlobalShortcut);
   input?.addEventListener("input", scheduleRender);
-  input?.addEventListener("keydown", handleInputKeydown);
+  input?.addEventListener("keydown", handleCommandKeydown);
   closeButtons.forEach(button => button.addEventListener("click", handleCloseClick));
+  results?.addEventListener("pointerdown", handleResultsPointerDown);
   results?.addEventListener("pointermove", handleResultsPointerMove);
   results?.addEventListener("click", handleResultsClick);
+  results?.addEventListener("focusin", handleResultsFocus);
+  results?.addEventListener("keydown", handleCommandKeydown);
   root.addEventListener("cancel", handleCancel);
   root.addEventListener("click", handleRootClick);
   root.addEventListener("keydown", handleRootKeydown);
@@ -137,8 +141,28 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     setActiveIndex(commandIndexFromEvent(event), false);
   }
 
+  function handleResultsPointerDown(event) {
+    const index = commandIndexFromEvent(event);
+    if (event.button !== 0 || !visibleCommands[index] || visibleCommands[index].disabled) return;
+    // The combobox owns focus; option buttons only supply the active descendant.
+    event.preventDefault();
+    setActiveIndex(index, false);
+    input?.focus({ preventScroll: true });
+  }
+
+  function handleResultsFocus(event) {
+    const index = commandIndexFromEvent(event);
+    if (!visibleCommands[index] || visibleCommands[index].disabled) return;
+    setActiveIndex(index, false);
+    input?.focus({ preventScroll: true });
+  }
+
   function handleResultsClick(event) {
-    runCommand(commandIndexFromEvent(event));
+    const index = commandIndexFromEvent(event);
+    if (!visibleCommands[index] || visibleCommands[index].disabled) return;
+    setActiveIndex(index, false);
+    input?.focus({ preventScroll: true });
+    runCommand(index);
   }
 
   function commandIndexFromEvent(event) {
@@ -263,14 +287,16 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   function render() {
     if (!results || !input || !deskEntry.commandsVisible) return;
     const query = createQuery(input.value);
-    const previousId = visibleCommands[activeIndex]?.id;
+    const queryChanged = query.value !== renderedQuery;
+    const previousId = queryChanged ? null : visibleCommands[activeIndex]?.id;
+    renderedQuery = query.value;
     const matches = commandSnapshot
       .map((command) => ({
         ...command,
         score: scoreCommand(command, query),
       }))
       .filter((command) => command.score >= 0)
-      .sort(compareCommands);
+      .sort((left, right) => compareCommands(left, right, Boolean(query.value)));
     const matchCount = matches.length;
     visibleCommands = matches.slice(0, maxRenderedCommands);
 
@@ -295,7 +321,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
 
     let currentGroup = null;
     visibleCommands.forEach((command, index) => {
-      if (command.group !== currentGroup) {
+      if (!query.value && command.group !== currentGroup) {
         currentGroup = command.group;
         const label = document.createElement("p");
         label.className = "desk-command-menu__group";
@@ -306,6 +332,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
       fragment.append(createCommandRow(command, index));
     });
     results.replaceChildren(fragment);
+    if (queryChanged) results.scrollTop = 0;
 
     syncActiveRow(false);
     if (status) {
@@ -321,6 +348,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     row.className = "desk-command-menu__option";
     row.id = optionId;
     row.type = "button";
+    row.tabIndex = -1;
     row.setAttribute("role", "option");
     row.setAttribute("aria-selected", String(index === activeIndex));
     row.setAttribute("aria-disabled", String(command.disabled));
@@ -341,14 +369,22 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
 
     const meta = document.createElement("span");
     meta.className = "desk-command-menu__meta";
-    meta.textContent = command.active ? "Active" : command.hint;
+    const hint = normalize(command.hint).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    const titleText = normalize(command.title).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    const hintRepeatsTitle = hint && ` ${titleText} `.includes(` ${hint} `);
+    meta.textContent = command.active ? "Active" : hintRepeatsTitle ? "" : command.hint;
     if (meta.textContent) row.append(meta);
 
     return row;
   }
 
-  function handleInputKeydown(event) {
-    if (event.isComposing) return;
+  function handleCommandKeydown(event) {
+    if (event.defaultPrevented || event.isComposing || otherModalOpen()) return;
+    const rowIndex = commandIndexFromEvent(event);
+    if (rowIndex >= 0) {
+      setActiveIndex(rowIndex, false);
+      input?.focus({ preventScroll: true });
+    }
     if (["ArrowDown", "ArrowUp", "Home", "End", "Enter"].includes(event.key)) {
       flushRender();
     }
@@ -380,7 +416,9 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
       .map(({ index }) => index);
     if (!enabled.length) return;
     const current = enabled.indexOf(activeIndex);
-    const next = enabled[(current + direction + enabled.length) % enabled.length];
+    const next = current < 0
+      ? enabled[direction > 0 ? 0 : enabled.length - 1]
+      : enabled[(current + direction + enabled.length) % enabled.length];
     setActiveIndex(next, true);
   }
 
@@ -399,7 +437,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   }
 
   function setActiveIndex(index, scroll) {
-    if (index < 0 || visibleCommands[index]?.disabled || activeIndex === index) return;
+    if (!visibleCommands[index] || visibleCommands[index].disabled || activeIndex === index) return;
     activeIndex = index;
     syncActiveRow(scroll);
   }
@@ -461,10 +499,13 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     sidecar?.destroy();
     document.removeEventListener("keydown", handleGlobalShortcut);
     input?.removeEventListener("input", scheduleRender);
-    input?.removeEventListener("keydown", handleInputKeydown);
+    input?.removeEventListener("keydown", handleCommandKeydown);
     closeButtons.forEach(button => button.removeEventListener("click", handleCloseClick));
+    results?.removeEventListener("pointerdown", handleResultsPointerDown);
     results?.removeEventListener("pointermove", handleResultsPointerMove);
     results?.removeEventListener("click", handleResultsClick);
+    results?.removeEventListener("focusin", handleResultsFocus);
+    results?.removeEventListener("keydown", handleCommandKeydown);
     root.removeEventListener("cancel", handleCancel);
     root.removeEventListener("click", handleRootClick);
     root.removeEventListener("keydown", handleRootKeydown);
@@ -559,16 +600,17 @@ function scoreCommand(command, query) {
     else if (subtitle.includes(token)) score += 64;
     else score += 24;
   }
-  if (command.active) score += 8;
-  return score - command.order;
+  return score;
 }
 
-function compareCommands(left, right) {
+function compareCommands(left, right, searching) {
+  if (searching && left.score !== right.score) return right.score - left.score;
   const leftGroup = groupIndex(left.group);
   const rightGroup = groupIndex(right.group);
   if (leftGroup !== rightGroup) return leftGroup - rightGroup;
   if (left.score !== right.score) return right.score - left.score;
   if (left.order !== right.order) return left.order - right.order;
+  if (searching && left.active !== right.active) return Number(right.active) - Number(left.active);
   return left.registryIndex - right.registryIndex;
 }
 
