@@ -671,6 +671,13 @@ export const CARD_REGISTRY = Object.freeze([
         }),
       }),
       Object.freeze({
+        id: "coreweave-compute",
+        label: "CoreWeave + compute",
+        state: Object.freeze({
+          symbol: "CRWV", layers: Object.freeze(["CRWV", "H100", "H200"]), scale: "index", range: "90d",
+        }),
+      }),
+      Object.freeze({
         id: "clouds-compute",
         label: "Clouds + compute",
         state: Object.freeze({

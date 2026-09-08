@@ -7,8 +7,8 @@ import { EQUITY_LAYERS, paletteIds, THEMES } from "./card-registry.js";
 import { createSharedDesk } from "./shared-desk.js";
 
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 11;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+const STORAGE_VERSION = 13;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
@@ -29,8 +29,10 @@ const STARTER_CATALOGS = Object.freeze([
       "preset-gpu-index-h200",
       "preset-gpu-market-depth-h100-us",
       "preset-power-basis-pjm-dominion",
-      "preset-equities-nvda",
+      "preset-equities-coreweave-compute",
       "preset-sandbox-cost-cost",
+      "preset-forward-prices-h100-curve",
+      "preset-forward-prices-h100",
     ]),
   }),
   Object.freeze({
@@ -714,10 +716,10 @@ function migrateLegacyState(value) {
   const now = new Date().toISOString();
   let collections = [...legacyState.collections];
   const forward = STARTER_CATALOGS.find(starter => starter.id === "forward");
-  if (collections.length < MAX_COLLECTIONS && !collections.some(collection => collection.id === forward.id || collection.name.toLowerCase() === "forward")) {
+  if (sourceVersion < 11 && collections.length < MAX_COLLECTIONS && !collections.some(collection => collection.id === forward.id || collection.name.toLowerCase() === "forward")) {
     collections.push({ ...forward, keys: [...forward.keys], createdAt: now, updatedAt: now });
   }
-  if (sourceVersion === 10) return { ...legacyState, collections };
+  if (sourceVersion >= 10) return composeStarterUpgrade({ ...legacyState, collections }, now);
   // Introduce only starters newer than the stored schema; current-version
   // removals remain intentional and must not recreate a user's deleted catalog.
   const additions = LEGACY_STARTER_CATALOGS.filter((catalog) => {
@@ -778,6 +780,13 @@ function composeStarterUpgrade(state, now) {
   const collections = state.collections.map((collection) => {
     const previous = legacyById.get(collection.id);
     const next = starterById.get(collection.id);
+    if (next?.id === OVERVIEW_CATALOG_ID) {
+      const oldKeys = next.keys.map(key => key === "preset-equities-coreweave-compute" ? "preset-equities-nvda" : key);
+      const variants = [oldKeys, oldKeys.filter(key => !key.startsWith("preset-forward-prices-"))];
+      if (variants.some(keys => matchesStarter(collection, { ...next, keys }))) {
+        return { ...collection, keys: [...next.keys], updatedAt: now };
+      }
+    }
     if (!previous || !next || !matchesStarter(collection, previous)) return collection;
     if (JSON.stringify(collection.keys) === JSON.stringify(next.keys)) return collection;
     return { ...collection, keys: [...next.keys], updatedAt: now };
