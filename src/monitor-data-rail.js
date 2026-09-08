@@ -77,9 +77,10 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       return;
     }
     const sourceOnly = model.accessKind === "source";
+    const calculator = Boolean(model.calculationFields);
     root.dataset.accessKind = model.accessKind || "cli";
-    root.setAttribute("aria-label", sourceOnly ? "Market data source" : "Desk API");
-    nodes.label.textContent = sourceOnly ? "Source" : "Desk API";
+    root.setAttribute("aria-label", calculator ? "Calculation details" : sourceOnly ? "Market data source" : "Desk API");
+    nodes.label.textContent = calculator ? "Calculation" : sourceOnly ? "Source" : "Desk API";
     nodes.dataset.textContent = model.label;
     nodes.context.textContent = sourceOnly ? model.summary : [model.summary, model.provenance].filter(Boolean).join(" ");
     nodes.context.title = nodes.context.textContent;
@@ -88,6 +89,22 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     for (const section of nodes.apiSections) section.hidden = sourceOnly;
     if (nodes.source) nodes.source.hidden = !model.description && !model.sourceUrl;
     if (nodes.sourceDescription) nodes.sourceDescription.textContent = model.description || "";
+    root.querySelector("[data-calculation-fields]")?.remove();
+    if (calculator && nodes.description) {
+      const list = document.createElement("dl");
+      list.className = "desk-data-rail__calculation";
+      list.dataset.calculationFields = "";
+      model.calculationFields.forEach(([label, value]) => {
+        const pair = document.createElement("div");
+        const term = document.createElement("dt");
+        const detail = document.createElement("dd");
+        term.textContent = label;
+        detail.textContent = value;
+        pair.append(term, detail);
+        list.append(pair);
+      });
+      nodes.description.after(list);
+    }
     if (nodes.sourceLink) {
       nodes.sourceLink.hidden = !model.sourceUrl;
       if (model.sourceUrl) nodes.sourceLink.href = model.sourceUrl;
@@ -311,6 +328,7 @@ function sentenceLabel(value) {
 }
 
 function toggleLabel(model) {
+  if (model.calculationFields) return `Calculation details, ${model.summary}`;
   if (model.accessKind === "source") return `Data by ${model.label}, ${model.summary}`;
   const label = [
     "Desk API",

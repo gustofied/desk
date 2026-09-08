@@ -27,7 +27,7 @@ export function createCardDocument({
     cardId: card.id,
     renderer: card.renderer,
     name,
-    visualization,
+    visualization: normalizeCardVisualization(card.id, visualization),
     createdAt,
     updatedAt,
   });
@@ -52,6 +52,15 @@ export function normalizeCardDocument(value) {
   const id = normalizeDocumentId(value.id);
   const name = normalizeCardDocumentName(value.name);
   if (!name) throw new TypeError("Enter a name");
+  const visualization = normalizeCardVisualization(card.id, value.visualization);
+  if (card.stateKind === "calculator") {
+    const keys = cardStateParamIds(card);
+    if (!isRecord(value.visualization) || Object.keys(value.visualization).length !== keys.length ||
+      keys.some(key => !Object.hasOwn(value.visualization, key) ||
+        JSON.stringify(value.visualization[key]) !== JSON.stringify(visualization[key]))) {
+      throw new TypeError("Saved calculator state must be a complete canonical snapshot");
+    }
+  }
 
   return {
     schema: CARD_DOCUMENT_SCHEMA,
@@ -60,7 +69,7 @@ export function normalizeCardDocument(value) {
     cardId: card.id,
     renderer: card.renderer,
     name,
-    visualization: normalizeCardVisualization(card.id, value.visualization),
+    visualization,
     createdAt: normalizeDocumentDate(value.createdAt, "createdAt"),
     updatedAt: normalizeDocumentDate(value.updatedAt, "updatedAt"),
   };
@@ -68,8 +77,17 @@ export function normalizeCardDocument(value) {
 
 export function normalizeCardVisualization(cardId, state = {}) {
   const card = requireCardDefinition(cardId);
-  const normalized = normalizeCardState(card.id,
-    migrateCardVisualizationState(card.id, isRecord(state) ? state : {}));
+  const input = migrateCardVisualizationState(card.id, isRecord(state) ? state : {});
+  const normalized = normalizeCardState(card.id, input);
+  // A saved financial scenario must not silently replace invalid assumptions.
+  // URL/Craft input is normalized before it becomes a CardDocument.
+  if (card.stateKind === "calculator") {
+    for (const option of card.stateOptions || []) {
+      if (Object.hasOwn(input, option.id) && input[option.id] !== normalized[option.id]) {
+        throw new TypeError(`Invalid calculator ${option.id}`);
+      }
+    }
+  }
   const visualization = {};
 
   for (const paramId of cardStateParamIds(card)) {

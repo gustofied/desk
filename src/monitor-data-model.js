@@ -11,9 +11,28 @@ export function createMonitorDataModel({
   powerModel = null,
   sandboxModel = null,
   forwardModel = null,
+  hedgeModel = null,
   runtimePayload = null,
   runtimePayloads = new Map(),
 }) {
+  if (card?.id === "gpu-hedge" && hedgeModel) {
+    const m = hedgeModel;
+    const money = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
+    const calculationFields = [
+      ["GPU-hours", m.hours.toLocaleString("en-US")], ["Revenue", money(m.revenue)],
+      ["Hedge price", `${money(m.rate)}/GPU-h`], ["Hedged", `${m.coverage}%`],
+      ["Other costs", money(m.costs)], ["Rental minus index", `${money(m.basis)}/GPU-h`],
+      ["Profit at hedge price", money(m.headlineProfit)], ["Margin", m.margin === null ? "—" : `${m.margin.toFixed(1)}%`],
+    ];
+    return finalizeModel(card, {
+      id: "gpu-hedge-inputs", label: "GPU hedge", summary: `${m.gpu} ${m.delivery}`,
+      detailDescription: cardDetailDescription(card, cardState),
+      breadcrumbs: ["Inputs"], rowCount: 0, asOf: null, accessKind: "source", status: "ready",
+      unit: "USD", provenance: "Your inputs", priceBasis: "calculator",
+      description: "Fixed GPU-hours, revenue and rental-to-index difference. Hedge fees and financing excluded.",
+      calculationFields,
+    });
+  }
   if (card?.dataAdapter === "forward" && forwardModel) {
     return finalizeModel(card, {
       id: "forward-source", label: "Forward prices", summary: `${forwardModel.gpu} US East`,
@@ -332,6 +351,7 @@ function finalizeModel(card, values) {
     values.detailDescription,
     values.sourceUrl,
     values.source,
+    values.calculationFields,
   ]);
   return Object.freeze({
     key,
@@ -339,6 +359,7 @@ function finalizeModel(card, values) {
     label: values.label || card.dataTable.label,
     summary: values.summary,
     detailDescription: values.detailDescription,
+    calculationFields: values.calculationFields,
     breadcrumbs: Object.freeze([...values.breadcrumbs]),
     rowCount: values.rowCount,
     asOf: values.asOf,

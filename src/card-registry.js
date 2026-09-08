@@ -24,6 +24,8 @@ const EQUITIES_ID = "equities";
 const EQUITIES_DATA_FILE = "data/equities.json";
 const SANDBOX_COST_ID = "sandbox-cost";
 const SANDBOX_COST_DATA_FILE = "data/sandbox-cost.json";
+const GPU_HEDGE_ID = "gpu-hedge";
+const GPU_HEDGE_DATA_FILE = "data/gpu-hedge.json";
 
 export const SANDBOX_PROVIDER_LAYERS = Object.freeze([
   ["novita", "Novita"],
@@ -83,6 +85,16 @@ const PRIVATE_CAPACITY_OPTIONS = Object.freeze([
     default: "2026-10",
   }),
 ]);
+
+const GPU_HEDGE_OPTIONS = Object.freeze([
+  { id: "delivery", label: "Settlement month", type: "month", min: "2026-01", max: "2035-12", default: "2026-10" },
+  { id: "hours", label: "GPU-hours", type: "integer", min: 1, max: 1_000_000_000, default: 500_000 },
+  { id: "revenue", label: "Revenue", type: "decimal", min: 0, max: 1_000_000_000_000, precision: 2, default: 1_500_000 },
+  { id: "costs", label: "Other costs", type: "decimal", min: 0, max: 1_000_000_000_000, precision: 2, default: 0 },
+  { id: "rate", label: "Hedge price", type: "decimal", min: 0.01, max: 100, precision: 2, default: 2.5 },
+  { id: "coverage", label: "Hedged %", type: "decimal", min: 0, max: 100, precision: 1, default: 100 },
+  { id: "basis", label: "Price difference", type: "decimal", min: -100, max: 100, precision: 2, default: 0 },
+].map(option => Object.freeze(option)));
 
 export const SITE_ORIGIN = "https://desk.adamsioud.com";
 export const PUBLISHED_CARD_VERSION = "v17";
@@ -718,6 +730,39 @@ export const CARD_REGISTRY = Object.freeze([
     visualizations: Object.freeze([Object.freeze({ id: "price", label: "Price", unit: "usd-hour" })]),
   }),
   Object.freeze({
+    id: GPU_HEDGE_ID,
+    slug: GPU_HEDGE_ID,
+    hash: "gpu-benchmark-card",
+    renderer: "gpu-hedge",
+    stateKind: "calculator",
+    primaryParam: "gpu",
+    title: "GPU hedge",
+    craftLabel: "GPU hedge",
+    description: "Gross profit across GPU rental prices, using your operating and hedge assumptions.",
+    dataFile: GPU_HEDGE_DATA_FILE,
+    dataUrl: `./${GPU_HEDGE_DATA_FILE}`,
+    dataAdapter: "calculator",
+    publishable: false,
+    sharePath: `/cards/${GPU_HEDGE_ID}`,
+    previewImageDir: `assets/social/${GPU_HEDGE_ID}`,
+    previewPageDir: `cards/${GPU_HEDGE_ID}`,
+    defaults: Object.freeze({
+      layer: "H100", layers: Object.freeze(["H100"]),
+      range: "now", scale: "price", palette: DEFAULT_PALETTE, theme: DEFAULT_THEME,
+      ...Object.fromEntries(GPU_HEDGE_OPTIONS.map(option => [option.id, option.default])),
+    }),
+    ranges: Object.freeze(["now"]),
+    allowComparisons: false,
+    layers: PRIVATE_CAPACITY_LAYERS,
+    stateOptions: GPU_HEDGE_OPTIONS,
+    catalogPresets: Object.freeze([
+      Object.freeze({ id: "buyer", label: "GPU hedge", state: Object.freeze({ gpu: "H100" }) }),
+    ]),
+    visualizations: Object.freeze([
+      Object.freeze({ id: "price", label: "Profit", unit: "usd" }),
+    ]),
+  }),
+  Object.freeze({
     id: SANDBOX_COST_ID,
     slug: SANDBOX_COST_ID,
     hash: "gpu-benchmark-card",
@@ -885,18 +930,10 @@ export function normalizeCardState(cardId, stateParams = {}) {
     : card.defaults.theme;
 
   const options = Object.fromEntries(
-    (card.stateOptions || []).map((option) => {
-      const requested = String(stateParams[option.id] || "").toLowerCase();
-      const fallback = String(
-        card.defaults[option.id] ?? option.default ?? option.values?.[0] ?? "",
-      ).toLowerCase();
-      return [
-        option.id,
-        option.values?.map(String).map((value) => value.toLowerCase()).includes(requested)
-          ? requested
-          : fallback,
-      ];
-    }),
+    (card.stateOptions || []).map((option) => [
+      option.id,
+      normalizeStateOption(option, stateParams[option.id], card.defaults[option.id]),
+    ]),
   );
 
   return {
@@ -938,7 +975,7 @@ function normalizeDealState(card, stateParams) {
   const options = Object.fromEntries(
     (card.stateOptions || []).map((option) => [
       option.id,
-      normalizeDealOption(option, stateParams[option.id], card.defaults[option.id]),
+      normalizeStateOption(option, stateParams[option.id], card.defaults[option.id]),
     ]),
   );
   const gpu = String(options.gpu || card.defaults.gpu || card.defaults.layer).toUpperCase();
@@ -958,7 +995,7 @@ function normalizeDealState(card, stateParams) {
   };
 }
 
-function normalizeDealOption(option, requestedValue, defaultValue) {
+function normalizeStateOption(option, requestedValue, defaultValue) {
   const fallback = defaultValue ?? option.default ?? option.values?.[0] ?? "";
 
   if (option.type === "integer") {
@@ -968,7 +1005,7 @@ function normalizeDealOption(option, requestedValue, defaultValue) {
     return normalizeBoundedNumber(requestedValue, fallback, option, false);
   }
   if (option.type === "month") {
-    const requested = String(requestedValue || "").trim();
+    const requested = String(requestedValue ?? "").trim();
     const validMonth = /^\d{4}-(0[1-9]|1[0-2])$/.test(requested);
     const withinMinimum = !option.min || requested >= option.min;
     const withinMaximum = !option.max || requested <= option.max;
@@ -977,7 +1014,7 @@ function normalizeDealOption(option, requestedValue, defaultValue) {
       : String(fallback);
   }
 
-  const requested = String(requestedValue || "").trim();
+  const requested = String(requestedValue ?? "").trim();
   const match = option.values?.find(
     (value) => String(value).toLowerCase() === requested.toLowerCase(),
   );

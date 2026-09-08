@@ -7,8 +7,8 @@ import { EQUITY_LAYERS, paletteIds, THEMES } from "./card-registry.js";
 import { createSharedDesk } from "./shared-desk.js";
 
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 13;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+const STORAGE_VERSION = 14;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
@@ -57,6 +57,7 @@ const STARTER_CATALOGS = Object.freeze([
     id: HEDGE_CATALOG_ID,
     name: "Hedge",
     keys: Object.freeze([
+      "preset-gpu-hedge-buyer",
       "preset-gpu-index-h100-b200-spread",
       "preset-gpu-index-h200-b300-spread",
       "preset-power-basis-pjm-west-spread",
@@ -714,12 +715,15 @@ function migrateLegacyState(value) {
     version: STORAGE_VERSION,
   });
   const now = new Date().toISOString();
+  // Version 14 only introduces the calculator in an untouched Hedge starter.
+  // Do not replay older starter additions against a user's current catalogs.
+  if (sourceVersion === 13) return upgradeHedgeStarter(legacyState, now);
   let collections = [...legacyState.collections];
   const forward = STARTER_CATALOGS.find(starter => starter.id === "forward");
   if (sourceVersion < 11 && collections.length < MAX_COLLECTIONS && !collections.some(collection => collection.id === forward.id || collection.name.toLowerCase() === "forward")) {
     collections.push({ ...forward, keys: [...forward.keys], createdAt: now, updatedAt: now });
   }
-  if (sourceVersion >= 10) return composeStarterUpgrade({ ...legacyState, collections }, now);
+  if (sourceVersion >= 10) return upgradeHedgeStarter(composeStarterUpgrade({ ...legacyState, collections }, now), now);
   // Introduce only starters newer than the stored schema; current-version
   // removals remain intentional and must not recreate a user's deleted catalog.
   const additions = LEGACY_STARTER_CATALOGS.filter((catalog) => {
@@ -758,7 +762,18 @@ function migrateLegacyState(value) {
       updatedAt: now,
     };
   });
-  return composeStarterUpgrade({ ...legacyState, collections }, now);
+  return upgradeHedgeStarter(composeStarterUpgrade({ ...legacyState, collections }, now), now);
+}
+
+function upgradeHedgeStarter(state, now) {
+  const next = STARTER_CATALOGS.find(starter => starter.id === HEDGE_CATALOG_ID);
+  const previous = { ...next, keys: next.keys.filter(key => key !== "preset-gpu-hedge-buyer") };
+  return {
+    ...state,
+    collections: state.collections.map(collection => matchesStarter(collection, previous)
+      ? { ...collection, keys: [...next.keys], updatedAt: now }
+      : collection),
+  };
 }
 
 function matchesStarter(collection, starter) {

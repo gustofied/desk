@@ -38,6 +38,9 @@ import { paintPowerBasisChart } from "./power-basis-presentation.js";
 import { createSandboxCostModel } from "./sandbox-cost-model.js";
 import { createForwardPricesModel } from "./forward-prices-model.js";
 import { paintForwardPricesChart } from "./forward-prices-presentation.js";
+import { createGpuHedgeModel } from "./gpu-hedge-model.js";
+import { paintGpuHedgeChart } from "./gpu-hedge-presentation.js";
+import { createMonthPicker } from "./month-picker.js";
 import { paintSandboxCostChart } from "./sandbox-cost-presentation.js";
 import { createDealViewModel } from "./deal-view-model.js";
 import { mountDealView } from "./deal-view-presentation.js";
@@ -151,6 +154,9 @@ if (root) {
     "(prefers-reduced-motion: reduce)",
   );
   let reducedMotion = motionPreference.matches;
+  const calculatorNumberFormats = [0, 2].map(minimumFractionDigits => new Intl.NumberFormat("en-US", {
+    minimumFractionDigits, maximumFractionDigits: 2,
+  }));
   const mobileViewport = window.matchMedia("(max-width: 640px)");
   let families = cardDefinition.layers
     .filter((layer) => layer.primary !== false)
@@ -426,6 +432,8 @@ if (root) {
     dealCraftRfs: root.querySelector("[data-deal-craft-rfs]"),
     optionGroup: root.querySelector("[data-card-options]"),
     optionButtons: [],
+    optionInputs: [],
+    monthPickers: new Map(),
     composer: root.querySelector("[data-card-composer]"),
     saveButton: root.querySelector("[data-card-save]"),
     marketPinButtons: Array.from(document.querySelectorAll("[data-card-market-pin]")),
@@ -467,6 +475,7 @@ if (root) {
     catalogSubmit: document.querySelector("[data-catalog-submit]"),
     themeColor: document.querySelector('meta[name="theme-color"]'),
   };
+  const invalidCalculatorInputs = new WeakSet();
   const commandPalette = createCommandPalette({
     root: nodes.commandPalette,
     reducedMotion,
@@ -572,7 +581,11 @@ if (root) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("aria-hidden", "true");
     host.append(svg);
-    if (definition.renderer === "forward-prices") {
+    if (definition.renderer === "gpu-hedge") {
+      paintGpuHedgeChart(svg, createGpuHedgeModel(marketEntryPayload(entry), display), {
+        colors: palette, compact: true, gallery: true, title: entry.label, reducedMotion: true, decorative: true,
+      });
+    } else if (definition.renderer === "forward-prices") {
       paintForwardPricesChart(svg, createForwardPricesModel(marketEntryPayload(entry), display), {
         colors: palette, compact: true, gallery: true, title: entry.label, reducedMotion: true, decorative: true,
       });
@@ -625,6 +638,7 @@ if (root) {
   }
 
   function toggleMarketPin() {
+    if (!validateCalculatorInputs()) return;
     if (!state.shareReady || state.craftEmpty || !hasCurrentPriceData()) return;
     if (nodes.saveDialog?.open) clearSaveError();
     const existing = currentMarketPin();
@@ -703,6 +717,10 @@ if (root) {
           displayValue = low === high ? formatUsd(low) : `${formatUsd(low)}–${formatUsd(high)}`;
           displayUnit = "/GPU-h";
           timestamp = model.asOf;
+        } else if (definition.renderer === "gpu-hedge") {
+          const model = createGpuHedgeModel(payload, cardState);
+          displayValue = formatHedgeProfit(model.headlineProfit);
+          displayUnit = "profit";
         } else if (definition.renderer === "forward-prices") {
           const model = createForwardPricesModel(payload, cardState);
           displayValue = formatUsd(model.latest[0]);
@@ -732,10 +750,10 @@ if (root) {
             : "";
           timestamp = latest.date.getTime() / 1000;
         }
-        if (!Number.isFinite(timestamp)) return null;
+        if (!Number.isFinite(timestamp) && definition.renderer !== "gpu-hedge") return null;
         return {
           id: pin.id, label: pin.label, displayValue, displayUnit,
-          observedAt: new Date(timestamp * 1000).toISOString(),
+          observedAt: Number.isFinite(timestamp) ? new Date(timestamp * 1000).toISOString() : "",
           kind: payload.dataset?.kind || "unknown", stateKey: watchlistKey(pin.cardId, pin.state),
         };
       } catch {
@@ -745,7 +763,7 @@ if (root) {
     const empty = pins.length === 0;
     marketStrip.update({
       items, key: JSON.stringify({ items, empty }), empty,
-      observationLabel: marketObservationLabel(items),
+      observationLabel: marketObservationLabel(items.filter(item => item.observedAt)),
     });
   }
 
@@ -895,7 +913,6 @@ if (root) {
         button.type = "button";
         button.dataset.craftType = definition.id;
         button.textContent = label;
-        button.title = definition.description;
         button.setAttribute("aria-label", `Start ${label} in Craft`);
         button.addEventListener("click", (event) => {
           startCraftType(definition.id, event.detail === 0);
@@ -906,7 +923,11 @@ if (root) {
   }
 
   function configureComposerControls() {
+    nodes.monthPickers.forEach(picker => picker.destroy());
+    nodes.monthPickers.clear();
     nodes.optionButtons = [];
+    nodes.optionInputs = [];
+    root.querySelector("[data-calculator-contract]")?.remove();
     nodes.depthCraftViewButtons = [];
 
     if (nodes.primaryGroup) {
@@ -988,7 +1009,9 @@ if (root) {
     }
 
     if (nodes.optionGroup && !isDepthCard && !isDealCard) {
+      nodes.optionGroup.classList.toggle("gpu-benchmark__calculator-inputs", cardDefinition.renderer === "gpu-hedge");
       const optionControls = (cardDefinition.stateOptions || []).map((option) => {
+        if (!option.values) return createNumericCraftField(option);
         const label = document.createElement("span");
         const buttons = document.createElement("div");
         label.className = "gpu-benchmark__compare-label";
@@ -1021,12 +1044,183 @@ if (root) {
         fragment.append(label, buttons);
         return fragment;
       });
-      nodes.optionGroup.replaceChildren(...optionControls);
+      if (cardDefinition.renderer === "gpu-hedge") {
+        const contract = document.createElement("div");
+        contract.className = "gpu-benchmark__calculator-contract";
+        contract.dataset.calculatorContract = "";
+        contract.append(optionControls.find(field => field.dataset.optionField === "delivery"));
+        nodes.primaryGroup?.closest("[data-card-primary-row]")?.append(contract);
+        const basic = optionControls.filter(field => !["delivery", "costs", "basis"].includes(field.dataset.optionField));
+        const advanced = document.createElement("details");
+        advanced.className = "gpu-benchmark__calculator-more";
+        const summary = document.createElement("summary");
+        summary.textContent = "Costs & basis";
+        const fields = document.createElement("div");
+        fields.append(...optionControls.filter(field => ["costs", "basis"].includes(field.dataset.optionField)));
+        advanced.append(summary, fields);
+        advanced.addEventListener("toggle", () => {
+          fields.getAnimations().forEach(animation => animation.cancel());
+          if (advanced.open && !reducedMotion && !summary.matches(":focus-visible")) {
+            fields.animate([
+              { opacity: 0, transform: "translateY(-4px)" },
+              { opacity: 1, transform: "translateY(0)" },
+            ], { duration: 200, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+          }
+        });
+        nodes.optionGroup.replaceChildren(...basic, advanced);
+      } else nodes.optionGroup.replaceChildren(...optionControls);
       nodes.optionGroup.hidden = optionControls.length === 0;
     } else if (nodes.optionGroup) {
       nodes.optionGroup.replaceChildren();
       nodes.optionGroup.hidden = true;
     }
+  }
+
+  function createNumericCraftField(option) {
+    const field = document.createElement(option.type === "month" ? "div" : "label");
+    field.className = "gpu-benchmark__input-field";
+    field.dataset.optionField = option.id;
+    const label = document.createElement("span");
+    label.textContent = option.id === "delivery" ? "Settlement" : option.id === "coverage" ? "Hedged" : option.id === "basis" ? "Basis" : option.label;
+    if (["rate", "basis"].includes(option.id)) {
+      const unit = document.createElement("span");
+      unit.className = "gpu-benchmark__input-unit";
+      unit.textContent = " /GPU-h";
+      label.append(unit);
+    }
+    const control = document.createElement("input");
+    control.type = option.type === "month" ? "month" : "number";
+    control.min = String(option.min);
+    control.max = String(option.max);
+    control.step = option.type === "decimal" ? String(10 ** -(option.precision ?? 2)) : "1";
+    control.required = true;
+    if (option.type === "month" && control.type !== "month") {
+      control.dataset.monthFallback = "true";
+      control.pattern = "\\d{4}-(0[1-9]|1[0-2])";
+      control.placeholder = "YYYY-MM";
+    }
+    control.setAttribute("aria-label", option.label);
+    if (option.type !== "month") control.inputMode = "decimal";
+    control.dataset.cardOptionInput = option.id;
+    control.dataset.displayPrecision = ["rate", "basis"].includes(option.id) ? "2" : "0";
+    const error = document.createElement("small");
+    error.id = `craft-${cardId}-${option.id}-error`;
+    error.className = "gpu-benchmark__input-error";
+    error.hidden = true;
+    control.setAttribute("aria-describedby", error.id);
+    const ownerCard = cardId;
+    let frame = 0;
+    const commit = () => {
+      if (!control.isConnected || cardId !== ownerCard || state.mode !== "craft" || state.craftEmpty) return;
+      syncMonthFallbackValidity(control);
+      if (!control.checkValidity()) return;
+      invalidCalculatorInputs.delete(control);
+      control.removeAttribute("aria-invalid");
+      error.hidden = true;
+      if (String(state.options[option.id]) === control.value) return;
+      mutateComposition({ ...currentCardState(), [option.id]: control.value }, { drawAnimation: false });
+    };
+    control.addEventListener("input", () => {
+      window.cancelAnimationFrame(frame);
+      syncMonthFallbackValidity(control);
+      if (control.checkValidity()) {
+        invalidCalculatorInputs.delete(control);
+        control.removeAttribute("aria-invalid");
+        error.hidden = true;
+        frame = window.requestAnimationFrame(commit);
+      } else {
+        invalidCalculatorInputs.add(control);
+      }
+    });
+    control.addEventListener("change", () => {
+      window.cancelAnimationFrame(frame);
+      syncMonthFallbackValidity(control);
+      if (!control.checkValidity()) {
+        invalidCalculatorInputs.add(control);
+        control.setAttribute("aria-invalid", "true");
+        error.textContent = `Enter ${option.min} to ${option.max}.`;
+        error.hidden = false;
+        return;
+      }
+      commit();
+    });
+    const value = document.createElement("div");
+    value.className = "gpu-benchmark__input-value";
+    if (["revenue", "costs", "rate", "basis"].includes(option.id)) {
+      const currency = document.createElement("span");
+      currency.textContent = "$";
+      currency.setAttribute("aria-hidden", "true");
+      value.append(currency);
+    }
+    value.append(control);
+    if (option.type === "month") {
+      const picker = createMonthPicker(control, `craft-${cardId}-${option.id}-picker`);
+      nodes.monthPickers.set(control, picker);
+      value.append(picker.element);
+    }
+    if (option.type !== "month") {
+      const display = document.createElement("span");
+      display.className = "gpu-benchmark__input-display";
+      display.setAttribute("aria-hidden", "true");
+      value.append(display);
+      control.addEventListener("blur", () => syncCalculatorFieldDisplay(control));
+    }
+    if (option.id === "coverage") {
+      const percent = document.createElement("span");
+      percent.textContent = "%";
+      percent.setAttribute("aria-hidden", "true");
+      value.append(percent);
+    }
+    field.append(label, value, error);
+    nodes.optionInputs.push(control);
+    return field;
+  }
+
+  function syncCalculatorFieldDisplay(input) {
+    const field = input.closest(".gpu-benchmark__input-field");
+    const value = input.closest(".gpu-benchmark__input-value");
+    const display = value?.querySelector(".gpu-benchmark__input-display");
+    if (!display) return;
+    const valid = input.value !== "" && input.checkValidity();
+    value.classList.toggle("has-formatted-value", valid);
+    const format = calculatorNumberFormats[input.dataset.displayPrecision === "2" ? 1 : 0];
+    display.textContent = valid ? format.format(Number(input.value)) : "";
+    field.dataset.valueLength = display.textContent.length > 12 ? "long" : display.textContent.length > 9 ? "medium" : "short";
+  }
+
+  function validateCalculatorInputs() {
+    if (cardDefinition.renderer !== "gpu-hedge" || state.mode !== "craft" || state.craftEmpty) return true;
+    const inputs = nodes.optionInputs.filter(input => input.type !== "range");
+    const invalid = inputs.find(input => {
+      syncMonthFallbackValidity(input);
+      return !input.checkValidity();
+    });
+    if (invalid) {
+      const enteredValues = inputs.map(input => [input, input.value]);
+      setCompareOpen(true);
+      enteredValues.forEach(([input, value]) => { input.value = value; });
+      const more = invalid.closest("details");
+      if (more) more.open = true;
+      invalid.dispatchEvent(new Event("change"));
+      if (nodes.monthPickers.has(invalid)) nodes.monthPickers.get(invalid).focus();
+      else invalid.focus({ preventScroll: false });
+      announceCard(`Check ${invalid.getAttribute("aria-label")}`);
+      return false;
+    }
+    const fields = Object.fromEntries(inputs.map(input => [input.dataset.cardOptionInput, input.value]));
+    const next = normalizeCardState(cardId, { ...currentCardState(), ...fields });
+    if (compositionKey(cardId, next) !== compositionKey(cardId, currentCardState())) {
+      mutateComposition(next, { drawAnimation: false });
+    }
+    return true;
+  }
+
+  function syncMonthFallbackValidity(control) {
+    if (control.dataset.monthFallback !== "true") return;
+    const value = control.value;
+    const valid = /^\d{4}-(0[1-9]|1[0-2])$/.test(value) &&
+      (!control.min || value >= control.min) && (!control.max || value <= control.max);
+    control.setCustomValidity(!value || valid ? "" : `Enter a month from ${control.min} to ${control.max} (YYYY-MM).`);
   }
 
   function configureDepthCraftControls() {
@@ -1845,6 +2039,7 @@ if (root) {
   }
 
   function openSaveDialog({ rename = false } = {}) {
+    if (!validateCalculatorInputs()) return;
     if (
       state.mode !== "craft" ||
       state.craftEmpty ||
@@ -1888,6 +2083,7 @@ if (root) {
   }
 
   async function persistCurrentComposition(name) {
+    if (!validateCalculatorInputs()) return;
     const creating = !state.activeCatalogId;
     let saved;
     let collectionWarning = "";
@@ -2071,6 +2267,7 @@ if (root) {
   function setCompareOpen(open, moveFocus = false) {
     if (!nodes.comparePanel || !nodes.compareToggle) return;
     const nextOpen = Boolean(open);
+    if (!nextOpen) nodes.monthPickers.forEach(picker => picker.close());
     if (nextOpen && (state.mode !== "craft" || state.craftEmpty)) return;
     const panel = nodes.comparePanel;
     state.compareOpen = nextOpen;
@@ -2363,9 +2560,9 @@ if (root) {
     return scale === "history" ? "history" : "now";
   }
 
-  function mutateComposition(nextState, { message = "" } = {}) {
+  function mutateComposition(nextState, { message = "", drawAnimation = true } = {}) {
     if (state.mode !== "craft") return;
-    const next = applyCompositionFields(nextState);
+    const next = applyCompositionFields(nextState, { preserveCalculatorDrafts: true });
     state.craftEmpty = false;
     state.craftDirty = state.craftBaseline
       ? compositionKey(cardId, next) !== state.craftBaseline
@@ -2376,7 +2573,7 @@ if (root) {
     }
     state.zoomWindow = null;
     syncControls();
-    render(true);
+    render(drawAnimation);
     updateLocation();
     if (message) announceCard(message);
   }
@@ -4266,6 +4463,10 @@ if (root) {
     ) {
       throw new Error(`Unsupported card data at ${url}`);
     }
+    if (definition.renderer === "gpu-hedge") {
+      createGpuHedgeModel(payload, definition.defaults);
+      return;
+    }
     if (definition.renderer === "forward-prices") {
       createForwardPricesModel(payload, definition.defaults);
       return;
@@ -4949,7 +5150,7 @@ if (root) {
     setDepthCraftMenu(null);
   }
 
-  function applyCompositionFields(nextState) {
+  function applyCompositionFields(nextState, { preserveCalculatorDrafts = false } = {}) {
     const next = normalizeCardState(cardId, nextState);
     state.selected = next.gpu;
     state.layers = new Set(next.layers);
@@ -4961,6 +5162,18 @@ if (root) {
         next[option.id],
       ]),
     );
+    // A new saved/preset/draft composition replaces the editor contents. During
+    // an in-place edit, other invalid fields retain what the user is correcting.
+    if (cardDefinition.renderer === "gpu-hedge" && !preserveCalculatorDrafts) {
+      nodes.optionInputs.forEach(input => {
+        invalidCalculatorInputs.delete(input);
+        input.value = String(next[input.dataset.cardOptionInput] ?? "");
+        input.setCustomValidity("");
+        input.removeAttribute("aria-invalid");
+        const error = input.closest(".gpu-benchmark__input-field")?.querySelector(".gpu-benchmark__input-error");
+        if (error) error.hidden = true;
+      });
+    }
     syncCardAppearance();
     return next;
   }
@@ -5142,6 +5355,13 @@ if (root) {
   }
 
   function syncMobileSummary() {
+    if (cardDefinition.renderer === "gpu-hedge" && state.runtimePayload && !state.craftEmpty) {
+      const model = createGpuHedgeModel(state.runtimePayload, currentCardState());
+      if (nodes.mobileSummaryLabel) nodes.mobileSummaryLabel.textContent = `${model.gpu} hedge`;
+      if (nodes.mobileSummaryValue) nodes.mobileSummaryValue.textContent = formatHedgeProfit(model.headlineProfit);
+      if (nodes.mobileSummaryRange) nodes.mobileSummaryRange.textContent = `${model.coverage}%`;
+      return;
+    }
     if (isSandboxCard) {
       if (nodes.mobileSummaryLabel) nodes.mobileSummaryLabel.textContent = "Sandbox cost";
       if (nodes.mobileSummaryValue) nodes.mobileSummaryValue.textContent = `${state.layers.size} providers`;
@@ -5259,7 +5479,7 @@ if (root) {
       nodes.primaryGroup.setAttribute("aria-required", String(empty));
     }
     if (nodes.primaryLabel) {
-      nodes.primaryLabel.textContent = isSandboxCard ? "Highlight" : isPowerCard
+      nodes.primaryLabel.textContent = cardDefinition.renderer === "gpu-hedge" ? "GPU" : isSandboxCard ? "Highlight" : isPowerCard
         ? "Market"
         : isBarCard
           ? "Highlight"
@@ -5374,14 +5594,16 @@ if (root) {
         ? String(state.options.target)
         : String(dataCount);
       nodes.compareCount.hidden =
-        isPowerCard || isDealCard || empty || (!isDepthCard && dataCount === 0);
+        cardDefinition.renderer === "gpu-hedge" || isPowerCard || isDealCard || empty || (!isDepthCard && dataCount === 0);
     }
     if (nodes.compareToggle) {
       nodes.compareToggle.setAttribute("aria-expanded", String(state.compareOpen));
       nodes.compareToggle.disabled = !state.shareReady;
       nodes.compareToggle.setAttribute(
         "aria-label",
-        isDepthCard
+        cardDefinition.renderer === "gpu-hedge"
+          ? `Data, ${state.selected} hedge inputs`
+        : isDepthCard
           ? `Target, ${state.options.target} nodes`
           : isDealCard
             ? `Data, ${state.options.gpu}, ${state.options.quantity} GPUs`
@@ -5406,6 +5628,15 @@ if (root) {
       button.setAttribute("aria-checked", String(selected));
       button.tabIndex = selected || (!hasSelectedOption && index === 0) ? 0 : -1;
       button.disabled = !state.shareReady || empty;
+    });
+    nodes.optionInputs.forEach((input) => {
+      const hasInvalidDraft = state.mode === "craft" && invalidCalculatorInputs.has(input) && !input.checkValidity();
+      if (!hasInvalidDraft) syncDealCraftControlValue(input, state.options[input.dataset.cardOptionInput]);
+      syncCalculatorFieldDisplay(input);
+      input.disabled = !state.shareReady || empty;
+      const picker = nodes.monthPickers.get(input);
+      picker?.sync();
+      if (state.mode !== "craft" || !state.compareOpen) picker?.close();
     });
     if (nodes.saveButton) {
       const savedAndCurrent = Boolean(state.activeCatalogId) && !state.craftDirty;
@@ -5458,7 +5689,9 @@ if (root) {
         : labels;
       nodes.svg?.setAttribute(
         "aria-label",
-        isSandboxCard
+        cardDefinition.renderer === "gpu-hedge"
+          ? `${state.selected} profit with and without a GPU price hedge`
+        : isSandboxCard
           ? `${labels}, estimated sandbox cost per job, ${rangeControlLabel(state.range)}`
         : isPowerCard
           ? `${workspaceLabel()}, real-time and day-ahead power prices, ${visualizationLabel(state.scale)} view`
@@ -5473,7 +5706,9 @@ if (root) {
           : `${labels} price history`,
       );
       nodes.chartDescription.textContent =
-        isSandboxCard
+        cardDefinition.renderer === "gpu-hedge"
+          ? "Profit across settlement prices with and without a hedge. Inputs are fixed across the price range."
+        : isSandboxCard
           ? state.range === "now"
             ? "Estimated cost per benchmark job. Whiskers show minimum to maximum, bars show the middle half, and ticks mark the median."
             : "Sandbox cost history. Each line connects recorded daily batch medians on its own vertical scale."
@@ -5844,12 +6079,14 @@ if (root) {
   }
 
   function rangeControlLabel(range) {
+    if (cardDefinition.renderer === "gpu-hedge") return "PAYOFF";
     if (cardDefinition.renderer === "forward-prices") return range === "now" ? "CURVE" : "HISTORY";
     if (isSandboxCard && range === "now") return "LATEST";
     return ranges[range]?.label || String(range || "").toUpperCase();
   }
 
   function rangeControlAriaLabel(range) {
+    if (cardDefinition.renderer === "gpu-hedge") return "Show hedge payoff";
     if (cardDefinition.renderer === "forward-prices") return range === "now" ? "Show forward curve" : "Show forward history";
     if (range === "now") return isSandboxCard ? "Show latest run" : "Show current profile";
     if (range === "1d") return "Show one day";
@@ -6040,6 +6277,7 @@ if (root) {
   }
 
   async function copyCardLink() {
+    if (!validateCalculatorInputs()) return;
     const copied = await copyText(shareUrl(), "Link copied");
     if (copied) announceCard("Link copied");
   }
@@ -6105,6 +6343,14 @@ if (root) {
   }
 
   function syncShareStatus() {
+    if (cardDefinition.renderer === "gpu-hedge") {
+      if (nodes.shareStatus) nodes.shareStatus.textContent = "";
+      if (nodes.shareObserved) {
+        nodes.shareObserved.textContent = `${state.options.coverage}% hedged`;
+        nodes.shareObserved.removeAttribute("datetime");
+      }
+      return;
+    }
     if (cardDefinition.renderer === "forward-prices" && state.runtimePayload) {
       const model = createForwardPricesModel(state.runtimePayload, currentCardState());
       if (nodes.shareStatus) nodes.shareStatus.textContent = "";
@@ -6340,6 +6586,10 @@ if (root) {
       renderForwardWorkspace(motion);
       return;
     }
+    if (cardDefinition.renderer === "gpu-hedge") {
+      renderHedgeWorkspace(motion);
+      return;
+    }
     if (isSandboxCard) {
       renderSandboxWorkspace(motion);
       return;
@@ -6519,6 +6769,28 @@ if (root) {
     if (state.layout === "all") renderWorkspaceGallery();
     if (state.layout === "focus" && state.panel === "detail" && nodes.chart.clientWidth > 0) {
       paintForwardPricesChart(nodes.svg, model, { ...options, reducedMotion: reducedMotion || motion === "none", interactive: true });
+    }
+  }
+
+  function formatHedgeProfit(value) {
+    return d3.format("$.3~s")(value).replace("G", "bn");
+  }
+
+  function renderHedgeWorkspace(motion) {
+    if (!state.runtimePayload) return;
+    const model = createGpuHedgeModel(state.runtimePayload, currentCardState());
+    nodes.chartState.hidden = true;
+    nodes.tooltip.hidden = true;
+    const options = { colors: cardPalette(currentCardState()), title: state.catalogName || "GPU hedge" };
+    paintGpuHedgeChart(nodes.shareArtifactSvg, model, {
+      ...options, compact: true, gallery: true, reducedMotion: !revealShareArtifact(motion), interactive: false,
+    });
+    syncMonitorDataModel({ hedgeModel: model });
+    syncShareStatus();
+    state.catalogDirty = true;
+    if (state.layout === "all") renderWorkspaceGallery();
+    if (state.layout === "focus" && state.panel === "detail" && nodes.chart.clientWidth > 0) {
+      paintGpuHedgeChart(nodes.svg, model, { ...options, motion, reducedMotion, interactive: true });
     }
   }
 
@@ -6893,6 +7165,17 @@ if (root) {
           reducedMotion: true, decorative: true,
         });
         cardNodes.button.setAttribute("aria-label", `Monitor ${title}, forward quotes from ${formatUsd(model.latest[0])} per GPU hour`);
+        continue;
+      }
+      if (entryCard.renderer === "gpu-hedge") {
+        const payload = state.runtimePayloads.get(entryCard.id);
+        if (!payload) continue;
+        const model = createGpuHedgeModel(payload, cardState);
+        paintGpuHedgeChart(cardNodes.artifact, model, {
+          colors: cardPalette(displayState), compact: true, gallery: true, title,
+          reducedMotion: true, interactive: false, decorative: true,
+        });
+        cardNodes.button.setAttribute("aria-label", `Monitor ${title}, ${model.gpu}, ${model.coverage}% hedged, ${formatHedgeProfit(model.headlineProfit)} profit at entry price`);
         continue;
       }
       if (entryCard.renderer === "sandbox-cost") {

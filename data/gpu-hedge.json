@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "cardId": "gpu-hedge",
+  "revision": "gpu-hedge-calculator-v1",
+  "dataset": {
+    "kind": "calculator",
+    "source": { "name": "User-entered assumptions" },
+    "description": "A local GPU cost-hedge calculator. Inputs are illustrative assumptions, not market quotes or an execution service.",
+    "currency": "USD",
+    "unit": "GPU-hour"
+  }
+}
