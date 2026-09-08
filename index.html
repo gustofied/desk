@@ -26,7 +26,7 @@
         const requestedTheme = params.get("theme");
         const requestedPalette = params.get("palette");
         const requestedCard = params.get("card");
-        const requestedView = window.location.hash.startsWith("#desk=") || ["gpu-index", "gpu-price-snapshot", "gpu-market-depth", "power-basis", "quote-view", "deal-view", "equities"].includes(requestedCard)
+        const requestedView = window.location.hash.startsWith("#desk=") || ["gpu-index", "gpu-price-snapshot", "gpu-market-depth", "power-basis", "quote-view", "deal-view", "equities", "sandbox-cost", "forward-prices"].includes(requestedCard)
           ? params.get("view")
           : null;
         const requestedLayout = params.get("layout");
@@ -690,6 +690,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=249"></script>
+    <script type="module" src="./desk.js?v=250"></script>
   </body>
 </html>

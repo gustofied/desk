@@ -9,6 +9,7 @@ import {
 import { createGpuMarketDepthModel } from "../src/gpu-market-depth-model.js";
 import { createPowerBasisModel } from "../src/power-basis-model.js";
 import { buildSandboxRuntime } from "./sandbox-runtime.mjs";
+import { createForwardPricesModel } from "../src/forward-prices-model.js";
 import {
   buildEquitiesRuntime,
   readEquitiesSource,
@@ -25,6 +26,9 @@ const powerCard = getCardDefinition("power-basis");
 const dealCard = getCardDefinition("deal-view");
 const equitiesCard = getCardDefinition("equities");
 const sandboxCard = getCardDefinition("sandbox-cost");
+const forwardCard = getCardDefinition("forward-prices");
+const forwardRuntime = await readJson(join(projectRoot, forwardCard.dataFile));
+for (const layer of forwardCard.layers) createForwardPricesModel(forwardRuntime, { gpu: layer.id });
 const gpuLayers = GPU_LAYERS.filter((layer) => layer.unit === "usd-hour");
 const tokenLayer = GPU_LAYERS.find((layer) => layer.id === "TOKEN");
 
@@ -133,6 +137,7 @@ const dataManifest = {
     sandboxManifestAsOf,
   ),
   cards: {
+    [forwardCard.id]: { file: forwardCard.dataFile, revision: forwardRuntime.revision, asOf: forwardRuntime.asOf },
     [priceCard.id]: {
       file: priceCard.dataFile,
       revision: priceRuntime.revision,

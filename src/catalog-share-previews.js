@@ -7,7 +7,7 @@ import {
 } from "./card-registry.js";
 
 export const CATALOG_SHARE_CARD_IDS = Object.freeze([
-  "equities", "sandbox-cost", "quote-view", "deal-view",
+  "equities", "sandbox-cost", "quote-view", "deal-view", "forward-prices",
 ]);
 
 const cards = new Map(CARD_REGISTRY

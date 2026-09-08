@@ -10,9 +10,23 @@ export function createMonitorDataModel({
   depthModel = null,
   powerModel = null,
   sandboxModel = null,
+  forwardModel = null,
   runtimePayload = null,
   runtimePayloads = new Map(),
 }) {
+  if (card?.dataAdapter === "forward" && forwardModel) {
+    return finalizeModel(card, {
+      id: "forward-source", label: "Forward prices", summary: `${forwardModel.gpu} US East`,
+      detailDescription: cardDetailDescription(card, cardState),
+      breadcrumbs: [forwardModel.gpu, "US East", "30 days"],
+      rowCount: forwardModel.observations.length * forwardModel.deliveries.length,
+      asOf: new Date(forwardModel.asOf * 1000), accessKind: "source", status: "ready",
+      unit: "USD per GPU-hour", priceBasis: "forward-rental", provenance: "Desk example quotes",
+      source: { name: "Desk example quotes", url: "./data/forward-prices.json" },
+      sourceUrl: "./data/forward-prices.json",
+      description: "256 GPUs. US East. 30-day InfiniBand rentals. Bundled example quotes.",
+    });
+  }
   if (card?.dataAdapter === "sandbox") {
     return createSandboxDataModel(card, cardState, sandboxModel);
   }

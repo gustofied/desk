@@ -8,11 +8,13 @@ import { alignIndexedPriceSeries, createPriceSeriesIndex, priceRowsForRange } fr
 import { createCrossMarketSeries, hasCrossMarketLayers } from "../src/cross-market-series.js";
 import { createSandboxCostModel } from "../src/sandbox-cost-model.js";
 import { renderSandboxCostSvg } from "../src/sandbox-cost-presentation.js";
+import { createForwardPricesModel } from "../src/forward-prices-model.js";
+import { renderForwardPricesSvg } from "../src/forward-prices-presentation.js";
 import { createDealViewModel } from "../src/deal-view-model.js";
 import { renderDealViewSvg } from "../src/deal-view-presentation.js";
 import { viewArtifactHeaderMarkup } from "../src/view-artifact-header.js";
 
-const SUPPORTED = new Set(["equities", "sandbox-cost", "quote-view", "deal-view"]);
+const SUPPORTED = new Set(["equities", "sandbox-cost", "quote-view", "deal-view", "forward-prices"]);
 const RENDERER_VERSION = "catalog-share-v1";
 
 /** Pure, deterministic social SVGs from caller-supplied runtime snapshots. */
@@ -69,6 +71,12 @@ export function renderCatalogShareArtifact(cardId, stateParams = {}, payloads = 
     const end = Math.max(...series.map(candidate => +candidate.rows.at(-1).date));
     imageAlt = `${title}. ${normalized.range.toUpperCase()}. ${normalized.symbol} ${headline}${normalized.scale === "price" ? " per share" : " from the shared starting date"}. ${day(start)} to ${day(end)}. ${description}`;
     svg = equitySvg(series, normalized, colors, { title, headline, imageAlt });
+  } else if (cardId === "forward-prices") {
+    const model = createForwardPricesModel(requirePayload(cardId), normalized);
+    title = `${model.gpu} forwards`;
+    imageAlt = `${title}. ${description}`;
+    const content = renderForwardPricesSvg(model, { colors, compact: true, title });
+    svg = svgFrame(colors, title, imageAlt, `<g transform="translate(40 0) scale(${630 / 675})">${svgInner(content)}</g>`);
   } else if (cardId === "sandbox-cost") {
     const model = createSandboxCostModel(requirePayload(cardId), card, {
       range: normalized.range, primaryId: normalized.provider, layerIds: normalized.layers,
@@ -131,10 +139,10 @@ function themeColors(paletteId, theme) {
   const accent = PALETTES.find(palette => palette.id === paletteId).accent;
   const mix = (a, b, share) => interpolateRgb(b, a)(share);
   if (theme === "dark") return {
-    theme, paper: mix(accent, "#171717", 0.03), line: mix(accent, "#ffffff", 0.88),
+    theme, accent, paper: mix(accent, "#171717", 0.03), line: mix(accent, "#ffffff", 0.88),
     text: mix(accent, "#ffffff", 0.72), secondary: mix(accent, "#ffffff", 0.28), area: mix(accent, "#ffffff", 0.28),
   };
-  return { theme, paper: mix(accent, "#ffffff", 0.05), line: mix(accent, "#102635", 0.52),
+  return { theme, accent, paper: mix(accent, "#ffffff", 0.05), line: mix(accent, "#102635", 0.52),
     text: mix(accent, "#102635", 0.28), secondary: mix(accent, "#102635", 0.28), area: mix(accent, "#102635", 0.28) };
 }
 function svgFrame(colors, title, description, content) {

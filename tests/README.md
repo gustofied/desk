@@ -1,6 +1,6 @@
 # Tests
 
-`npm test` runs eight core checks. CI runs these too.
+`npm test` runs nine core checks. CI runs these too.
 
 For browser smoke checks, serve the built site with `npm run dev`, then run `npm run test:browser`. The three checks cover rendering, range switching and shared desks.
 

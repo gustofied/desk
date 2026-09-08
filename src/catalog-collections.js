@@ -7,8 +7,8 @@ import { EQUITY_LAYERS, paletteIds, THEMES } from "./card-registry.js";
 import { createSharedDesk } from "./shared-desk.js";
 
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 10;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+const STORAGE_VERSION = 11;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
@@ -43,6 +43,12 @@ const STARTER_CATALOGS = Object.freeze([
       "preset-gpu-index-b200",
       "preset-gpu-index-compute-market",
       "preset-gpu-market-depth-h100-us",
+    ]),
+  }),
+  Object.freeze({
+    id: "forward", name: "Forward", keys: Object.freeze([
+      "preset-forward-prices-h100", "preset-forward-prices-h100-curve",
+      "preset-forward-prices-h200", "preset-forward-prices-b200",
     ]),
   }),
   Object.freeze({
@@ -707,6 +713,11 @@ function migrateLegacyState(value) {
   });
   const now = new Date().toISOString();
   let collections = [...legacyState.collections];
+  const forward = STARTER_CATALOGS.find(starter => starter.id === "forward");
+  if (collections.length < MAX_COLLECTIONS && !collections.some(collection => collection.id === forward.id || collection.name.toLowerCase() === "forward")) {
+    collections.push({ ...forward, keys: [...forward.keys], createdAt: now, updatedAt: now });
+  }
+  if (sourceVersion === 10) return { ...legacyState, collections };
   // Introduce only starters newer than the stored schema; current-version
   // removals remain intentional and must not recreate a user's deleted catalog.
   const additions = LEGACY_STARTER_CATALOGS.filter((catalog) => {

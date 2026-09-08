@@ -47,7 +47,7 @@ test('gallery defaults and every chart family render', async t => {
 
 test('range switching keeps the same view and document', async t => {
   const page = await pageFor(t);
-  for (const [card, ranges] of [['gpu-index', ['7d', 'all', '1d']], ['sandbox-cost', ['now', '7d', 'all']]]) {
+  for (const [card, ranges] of [['gpu-index', ['7d', 'all', '1d']], ['sandbox-cost', ['now', '7d', 'all']], ['forward-prices', ['now', 'all']]]) {
     await open(page, `/?card=${card}&view=monitor`);
     await page.evaluate(() => { window.__smokeDocument = document.documentElement; });
     const selected = await page.locator('[data-catalog-entry-key][aria-selected="true"]').getAttribute('data-catalog-entry-key');
@@ -57,6 +57,37 @@ test('range switching keeps the same view and document', async t => {
       assert.equal(new URL(page.url()).searchParams.get('card'), card);
       assert.equal(await page.evaluate(() => window.__smokeDocument === document.documentElement), true);
       assert.equal(await page.locator('[data-catalog-entry-key][aria-selected="true"]').getAttribute('data-catalog-entry-key'), selected);
+      if (card === 'forward-prices') {
+        const target = await page.locator('[data-gpu-chart-svg] path[data-forward-series]').first().evaluate(path => {
+          const p = path.getPointAtLength(path.getTotalLength() * .55);
+          const screen = new DOMPoint(p.x, p.y).matrixTransform(path.getScreenCTM());
+          return { x: screen.x, y: screen.y };
+        });
+        await page.mouse.move(target.x, target.y);
+        const cursor = page.locator('[data-gpu-chart-svg] [data-forward-cursor]');
+        assert.equal(await cursor.getAttribute('visibility'), null);
+        assert.equal(await cursor.locator('line').count(), 0);
+        const position = await cursor.locator('circle').evaluate(circle => {
+          const p = new DOMPoint(+circle.getAttribute('cx'), +circle.getAttribute('cy')).matrixTransform(circle.getScreenCTM());
+          return {x:p.x, y:p.y};
+        });
+        assert.ok(Math.hypot(position.x-target.x, position.y-target.y) < 1, 'marker follows rendered path');
+        await page.mouse.move(0, 0);
+        assert.equal(await cursor.getAttribute('visibility'), 'hidden');
+        if (range === 'all') {
+          const band = await page.locator('[data-gpu-chart-svg]').evaluate(svg => {
+            const p = new DOMPoint(svg.viewBox.baseVal.width * .5, svg.viewBox.baseVal.height * .65);
+            const region = [...svg.querySelectorAll('[data-forward-region]')].reverse().find(node => node.isPointInFill(p));
+            const screen = p.matrixTransform(svg.getScreenCTM());
+            return { x: screen.x, y: screen.y, key: region.dataset.forwardRegion, fill: region.getAttribute('fill') };
+          });
+          const region = page.locator(`[data-gpu-chart-svg] [data-forward-region="${band.key}"]`);
+          await page.mouse.move(band.x, band.y);
+          assert.notEqual(await region.evaluate(node => node.style.fill), band.fill);
+          await page.mouse.move(0, 0);
+          assert.equal(await region.evaluate(node => node.style.fill), band.fill);
+        }
+      }
     }
   }
 });

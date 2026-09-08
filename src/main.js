@@ -36,6 +36,8 @@ import { paintGpuMarketDepthChart } from "./gpu-market-depth-presentation.js";
 import { createPowerBasisModel } from "./power-basis-model.js";
 import { paintPowerBasisChart } from "./power-basis-presentation.js";
 import { createSandboxCostModel } from "./sandbox-cost-model.js";
+import { createForwardPricesModel } from "./forward-prices-model.js";
+import { paintForwardPricesChart } from "./forward-prices-presentation.js";
 import { paintSandboxCostChart } from "./sandbox-cost-presentation.js";
 import { createDealViewModel } from "./deal-view-model.js";
 import { mountDealView } from "./deal-view-presentation.js";
@@ -570,7 +572,11 @@ if (root) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("aria-hidden", "true");
     host.append(svg);
-    if (definition.renderer === "sandbox-cost") {
+    if (definition.renderer === "forward-prices") {
+      paintForwardPricesChart(svg, createForwardPricesModel(marketEntryPayload(entry), display), {
+        colors: palette, compact: true, gallery: true, title: entry.label, reducedMotion: true, decorative: true,
+      });
+    } else if (definition.renderer === "sandbox-cost") {
       paintSandboxCostChart(svg, createSandboxModel(display, marketEntryPayload(entry)), {
         colors: palette, compact: true, artifact: true, title: entry.label,
         reducedMotion: true, interactive: false, decorative: true,
@@ -695,6 +701,11 @@ if (root) {
           const values = model.bars.map((bar) => bar.value);
           const low = Math.min(...values), high = Math.max(...values);
           displayValue = low === high ? formatUsd(low) : `${formatUsd(low)}–${formatUsd(high)}`;
+          displayUnit = "/GPU-h";
+          timestamp = model.asOf;
+        } else if (definition.renderer === "forward-prices") {
+          const model = createForwardPricesModel(payload, cardState);
+          displayValue = formatUsd(model.latest[0]);
           displayUnit = "/GPU-h";
           timestamp = model.asOf;
         } else if (definition.renderer === "sandbox-cost") {
@@ -2990,6 +3001,7 @@ if (root) {
   }
 
   function describeCatalogState(cardState, definition = cardDefinition) {
+    if (definition.renderer === "forward-prices") return `${cardState.gpu} ${cardState.range === "now" ? "Forward curve" : "Forward history"}`;
     if (definition.renderer === "sandbox-cost") {
       return `${cardState.layers.length} providers ${cardState.range === "now" ? "Latest run" : ranges[cardState.range].label}`;
     }
@@ -4253,6 +4265,10 @@ if (root) {
       !payload.revision.trim()
     ) {
       throw new Error(`Unsupported card data at ${url}`);
+    }
+    if (definition.renderer === "forward-prices") {
+      createForwardPricesModel(payload, definition.defaults);
+      return;
     }
     if (definition.renderer === "sandbox-cost") {
       if (payload.cardId !== definition.id || !Array.isArray(payload.providers) || !payload.providers.length) {
@@ -5828,11 +5844,13 @@ if (root) {
   }
 
   function rangeControlLabel(range) {
+    if (cardDefinition.renderer === "forward-prices") return range === "now" ? "CURVE" : "HISTORY";
     if (isSandboxCard && range === "now") return "LATEST";
     return ranges[range]?.label || String(range || "").toUpperCase();
   }
 
   function rangeControlAriaLabel(range) {
+    if (cardDefinition.renderer === "forward-prices") return range === "now" ? "Show forward curve" : "Show forward history";
     if (range === "now") return isSandboxCard ? "Show latest run" : "Show current profile";
     if (range === "1d") return "Show one day";
     if (range === "7d") return "Show seven days";
@@ -6087,6 +6105,12 @@ if (root) {
   }
 
   function syncShareStatus() {
+    if (cardDefinition.renderer === "forward-prices" && state.runtimePayload) {
+      const model = createForwardPricesModel(state.runtimePayload, currentCardState());
+      if (nodes.shareStatus) nodes.shareStatus.textContent = "";
+      if (nodes.shareObserved) nodes.shareObserved.textContent = `Quotes ${d3.utcFormat("%d %b %Y")(new Date(model.asOf * 1000))}`;
+      return;
+    }
     if (isSandboxCard && state.runtimePayload) {
       try { syncSandboxShareStatus(createSandboxModel()); } catch {}
       return;
@@ -6312,6 +6336,10 @@ if (root) {
       renderPowerBasisWorkspace(motion);
       return;
     }
+    if (cardDefinition.renderer === "forward-prices") {
+      renderForwardWorkspace(motion);
+      return;
+    }
     if (isSandboxCard) {
       renderSandboxWorkspace(motion);
       return;
@@ -6471,6 +6499,27 @@ if (root) {
       range: normalized.range,
       mode: normalized.scale,
     });
+  }
+
+  function renderForwardWorkspace(motion) {
+    if (!state.runtimePayload) return;
+    const model = createForwardPricesModel(state.runtimePayload, currentCardState());
+    nodes.chartState.hidden = true;
+    nodes.tooltip.hidden = true;
+    if (nodes.rangeStart) nodes.rangeStart.textContent = d3.utcFormat("%b %Y")(new Date(model.deliveries[0] * 1000));
+    if (nodes.rangeEnd) nodes.rangeEnd.textContent = d3.utcFormat("%b %Y")(new Date(model.deliveries.at(-1) * 1000));
+    const options = { colors: cardPalette(currentCardState()), title: state.catalogName || `${model.gpu} forwards` };
+    paintForwardPricesChart(nodes.shareArtifactSvg, model, {
+      ...options, compact: true, reducedMotion: !revealShareArtifact(motion), interactive: false,
+    });
+    syncMonitorDataModel({ forwardModel: model });
+    if (nodes.shareStatus) nodes.shareStatus.textContent = "";
+    if (nodes.shareObserved) nodes.shareObserved.textContent = `Quotes ${d3.utcFormat("%d %b %Y")(new Date(model.asOf * 1000))}`;
+    state.catalogDirty = true;
+    if (state.layout === "all") renderWorkspaceGallery();
+    if (state.layout === "focus" && state.panel === "detail" && nodes.chart.clientWidth > 0) {
+      paintForwardPricesChart(nodes.svg, model, { ...options, reducedMotion: reducedMotion || motion === "none", interactive: true });
+    }
   }
 
   function createSandboxModel(cardState = currentCardState(), payload = null) {
@@ -6835,6 +6884,17 @@ if (root) {
         continue;
       }
 
+      if (entryCard.renderer === "forward-prices") {
+        const payload = state.runtimePayloads.get(entryCard.id);
+        if (!payload) continue;
+        const model = createForwardPricesModel(payload, cardState);
+        paintForwardPricesChart(cardNodes.artifact, model, {
+          colors: cardPalette(displayState), compact: true, gallery: true, title,
+          reducedMotion: true, decorative: true,
+        });
+        cardNodes.button.setAttribute("aria-label", `Monitor ${title}, forward quotes from ${formatUsd(model.latest[0])} per GPU hour`);
+        continue;
+      }
       if (entryCard.renderer === "sandbox-cost") {
         renderSandboxGalleryCard(cardNodes);
         continue;
@@ -6904,6 +6964,7 @@ if (root) {
     const dark = cardState.theme === "dark";
     return {
       theme: dark ? "dark" : "light",
+      accent,
       paper: mixHex(accent, dark ? "#171717" : "#ffffff", dark ? 0.03 : 0.05),
       line: mixHex(accent, dark ? "#ffffff" : "#102635", dark ? 0.88 : 0.52),
       text: mixHex(

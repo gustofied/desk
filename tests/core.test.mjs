@@ -6,6 +6,10 @@ import { loadSavedCatalog, saveCatalogItem, deleteCatalogItem } from '../src/sav
 import { createMarketWatchlist } from '../src/market-watchlist.js';
 import { createSharedDesk, encodeSharedDesk, decodeSharedDesk } from '../src/shared-desk.js';
 import { normalizePricePoints, alignIndexedPriceSeries } from '../src/price-series.js';
+import { createForwardPricesModel } from '../src/forward-prices-model.js';
+import { forwardContours, nearestContour } from '../src/forward-contours.js';
+import { renderCatalogShareArtifact } from '../scripts/catalog-share-artifacts.mjs';
+import sharp from 'sharp';
 
 function storage() {
   const values = new Map();
@@ -86,4 +90,29 @@ test('comparison lines start on the same date and baseline', () => {
 test('the homepage has no default social preview image', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/i);
+});
+
+test('forward curves and contours share valid quotes and render both modes', async () => {
+  const islands = forwardContours([[0,0,0,0,0], [0,2,0,2,0], [0,0,0,0,0]], [1], p => p, [0,0,5,3])[0];
+  assert.equal(islands.paths.length, 2, 'separate peaks retain separate closed contours');
+  for (const path of islands.paths) {
+    assert.deepEqual(path.points[0], path.points.at(-1));
+    for (const point of path.points) assert.ok(islands.coordinates.flat(2).includes(point));
+  }
+  assert.deepEqual(nearestContour([{ key: 1, points: [[0,0],[10,0]] }], { x: 5, y: 2 }), { key: 1, distance: 2, position: { x: 5, y: 0 } });
+  const payload = JSON.parse(readFileSync(new URL('../data/forward-prices.json', import.meta.url)));
+  for (const gpu of Object.keys(payload.surfaces)) {
+    const model = createForwardPricesModel(payload, { gpu });
+    assert.equal(model.structure, 'Contango');
+    assert.ok(model.deliveries[0] > model.asOf);
+    for (const range of ['now', 'all']) {
+      const artifact = renderCatalogShareArtifact('forward-prices', { gpu, range }, new Map([['forward-prices', payload]]));
+      assert.match(artifact.svg, /data-forward-line/);
+      if (range === 'now') assert.equal((artifact.svg.match(/data-forward-date=/g) || []).length, 3);
+      else assert.match(artifact.svg, /data-forward-series=/);
+      assert.doesNotMatch(artifact.svg, /NaN|Infinity/);
+      assert.ok((await sharp(Buffer.from(artifact.svg)).png().toBuffer()).length > 0);
+    }
+  }
+  assert.throws(() => createForwardPricesModel({ ...payload, surfaces: { H100: [[null]] } }));
 });

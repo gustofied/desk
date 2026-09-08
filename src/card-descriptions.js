@@ -13,6 +13,10 @@ export function cardDetailDescription(card, state = {}) {
     : null;
 
   switch (card?.id) {
+    case "forward-prices":
+      return range === "now"
+        ? "GPU rental quotes by delivery month. US East, 256 GPUs, 30-day InfiniBand rentals."
+        : "Forward rental quotes by quote date and delivery month. Each contour joins equal USD per GPU-hour rates.";
     case "gpu-index":
       if (scale === "spread") return "The difference between two GPUs’ rental-rate changes, in percentage points.";
       if (layers.includes("TOKEN")) {
