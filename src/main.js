@@ -6506,8 +6506,8 @@ if (root) {
     const model = createForwardPricesModel(state.runtimePayload, currentCardState());
     nodes.chartState.hidden = true;
     nodes.tooltip.hidden = true;
-    if (nodes.rangeStart) nodes.rangeStart.textContent = d3.utcFormat("%b %Y")(new Date(model.deliveries[0] * 1000));
-    if (nodes.rangeEnd) nodes.rangeEnd.textContent = d3.utcFormat("%b %Y")(new Date(model.deliveries.at(-1) * 1000));
+    if (nodes.rangeStart) nodes.rangeStart.textContent = "Delivery start";
+    if (nodes.rangeEnd) nodes.rangeEnd.textContent = "";
     const options = { colors: cardPalette(currentCardState()), title: state.catalogName || `${model.gpu} forwards` };
     paintForwardPricesChart(nodes.shareArtifactSvg, model, {
       ...options, compact: true, reducedMotion: !revealShareArtifact(motion), interactive: false,

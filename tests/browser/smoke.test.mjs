@@ -58,6 +58,8 @@ test('range switching keeps the same view and document', async t => {
       assert.equal(await page.evaluate(() => window.__smokeDocument === document.documentElement), true);
       assert.equal(await page.locator('[data-catalog-entry-key][aria-selected="true"]').getAttribute('data-catalog-entry-key'), selected);
       if (card === 'forward-prices') {
+        assert.equal(await page.locator('[data-gpu-chart-svg] [data-forward-delivery]').count(), 5);
+        assert.match(await page.locator('[data-gpu-chart-svg]').textContent(), /Apr 2027/);
         const target = await page.locator('[data-gpu-chart-svg] path[data-forward-series]').first().evaluate(path => {
           const p = path.getPointAtLength(path.getTotalLength() * .55);
           const screen = new DOMPoint(p.x, p.y).matrixTransform(path.getScreenCTM());
@@ -75,6 +77,7 @@ test('range switching keeps the same view and document', async t => {
         await page.mouse.move(0, 0);
         assert.equal(await cursor.getAttribute('visibility'), 'hidden');
         if (range === 'all') {
+          assert.match(await page.locator('[data-gpu-chart-svg]').textContent(), /Quoted/);
           const band = await page.locator('[data-gpu-chart-svg]').evaluate(svg => {
             const p = new DOMPoint(svg.viewBox.baseVal.width * .5, svg.viewBox.baseVal.height * .65);
             const region = [...svg.querySelectorAll('[data-forward-region]')].reverse().find(node => node.isPointInFill(p));
@@ -83,6 +86,7 @@ test('range switching keeps the same view and document', async t => {
           });
           const region = page.locator(`[data-gpu-chart-svg] [data-forward-region="${band.key}"]`);
           await page.mouse.move(band.x, band.y);
+          assert.match(await page.locator('[data-gpu-chart-svg] [data-forward-readout]').textContent(), /Quoted .*→.*202[67]/);
           assert.notEqual(await region.evaluate(node => node.style.fill), band.fill);
           await page.mouse.move(0, 0);
           assert.equal(await region.evaluate(node => node.style.fill), band.fill);

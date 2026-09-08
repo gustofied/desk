@@ -7,6 +7,7 @@ const WIDTH = 1200;
 const money = value => `$${value.toFixed(2)}`;
 const month = seconds => utcFormat('%b %y')(new Date(seconds * 1000));
 const day = seconds => utcFormat('%d %b')(new Date(seconds * 1000));
+const fullDay = seconds => utcFormat('%d %b %Y')(new Date(seconds * 1000));
 const esc = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
 
 export function renderForwardPricesSvg(model, options = {}) {
@@ -117,7 +118,15 @@ export function paintForwardPricesChart(svg, model, options = {}) {
       if (event.target.closest('[data-forward-date]')) { clear(); return; }
       highlightRegion(regions.find(region => region.node.isPointInFill(point)) || null);
       const hit = nearestContour(chart.history ? chart.pickLines : curves, point);
-      if (!hit.position || hit.distance * Math.hypot(matrix.a, matrix.b) >= 24) { clear(true); return; }
+      if (!hit.position || hit.distance * Math.hypot(matrix.a, matrix.b) >= 24) {
+        clear(true);
+        if (chart.history && activeRegion) {
+          const low = Number(activeRegion.node.dataset.forwardRegion);
+          const high = regions.map(region => Number(region.node.dataset.forwardRegion)).filter(value => value > low).sort((a,b) => a-b)[0] ?? model.high;
+          readout.textContent = `Quoted ${day(chart.y.invert(point.y))} → ${fullDay(chart.x.invert(point.x))}   ${money(low)}–${money(high)}`;
+        }
+        return;
+      }
       let position = hit.position;
       if (!chart.history) {
         const curve = curves.find(curve => curve.key === hit.key);
@@ -130,8 +139,9 @@ export function paintForwardPricesChart(svg, model, options = {}) {
       }
       moveMarker(position);
       emphasize(hit.key);
-      readout.textContent = chart.history ? `${money(hit.key)} / GPU-h`
-        : `${day(model.observations[hit.key])} → ${month(chart.x.invert(position.x))}   ${money(chart.y.invert(position.y))} / GPU-h`;
+      readout.textContent = chart.history
+        ? `Quoted ${day(chart.y.invert(position.y))} → ${fullDay(chart.x.invert(position.x))}   ≈${money(hit.key)}`
+        : `${day(model.observations[hit.key])} → ${fullDay(chart.x.invert(position.x))}   ≈${money(chart.y.invert(position.y))}`;
     });
     root.addEventListener('pointerleave', () => clear());
     root.addEventListener('focus', show);
@@ -229,9 +239,15 @@ function markup(model, { colors, compact = false, gallery = false, title, height
   }
   const axes = [];
   if (!gallery) {
+    if (history) axes.push(`<text x="${inset}" y="144" fill="${palette.text}">Quoted</text>`);
     if (history) [0, Math.floor(model.observations.length/2), model.observations.length-1].forEach(i => {
       const band = levels.filter(level => level <= model.values[i][0]).at(-1) ?? model.low;
-      axes.push(`<text x="${inset}" y="${Math.max(144, Math.min(bottom-16, y(model.observations[i])+8))}" fill="${palette.line}" stroke="${shade(band)}" stroke-width="8" stroke-linejoin="round" style="paint-order:stroke fill">${day(model.observations[i])}</text>`);
+      axes.push(`<text x="${inset}" y="${Math.max(176, Math.min(bottom-64, y(model.observations[i])+8))}" fill="${palette.line}" stroke="${shade(band)}" stroke-width="8" stroke-linejoin="round" style="paint-order:stroke fill">${day(model.observations[i])}</text>`);
+    });
+    const step = mobile || compact ? 6 : 3;
+    model.deliveries.forEach((date, i) => {
+      if (i % step && i !== model.deliveries.length-1) return;
+      axes.push(`<text data-forward-delivery="${date}" x="${Math.max(inset, Math.min(right-inset, x(date)))}" y="${bottom-16}" text-anchor="${i === 0 ? 'start' : i === model.deliveries.length-1 ? 'end' : 'middle'}" fill="${palette.text}" stroke="${palette.paper}" stroke-width="4" stroke-opacity=".78" style="paint-order:stroke fill">${utcFormat('%b %Y')(new Date(date*1000))}</text>`);
     });
   }
   const header = gallery ? viewArtifactHeaderMarkup({ title: title || `${model.gpu} forwards`, context: history ? 'HISTORY' : 'CURVE', headline: money(model.latest[0]), colors: palette, compact: true })
