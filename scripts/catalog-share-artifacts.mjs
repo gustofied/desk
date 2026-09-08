@@ -75,8 +75,8 @@ export function renderCatalogShareArtifact(cardId, stateParams = {}, payloads = 
     const model = createForwardPricesModel(requirePayload(cardId), normalized);
     title = `${model.gpu} forwards`;
     imageAlt = `${title}. ${description}`;
-    const content = renderForwardPricesSvg(model, { colors, compact: true, title });
-    svg = svgFrame(colors, title, imageAlt, `<g transform="translate(40 0) scale(${630 / 675})">${svgInner(content)}</g>`);
+    const content = renderForwardPricesSvg(model, { colors, compact: true, gallery: true, height: 630, title });
+    svg = svgFrame(colors, title, imageAlt, svgInner(content));
   } else if (cardId === "sandbox-cost") {
     const model = createSandboxCostModel(requirePayload(cardId), card, {
       range: normalized.range, primaryId: normalized.provider, layerIds: normalized.layers,

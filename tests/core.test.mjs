@@ -108,7 +108,10 @@ test('forward curves and contours share valid quotes and render both modes', asy
     for (const range of ['now', 'all']) {
       const artifact = renderCatalogShareArtifact('forward-prices', { gpu, range }, new Map([['forward-prices', payload]]));
       assert.match(artifact.svg, /data-forward-line/);
-      if (range === 'now') assert.equal((artifact.svg.match(/data-forward-date=/g) || []).length, 3);
+      assert.match(artifact.svg, /data-view-artifact-header/);
+      assert.doesNotMatch(artifact.svg, /translate\(40 0\)|data-forward-date=/);
+      assert.match(artifact.svg, /viewBox="0 0 1200 630"/);
+      if (range === 'now') assert.match(artifact.svg, /data-forward-area/);
       else assert.match(artifact.svg, /data-forward-series=/);
       assert.doesNotMatch(artifact.svg, /NaN|Infinity/);
       assert.ok((await sharp(Buffer.from(artifact.svg)).png().toBuffer()).length > 0);
