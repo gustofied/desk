@@ -45,6 +45,8 @@ import { paintGpuCoverageChart, cancelGpuCoverageMotion } from "./gpu-coverage-p
 import { createGpuLeaseModel } from "./gpu-lease-model.js";
 import { paintGpuLeaseChart, cancelGpuLeaseMotion } from "./gpu-lease-presentation.js";
 import { createMonthPicker } from "./month-picker.js";
+import { createDataPanel } from "./data-panel.js";
+import { createCraftMotion } from "./craft-motion.js";
 import { paintSandboxCostChart } from "./sandbox-cost-presentation.js";
 import { createDealViewModel } from "./deal-view-model.js";
 import { mountDealView } from "./deal-view-presentation.js";
@@ -314,7 +316,6 @@ if (root) {
       ]),
     ),
     compareOpen: false,
-    depthCraftMenu: null,
     dataRevision: null,
     shareReady: false,
     resizeTimer: null,
@@ -420,13 +421,7 @@ if (root) {
     depthContractNode: root.querySelector("[data-depth-contract-node]"),
     depthContractNetwork: root.querySelector("[data-depth-contract-network]"),
     depthContractTerm: root.querySelector("[data-depth-contract-term]"),
-    depthTargetTrigger: root.querySelector("[data-depth-target-trigger]"),
-    depthTargetLabel: root.querySelector("[data-depth-target-label]"),
-    depthTargetMenu: root.querySelector("[data-depth-target-menu]"),
     depthTargetOptions: root.querySelector("[data-depth-target-options]"),
-    depthViewTrigger: root.querySelector("[data-depth-view-trigger]"),
-    depthViewLabel: root.querySelector("[data-depth-view-label]"),
-    depthViewMenu: root.querySelector("[data-depth-view-menu]"),
     depthCraftViews: root.querySelector("[data-depth-craft-views]"),
     depthCraftViewButtons: [],
     dealCraft: root.querySelector("[data-deal-craft]"),
@@ -478,6 +473,18 @@ if (root) {
     themeColor: document.querySelector('meta[name="theme-color"]'),
   };
   const invalidCalculatorInputs = new WeakSet();
+  const dataPanel = nodes.comparePanel && nodes.compareToggle && nodes.composer
+    ? createDataPanel({
+      panel: nodes.comparePanel,
+      trigger: nodes.compareToggle,
+      anchor: nodes.composer,
+      obstruction: document.querySelector("[data-market-strip]"),
+      reducedMotion: () => reducedMotion,
+      onDismiss: ({ animate, returnFocus }) => {
+        setCompareOpen(false, false, animate);
+        if (returnFocus) nodes.compareToggle.focus({ preventScroll: true });
+      },
+    }) : null;
   const commandPalette = createCommandPalette({
     root: nodes.commandPalette,
     reducedMotion,
@@ -511,7 +518,6 @@ if (root) {
   });
   let dealPreviewMount = null;
   let dealWorkspaceMount = null;
-  let depthCraftListenersConfigured = false;
   let dealCraftListenersConfigured = false;
   const catalogCards = new Map();
   const catalogReflowAnimations = new Map();
@@ -527,6 +533,7 @@ if (root) {
   let activePanelIntent = null;
   let queuedPanelIntent = null;
   let cardEntryIntent = 0;
+  const craftMotion = createCraftMotion({ host: nodes.chart, frame: nodes.detailPanel, reducedMotion: () => reducedMotion });
   let galleryNavigationColumn = null;
   let galleryNavigationKey = null;
   const viewKeyNavigation = createHeldKeyNavigation({ step: stepViewShortcut });
@@ -835,7 +842,7 @@ if (root) {
       "buttons",
     );
     for (const button of nodes.modeButtons) {
-      button.addEventListener("click", () => {
+      button.addEventListener("click", (event) => {
         const mode = button.dataset.deskMode;
         const workspace = intendedWorkspaceState();
         if (
@@ -845,7 +852,7 @@ if (root) {
           !activePanelTransition
         ) {
           setCatalogMenuOpen(!state.catalogMenuOpen, { moveFocus: true });
-        } else if (mode === "craft") openNeutralCraft(false);
+        } else if (mode === "craft") openNeutralCraft(event.detail === 0);
         else switchWorkspaceMode(mode, false);
       });
     }
@@ -856,6 +863,8 @@ if (root) {
     motionPreference.addEventListener("change", (event) => {
       reducedMotion = event.matches;
       if (reducedMotion) {
+        cancelCraftContentTransition();
+        dataPanel?.setOpen(state.compareOpen);
         cancelChartMotion(root);
         if (state.runtimePayload) render(false);
       }
@@ -881,12 +890,11 @@ if (root) {
       if (viewShortcutTargetBlocked(event.target)) viewKeyNavigation.stop();
     });
     nodes.compareToggle?.addEventListener("click", (event) => {
-      setCompareOpen(!state.compareOpen, event.detail === 0);
+      setCompareOpen(!state.compareOpen, event.detail === 0, event.detail !== 0);
     });
     nodes.craftHome?.addEventListener("click", (event) => {
       returnToCraftStart(event.detail === 0);
     });
-    nodes.comparePanel?.addEventListener("keydown", handleComparePanelKeydown);
     nodes.zoomReset?.addEventListener("click", resetCustomZoom);
 
     if ("ResizeObserver" in window && nodes.chart) {
@@ -1074,8 +1082,8 @@ if (root) {
           fields.getAnimations().forEach(animation => animation.cancel());
           if (advanced.open && !reducedMotion && !summary.matches(":focus-visible")) {
             fields.animate([
-              { opacity: 0, transform: "translateY(-4px)" },
-              { opacity: 1, transform: "translateY(0)" },
+              { opacity: 0, transform: "translateX(-4px)" },
+              { opacity: 1, transform: "translateX(0)" },
             ], { duration: 200, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
           }
         });
@@ -1217,8 +1225,17 @@ if (root) {
       const more = invalid.closest("details");
       if (more) more.open = true;
       invalid.dispatchEvent(new Event("change"));
-      if (nodes.monthPickers.has(invalid)) nodes.monthPickers.get(invalid).focus();
-      else invalid.focus({ preventScroll: false });
+      const target = nodes.monthPickers.get(invalid)?.element.querySelector("button") || invalid;
+      target.focus({ preventScroll: true });
+      const panel = nodes.comparePanel;
+      if (panel?.contains(target)) {
+        const bounds = target.getBoundingClientRect();
+        const panelTop = panel.getBoundingClientRect().top + panel.clientTop;
+        if (bounds.top < panelTop) panel.scrollTop += bounds.top - panelTop;
+        else if (bounds.bottom > panelTop + panel.clientHeight) {
+          panel.scrollTop += bounds.bottom - panelTop - panel.clientHeight;
+        }
+      }
       announceCard(`Check ${invalid.getAttribute("aria-label")}`);
       return false;
     }
@@ -1259,13 +1276,7 @@ if (root) {
       configureChoiceButtons(
         targetButtons,
         (button) => button.dataset.cardOptionValue,
-        (value, event) => {
-          selectCardOption("target", value);
-          setDepthCraftMenu(null);
-          if (event?.detail === 0) {
-            nodes.depthTargetTrigger?.focus({ preventScroll: true });
-          }
-        },
+        (value, event) => selectCardOption("target", value, event),
         "aria-checked",
         "radio",
       );
@@ -1286,83 +1297,11 @@ if (root) {
       configureChoiceButtons(
         nodes.depthCraftViewButtons,
         (button) => button.dataset.depthCraftScale,
-        (scale, event) => {
-          selectScale(scale);
-          setDepthCraftMenu(null);
-          if (event?.detail === 0) {
-            nodes.depthViewTrigger?.focus({ preventScroll: true });
-          }
-        },
+        selectScale,
         "aria-pressed",
         "horizontal",
       );
     }
-
-    if (depthCraftListenersConfigured) return;
-    depthCraftListenersConfigured = true;
-
-    nodes.depthTargetTrigger?.addEventListener("click", (event) => {
-      setDepthCraftMenu(
-        state.depthCraftMenu === "target" ? null : "target",
-        event.detail === 0,
-      );
-    });
-    nodes.depthViewTrigger?.addEventListener("click", (event) => {
-      setDepthCraftMenu(
-        state.depthCraftMenu === "view" ? null : "view",
-        event.detail === 0,
-      );
-    });
-    nodes.depthCraft?.addEventListener("keydown", (event) => {
-      if (event.key !== "Escape" || !state.depthCraftMenu) return;
-      event.preventDefault();
-      const trigger = state.depthCraftMenu === "target"
-        ? nodes.depthTargetTrigger
-        : nodes.depthViewTrigger;
-      setDepthCraftMenu(null);
-      trigger?.focus({ preventScroll: true });
-    });
-    document.addEventListener("pointerdown", (event) => {
-      if (!state.depthCraftMenu || nodes.depthCraft?.contains(event.target)) return;
-      setDepthCraftMenu(null);
-    }, true);
-  }
-
-  function setDepthCraftMenu(menu, moveFocus = false) {
-    const nextMenu = menu === "target" || menu === "view" ? menu : null;
-    state.depthCraftMenu = nextMenu;
-    const controls = [
-      ["target", nodes.depthTargetTrigger, nodes.depthTargetMenu],
-      ["view", nodes.depthViewTrigger, nodes.depthViewMenu],
-    ];
-    for (const [id, trigger, panel] of controls) {
-      const open = id === nextMenu;
-      trigger?.setAttribute("aria-expanded", String(open));
-      if (!panel) continue;
-      panel.hidden = !open;
-      panel.toggleAttribute("inert", !open);
-      if (open && !reducedMotion) {
-        panel.animate(
-          [
-            { opacity: 0, transform: "translateY(-4px)" },
-            { opacity: 1, transform: "translateY(0)" },
-          ],
-          {
-            duration: 240,
-            easing: "cubic-bezier(0.32, 0.72, 0, 1)",
-          },
-        );
-      }
-    }
-    if (!moveFocus || !nextMenu) return;
-    window.requestAnimationFrame(() => {
-      const buttons = nextMenu === "target"
-        ? nodes.optionButtons.filter((button) => button.dataset.cardOption === "target")
-        : nodes.depthCraftViewButtons;
-      buttons.find((button) =>
-        button.getAttribute(nextMenu === "target" ? "aria-checked" : "aria-pressed") === "true"
-      )?.focus({ preventScroll: true });
-    });
   }
 
   function selectCardOption(optionId, value, event) {
@@ -2275,74 +2214,15 @@ if (root) {
     nodes.saveName?.focus({ preventScroll: true });
   }
 
-  function handleComparePanelKeydown(event) {
-    if (event.key !== "Escape") return;
-    event.preventDefault();
-    setCompareOpen(false);
-    nodes.compareToggle?.focus({ preventScroll: true });
-  }
-
-  function setCompareOpen(open, moveFocus = false) {
+  function setCompareOpen(open, moveFocus = false, animate = false) {
     if (!nodes.comparePanel || !nodes.compareToggle) return;
     const nextOpen = Boolean(open);
     if (!nextOpen) nodes.monthPickers.forEach(picker => picker.close());
     if (nextOpen && (state.mode !== "craft" || state.craftEmpty)) return;
-    const panel = nodes.comparePanel;
     state.compareOpen = nextOpen;
     nodes.compareToggle.setAttribute("aria-expanded", String(nextOpen));
-    panel.getAnimations().forEach((animation) => animation.cancel());
-    panel.toggleAttribute("inert", !nextOpen);
-
-    if (nextOpen) {
-      panel.hidden = false;
-      if (!reducedMotion) {
-        panel.animate(
-          [
-            { opacity: 0, transform: "translateY(-4px)" },
-            { opacity: 1, transform: "translateY(0)" },
-          ],
-          {
-            duration: 240,
-            easing: "cubic-bezier(0.32, 0.72, 0, 1)",
-          },
-        );
-      }
-      if (moveFocus) {
-        window.requestAnimationFrame(() => {
-          const target = state.craftEmpty
-            ? nodes.craftTypeButtons[0]
-            : isDealCard
-              ? nodes.dealCraftModelButtons.find(
-                  (button) => button.getAttribute("aria-checked") === "true",
-                ) || nodes.dealCraftModelButtons[0]
-            : nodes.optionButtons.find(
-                (button) =>
-                  !button.disabled && button.getAttribute("aria-checked") === "true",
-              ) ||
-              nodes.optionButtons.find((button) => !button.disabled) ||
-              nodes.layerButtons.find((button) => !button.disabled);
-          target?.focus();
-        });
-      }
-    } else if (reducedMotion || panel.hidden) {
-      panel.hidden = true;
-    } else {
-      const animation = panel.animate(
-        [
-          { opacity: 1, transform: "translateY(0)" },
-          { opacity: 0, transform: "translateY(-4px)" },
-        ],
-        {
-          duration: 200,
-          easing: "cubic-bezier(0.32, 0.72, 0, 1)",
-        },
-      );
-      animation.finished.then(() => {
-        if (!state.compareOpen) panel.hidden = true;
-      }).catch(() => {});
-    }
-
     syncComposerControls();
+    dataPanel?.setOpen(nextOpen, { moveFocus, animate });
   }
 
   async function openCraft(focusNavigation = false) {
@@ -2354,35 +2234,19 @@ if (root) {
   }
 
   async function openNeutralCraft(focusNavigation = false) {
-    advanceCardEntryIntent();
+    advanceCardEntryIntent(true);
     if (state.mode === "craft") {
       if (state.craftEmpty) {
         if (focusNavigation) {
-          nodes.craftTypeButtons[0]?.focus({ preventScroll: true });
+          cancelCraftContentTransition();
+          craftTypeFocusTarget()?.focus({ preventScroll: true });
         }
         return;
       }
       preserveCraftDraft();
-      await beginNewComposition(focusNavigation, { keepDraft: true });
-      return;
     }
-
-    if (cardId === "gpu-index") {
-      await beginNewComposition(focusNavigation, { keepDraft: true });
-      return;
-    }
-
     if (state.mode === "catalog") persistCatalogScrollPosition();
-    window.location.assign(withSharedDeskLocation(neutralCraftUrl()));
-  }
-
-  function neutralCraftUrl() {
-    const url = cardUrl("gpu-index", "craft", {
-      palette: currentPalette(),
-      theme: currentTheme(),
-    });
-    url.searchParams.set("draft", "new");
-    return url;
+    await beginNewComposition(focusNavigation, { keepDraft: true });
   }
 
   function preserveCraftDraft() {
@@ -2418,7 +2282,7 @@ if (root) {
       render(false);
       updateLocation();
     } else {
-      await showPanel("detail", true, "focus", false, "craft");
+      await showPanel("detail", true, "focus", focusNavigation, "craft");
     }
     if (focusNavigation) {
       nodes.modeButtons
@@ -2432,6 +2296,10 @@ if (root) {
     focusNavigation = false,
     { keepDraft = false } = {},
   ) {
+    const inCraft = state.mode === "craft" &&
+      state.panel === "detail" && state.layout === "focus";
+    const from = state.panel === "detail" && state.layout === "focus"
+      ? craftMotion.prepare(craftContent(), focusNavigation) : null;
     const next = createComposition(cardId, {
       palette: currentPalette(),
       theme: currentTheme(),
@@ -2452,22 +2320,17 @@ if (root) {
     state.zoomWindow = null;
     setCompareOpen(false);
 
-    if (
-      state.mode === "craft" &&
-      state.panel === "detail" &&
-      state.layout === "focus"
-    ) {
+    if (inCraft) {
       syncControls();
       render(false);
       updateLocation();
+      animateCraftContent(focusNavigation, from, true);
     } else {
-      await showPanel("detail", true, "focus", false, "craft");
+      await showPanel("detail", true, "focus", focusNavigation, "craft");
     }
 
     if (focusNavigation) {
-      window.requestAnimationFrame(() => {
-        nodes.craftTypeButtons[0]?.focus({ preventScroll: true });
-      });
+      craftTypeFocusTarget()?.focus({ preventScroll: true });
     }
     announceWorkspace("Start a new view in Craft");
   }
@@ -2476,26 +2339,29 @@ if (root) {
     openNeutralCraft(focusNavigation);
   }
 
-  function startCraftType(nextCardId, focusEditor = false) {
+  async function startCraftType(nextCardId, focusEditor = false) {
     const nextCard = CARD_REGISTRY.find(
       (definition) => definition.id === nextCardId && definition.craftable !== false,
     );
     if (!nextCard) return;
-    advanceCardEntryIntent();
+    const intent = advanceCardEntryIntent(true);
+    const sourceId = nextCard.sourceCardId || nextCard.id;
+    if (!state.runtimePayloads.has(sourceId)) {
+      await loadCardsPromise;
+      if (intent !== cardEntryIntent) return;
+      if (!state.runtimePayloads.has(sourceId)) {
+        announceWorkspace(`${nextCard.craftLabel || nextCard.title} data is unavailable. Choose another view type.`);
+        return;
+      }
+    }
+    if (intent !== cardEntryIntent) return;
+    const from = craftMotion.prepare(craftContent(), focusEditor);
+    const cardChanged = nextCard.id !== cardId;
+    if (!activateCardDefinition(nextCard)) return;
     const next = createComposition(nextCard.id, {
       palette: currentPalette(),
       theme: currentTheme(),
     });
-
-    if (nextCard.id !== cardId) {
-      if (focusEditor) {
-        try {
-          window.sessionStorage.setItem(craftFocusStorageKey, nextCard.id);
-        } catch {}
-      }
-      window.location.assign(withSharedDeskLocation(cardUrl(nextCard.id, "craft", next)));
-      return;
-    }
 
     applyCompositionFields(next);
     state.activeCatalogId = null;
@@ -2509,19 +2375,41 @@ if (root) {
     clearStoredCraftDraft();
     state.zoomWindow = null;
     setCompareOpen(false);
-    setDepthCraftMenu(null);
+    if (cardChanged) finishCardDefinitionChange();
     syncControls();
-    render(true);
+    render(false);
     updateLocation();
+    animateCraftContent(focusEditor, from, true);
 
     if (focusEditor) {
-      window.requestAnimationFrame(focusCraftEditor);
+      focusCraftEditor();
     }
     announceWorkspace(`${nextCard.craftLabel || nextCard.title} ready in Craft`);
   }
 
+  function craftTypeFocusTarget() {
+    return nodes.craftTypeButtons.find((button) => button.dataset.craftType === cardId) ||
+      nodes.craftTypeButtons[0];
+  }
+
+  function cancelCraftContentTransition() {
+    craftMotion.cancel();
+  }
+
+  function craftContent() {
+    return state.craftEmpty
+      ? nodes.craftEmpty
+      : isDealCard ? nodes.dealWorkspace : nodes.svg;
+  }
+
+  function animateCraftContent(keyboard = false, from = null, switchPanel = false) {
+    craftMotion.play(craftContent(), {
+      keyboard, from, switchPanel, direction: state.craftEmpty ? -1 : 1,
+    });
+  }
+
   function focusCraftEditor() {
-    const target = isDepthCard ? nodes.depthTargetTrigger : nodes.compareToggle;
+    const target = nodes.compareToggle;
     (target?.disabled ? nodes.detailPanel : target)?.focus({ preventScroll: true });
   }
 
@@ -4627,7 +4515,7 @@ if (root) {
     if (
       event.key !== "Escape" || event.defaultPrevented || event.repeat ||
       event.isComposing || event.metaKey || event.ctrlKey || event.altKey ||
-      event.shiftKey || document.hidden || workspaceHasModal()
+      event.shiftKey || document.hidden || workspaceHasModal() || state.compareOpen
     ) return;
 
     // Nested menus and dialogs own Escape before workspace navigation does.
@@ -4836,7 +4724,8 @@ if (root) {
     openCatalogRailEntry(entry, moveFocus, drawAnimation);
   }
 
-  function advanceCardEntryIntent() {
+  function advanceCardEntryIntent(keepCraftMotion = false) {
+    if (!keepCraftMotion) cancelCraftContentTransition();
     cardEntryIntent += 1;
     return cardEntryIntent;
   }
@@ -4907,6 +4796,8 @@ if (root) {
     const payload = state.runtimePayloads.get(sourceId);
     if (!payload) return false;
 
+    setCompareOpen(false);
+
     resetActiveRenderer();
     dealPreviewMount?.destroy();
     dealWorkspaceMount?.destroy();
@@ -4949,7 +4840,6 @@ if (root) {
     state.catalogDirty = true;
     state.zoomWindow = null;
     state.compareOpen = false;
-    state.depthCraftMenu = null;
     // Rebuild card-specific controls before applyCardState closes any open
     // composer UI. That close synchronizes controls, so retaining buttons from
     // the previous card here would compare them with the new card definition.
@@ -5178,7 +5068,6 @@ if (root) {
     });
     state.zoomWindow = null;
     setCompareOpen(false);
-    setDepthCraftMenu(null);
   }
 
   function applyCompositionFields(nextState, { preserveCalculatorDrafts = false } = {}) {
@@ -5497,22 +5386,19 @@ if (root) {
       empty ? "Craft view types" : cardDefinition.title,
     );
     if (nodes.composer) {
-      const available = editing && !empty;
+      const available = editing;
       nodes.composer.hidden = !available;
       nodes.composer.toggleAttribute("inert", !available);
     }
     if (nodes.craftHome) {
-      nodes.craftHome.hidden = !editing || empty;
-      nodes.craftHome.disabled = !editing || empty;
+      nodes.craftHome.hidden = !editing;
+      nodes.craftHome.disabled = !editing;
+      nodes.craftHome.setAttribute("aria-pressed", String(empty));
     }
     syncDealCraftControls(editing, empty);
     syncDepthCraftControls(editing, empty);
     if (nodes.compareToggle) {
-      nodes.compareToggle.hidden = empty || isDepthCard;
-    }
-    if (nodes.comparePanel && isDepthCard) {
-      nodes.comparePanel.hidden = true;
-      nodes.comparePanel.setAttribute("inert", "");
+      nodes.compareToggle.hidden = false;
     }
     if (nodes.primaryGroup) {
       nodes.primaryGroup.setAttribute("aria-required", String(empty));
@@ -5620,36 +5506,25 @@ if (root) {
     const dataCount = empty ? 0 : state.layers.size;
     const comparisonCount = Math.max(0, dataCount - 1);
     if (nodes.dataLabel) {
-      nodes.dataLabel.textContent = isDepthCard
-        ? "Target"
-        : isDealCard
-          ? "Data"
-        : isPowerCard
-          ? "Power"
-        : empty
-          ? "Add data"
-          : "Data";
+      nodes.dataLabel.textContent = "Data";
     }
     if (nodes.compareCount) {
-      nodes.compareCount.textContent = isDepthCard
-        ? String(state.options.target)
-        : String(dataCount);
+      nodes.compareCount.textContent = String(dataCount);
       nodes.compareCount.hidden =
-        cardDefinition.stateKind === "calculator" || isPowerCard || isDealCard || empty || (!isDepthCard && dataCount === 0);
+        cardDefinition.stateKind === "calculator" || isPowerCard || isDealCard || empty || dataCount === 0;
     }
     if (nodes.compareToggle) {
       nodes.compareToggle.setAttribute("aria-expanded", String(state.compareOpen));
-      nodes.compareToggle.disabled = !state.shareReady;
+      nodes.compareToggle.disabled = !state.shareReady || empty;
       nodes.compareToggle.setAttribute(
         "aria-label",
-        cardDefinition.renderer === "gpu-lease" ? "Data, lease inputs" : cardDefinition.renderer === "gpu-hedge"
+        empty ? "Data, choose a view type first"
+        : cardDefinition.renderer === "gpu-lease" ? "Data, lease inputs" : cardDefinition.renderer === "gpu-hedge"
           ? `Data, ${state.selected} ${state.scale === "coverage" ? "coverage" : "hedge"} inputs`
         : isDepthCard
-          ? `Target, ${state.options.target} nodes`
+          ? `Data, ${state.selected} market depth, ${state.options.target} node target`
           : isDealCard
             ? `Data, ${state.options.gpu}, ${state.options.quantity} GPUs`
-          : empty
-          ? "Add data"
           : isPowerCard
             ? `Power data, ${workspaceLabel()}, ${visualizationLabel(state.scale)} view`
           : isBarCard
@@ -5793,10 +5668,7 @@ if (root) {
     const available = isDepthCard && editing && !empty;
     nodes.depthCraft.hidden = !available;
     nodes.depthCraft.toggleAttribute("inert", !available);
-    if (!available) {
-      setDepthCraftMenu(null);
-      return;
-    }
+    if (!available) return;
 
     const instrument = state.runtimePayload?.instrument || {};
     const gpu = instrument.gpuLabel || instrument.gpu || "H100";
@@ -5822,26 +5694,6 @@ if (root) {
       "aria-label",
       `${gpu}, ${instrument.regionLabel || region}, ${nodeGpuCount} GPU node, ${interconnect}, ${termDays} day term`,
     );
-    if (nodes.depthTargetLabel) {
-      nodes.depthTargetLabel.textContent = `${state.options.target} nodes`;
-    }
-    if (nodes.depthViewLabel) {
-      nodes.depthViewLabel.textContent = visualizationLabel(state.scale);
-    }
-    if (nodes.depthTargetTrigger) {
-      nodes.depthTargetTrigger.disabled = !state.shareReady;
-      nodes.depthTargetTrigger.setAttribute(
-        "aria-label",
-        `Target ${state.options.target} nodes`,
-      );
-    }
-    if (nodes.depthViewTrigger) {
-      nodes.depthViewTrigger.disabled = !state.shareReady;
-      nodes.depthViewTrigger.setAttribute(
-        "aria-label",
-        `${visualizationLabel(state.scale)} view`,
-      );
-    }
   }
 
   function resetCustomZoom(event) {
@@ -5877,7 +5729,6 @@ if (root) {
     }
     if (mode !== "craft") {
       preserveCraftDraft();
-      setDepthCraftMenu(null);
     }
     if (mode === "catalog") {
       await showPanel(
@@ -6003,11 +5854,15 @@ if (root) {
       setCompareOpen(false);
     }
     state.transitionPending = true;
-    const previousLayout = nodes.layoutPanels.get(state.layout);
+    const openingCraft = targetMode === "craft";
+    const openingMonitor = targetMode === "monitor" && targetLayout === "focus";
+    const outgoingCard = [...root.querySelectorAll(
+      '.gpu-index-detail, .gpu-index-share__window, .desk-gallery-card[data-selected="true"]',
+    )].find(node => node.checkVisibility());
+    const outgoingBounds = outgoingCard?.getBoundingClientRect();
     const canMorph =
-      !reducedMotion && typeof document.startViewTransition === "function";
-    let heldChartAnimations = [];
-
+      !openingCraft && !openingMonitor && outgoingCard && !shouldMoveFocus && !reducedMotion &&
+      typeof document.startViewTransition === "function";
     const commitPanelChange = (animateLayout) => {
       state.panel = nextName;
       state.layout = targetLayout;
@@ -6017,45 +5872,39 @@ if (root) {
       syncFocusPanels();
       syncControls();
       syncLayout(animateLayout);
-      render("reveal");
-      if (canMorph) {
-        // Hold the first chart frame while the view-transition snapshot covers it.
-        heldChartAnimations = chartAnimations(root);
-        heldChartAnimations.forEach((animation) => animation.pause());
-      }
+      // Move the painted chart, not an empty first reveal frame. A second chart
+      // entrance underneath the view transition leaves a blank card on screen.
+      render(false);
       syncModeActions(animateLayout);
     };
 
     try {
-      if (canMorph) {
+      if (openingCraft) {
+        commitPanelChange(false);
+        animateCraftContent(shouldMoveFocus);
+      } else if (openingMonitor) {
+        // WebKit can omit the incoming SVG from a native transition snapshot.
+        // Move the real, already-painted card from its previous bounds instead.
+        craftMotion.prepareFrame(outgoingBounds);
+        commitPanelChange(false);
+        craftMotion.play(isDealCard ? nodes.dealWorkspace : nodes.svg, { keyboard: shouldMoveFocus });
+      } else if (canMorph) {
         const transition = document.startViewTransition(() => {
           commitPanelChange(false);
         });
         await transition.finished.catch(() => {});
       } else {
-        if (!reducedMotion && previousLayout) {
-          const exit = animate(
-            previousLayout,
-            {
-              opacity: [1, 0.42],
-              transform: ["translateY(0)", "translateY(-2px)"],
-            },
-            { duration: 0.2, ease: [0.23, 1, 0.32, 1] },
-          );
-          await exit.finished?.catch(() => {});
+        // Older browsers also get an opaque, fully drawn view. Do not fade the
+        // whole layout out and then replay a separate chart reveal.
+        commitPanelChange(false);
+        const panel = nodes.layoutPanels.get(targetLayout);
+        if (!reducedMotion && !shouldMoveFocus && panel) {
+          animate(panel, { transform: ["translateY(2px)", "translateY(0)"] },
+            { duration: 0.2, ease: [0.23, 1, 0.32, 1] });
         }
-        commitPanelChange(!reducedMotion);
       }
     } finally {
       state.transitionPending = false;
-      heldChartAnimations.forEach((animation) => {
-        if (!reducedMotion && !queuedPanelIntent &&
-            animation.playState === "paused" && animation.effect?.target?.isConnected) {
-          animation.play();
-        } else {
-          animation.cancel();
-        }
-      });
     }
 
     if (mobileViewport.matches && targetLayout !== "all") {
@@ -6098,7 +5947,7 @@ if (root) {
       );
     }
     if (panel === "detail" && state.mode === "craft" && state.craftEmpty) {
-      return nodes.craftTypeButtons[0];
+      return craftTypeFocusTarget();
     }
     if (panel === "detail") return nodes.detailPanel;
     return activeCardRailButton() || nodes.focusCardMonitor;

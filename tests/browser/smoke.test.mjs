@@ -52,6 +52,76 @@ test('Craft type picker stays readable and reachable at every width', async t =>
   await open(page, '/?card=gpu-index&view=craft&draft=new');
   const picker = page.locator('[data-craft-type-list]');
   const buttons = picker.locator('button');
+  const data = page.locator('[data-card-compare-toggle]');
+  const views = page.locator('[data-craft-home]');
+  const motionPreference = async reducedMotion => {
+    await page.evaluate(preference => {
+      const media = matchMedia('(prefers-reduced-motion: reduce)');
+      window.__smokeMotionPreferenceReady = media.matches === (preference === 'reduce')
+        ? Promise.resolve()
+        : new Promise(resolve => media.addEventListener('change', () => requestAnimationFrame(resolve), { once: true }));
+    }, reducedMotion);
+    await page.emulateMedia({ reducedMotion });
+    // Wait for the emulated preference to reach the browser's change listeners.
+    await page.evaluate(() => window.__smokeMotionPreferenceReady);
+  };
+  const frameGeometry = () => page.evaluate(() =>
+    ['.gpu-index-detail', '[data-card-composer]', '[data-craft-home]', '[data-card-compare-toggle]', '[data-card-save]']
+      .map(selector => {
+        const node = document.querySelector(selector);
+        const { x, y, width, height } = node.getBoundingClientRect();
+        return { selector, x: x + scrollX, y: y + scrollY, width, height, visible: node.checkVisibility() };
+      }));
+  const assertFrame = async (expected, label) => {
+    const actual = await frameGeometry();
+    for (const [index, box] of actual.entries()) {
+      assert.equal(box.visible, true, `${box.selector} remains visible for ${label}`);
+      for (const dimension of ['x', 'y', 'width', 'height']) {
+        assert.ok(Math.abs(box[dimension] - expected[index][dimension]) <= 1,
+          `${box.selector} ${dimension} stays fixed for ${label}: ${box[dimension]} vs ${expected[index][dimension]}`);
+      }
+    }
+    assert.equal(await page.evaluate(() => window.__smokeCraftDocument === document.documentElement &&
+      window.__smokeCraftFrame === document.querySelector('.gpu-index-detail') &&
+      window.__smokeCraftComposer === document.querySelector('[data-card-composer]')), true,
+    `the same document, frame and toolbar survive ${label}`);
+  };
+  const assertToolbar = async (empty, label) => {
+    const controls = await page.locator('[data-card-composer] > button').evaluateAll(nodes => nodes.map(node => {
+      const box = node.getBoundingClientRect();
+      return {
+        label: (node.querySelector('[data-card-data-label]') || node).textContent.trim(),
+        disabled: node.disabled, visible: node.checkVisibility(), x: box.x, right: box.right,
+      };
+    }));
+    assert.deepEqual(controls.map(control => control.label), ['Views', 'Data', 'Save'], label);
+    assert.equal(controls.every(control => control.visible), true, `all toolbar controls remain visible for ${label}`);
+    assert.deepEqual(controls.map(control => control.disabled), [false, empty, empty],
+      `Data and Save require a selected type for ${label}`);
+    const composer = await page.locator('[data-card-composer]').boundingBox();
+    assert.ok(controls[0].x - composer.x <= 16 && controls[1].x >= controls[0].right &&
+      controls[1].right < composer.x + composer.width / 2, `Views and Data stay left for ${label}`);
+    assert.ok(composer.x + composer.width - controls[2].right <= 16 && controls[2].x > controls[1].right,
+      `Save stays right for ${label}`);
+  };
+  const assertNoChartAnimation = async label => {
+    const active = await page.locator('[data-gpu-chart]').evaluate(node =>
+      node.getAnimations({ subtree: true }).filter(animation =>
+        !animation.transitionProperty &&
+        (animation.pending || animation.playState === 'running')).length);
+    assert.equal(active, 0, `${label} has no active chart transition`);
+    assert.equal(await page.locator('[data-craft-transition-outgoing]').count(), 0,
+      `${label} has no outgoing transition content`);
+  };
+  const assertSelected = async card => {
+    await page.waitForURL(url => url.searchParams.get('card') === card && !url.searchParams.has('draft'));
+    assert.equal(await page.locator('[data-gpu-benchmark-card]').getAttribute('data-card-id'), card);
+    assert.equal(await picker.isVisible(), false, `${card} replaces the chooser`);
+    const chart = page.locator(card === 'quote-view' || card === 'deal-view' ? '[data-deal-workspace] svg' : '[data-gpu-chart-svg]').first();
+    await chart.waitFor({ state: 'visible' });
+    assert.ok(await chart.locator('path, line, rect, circle').count(), `${card} renders after selection`);
+    assert.doesNotMatch(await chart.innerHTML(), /NaN|Infinity/, card);
+  };
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await picker.scrollIntoViewIfNeeded();
@@ -79,21 +149,170 @@ test('Craft type picker stays readable and reachable at every width', async t =>
       }
     }
   }
+  await page.evaluate(() => {
+    window.__smokeCraftDocument = document.documentElement;
+    window.__smokeCraftFrame = document.querySelector('.gpu-index-detail');
+    window.__smokeCraftComposer = document.querySelector('[data-card-composer]');
+  });
+  for (const [width, height] of [[1440, 1000], [390, 844], [320, 568]]) {
+    await page.setViewportSize({ width, height });
+    const reference = await frameGeometry();
+    await assertToolbar(true, `chooser at ${width}px`);
+    for (const card of cardIds) {
+      const label = `${card} at ${width}px`;
+      await picker.locator(`[data-craft-type="${card}"]`).click();
+      await assertSelected(card);
+      await assertNoChartAnimation(`reduced-motion selection of ${label}`);
+      await assertFrame(reference, label);
+      await assertToolbar(false, label);
+      await data.click();
+      await page.locator('[data-card-compare-panel]').waitFor({ state: 'visible' });
+      await views.click();
+      await picker.waitFor({ state: 'visible' });
+      assert.equal(await page.locator('[data-card-compare-panel]').isVisible(), false,
+        `returning to Views closes Data for ${label}`);
+      await assertNoChartAnimation(`reduced-motion return from ${label}`);
+      await assertFrame(reference, `chooser after ${label}`);
+      await assertToolbar(true, `chooser after ${label}`);
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.mouse.move(1, 1);
+  await motionPreference('no-preference');
+  const keyboardFrame = await frameGeometry();
   await buttons.first().focus();
   await page.keyboard.press('Tab');
   assert.equal(await buttons.nth(1).evaluate(node => node === document.activeElement), true);
   await page.keyboard.press('Shift+Tab');
   await page.keyboard.press('Enter');
-  await page.waitForFunction(() => !new URL(location.href).searchParams.has('draft'));
-  assert.equal(new URL(page.url()).searchParams.get('card'), cardIds[0]);
-  await page.locator('[data-card-compare-toggle]').waitFor({ state: 'visible' });
-  await page.locator('[data-craft-home]').focus();
+  await assertSelected(cardIds[0]);
+  await page.waitForFunction(() => document.querySelector('[data-card-compare-toggle]') === document.activeElement);
+  await assertNoChartAnimation('keyboard selection with motion enabled');
+  await assertFrame(keyboardFrame, 'keyboard selection');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => document.querySelector('[data-card-compare-panel]').contains(document.activeElement));
+  await page.keyboard.press('Escape');
+  assert.equal(await data.evaluate(node => node === document.activeElement), true, 'Data returns focus after Escape');
+  await views.focus();
   await page.keyboard.press('Enter');
   await picker.waitFor({ state: 'visible' });
   await page.waitForFunction(() => document.querySelector('[data-craft-type]') === document.activeElement);
+  await assertNoChartAnimation('keyboard return to Views with motion enabled');
+  await assertFrame(keyboardFrame, 'keyboard return to Views');
   await buttons.last().focus();
   await page.keyboard.press('Enter');
-  await page.waitForURL(url => url.searchParams.get('card') === cardIds.at(-1) && !url.searchParams.has('draft'));
+  await assertSelected(cardIds.at(-1));
+  await page.waitForFunction(() => document.querySelector('[data-card-compare-toggle]') === document.activeElement);
+  await assertNoChartAnimation('cross-family keyboard selection with motion enabled');
+  await assertFrame(keyboardFrame, 'cross-family keyboard selection');
+  await views.focus();
+  await page.keyboard.press('Enter');
+  await picker.waitFor({ state: 'visible' });
+  assert.equal(await buttons.last().evaluate(node => node === document.activeElement), true,
+    'Views returns keyboard focus to the previously selected type');
+
+  const crossfade = await buttons.first().evaluate(button => {
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    const outgoing = document.querySelector('[data-craft-transition-outgoing]');
+    const animations = document.querySelector('.gpu-index-detail').getAnimations({ subtree: true })
+      .filter(animation => animation.id.startsWith('desk-craft-') && (animation.pending || animation.playState === 'running'));
+    const incoming = animations.find(animation => animation.id === 'desk-craft-content');
+    // Seek real presentation frames so a fast browser cannot skip an opacity dip.
+    const opacitySamples = [0, 0.25, 0.5, 0.75, 0.99].map(progress => {
+      for (const animation of animations) {
+        animation.pause();
+        animation.currentTime = Number(animation.effect.getTiming().duration) * progress;
+      }
+      return Number(getComputedStyle(incoming.effect.target).opacity);
+    });
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    context.fillStyle = getComputedStyle(outgoing).backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    for (const animation of animations) {
+      animation.currentTime = Number(animation.effect.getTiming().duration) / 2;
+      animation.play();
+    }
+    return {
+      ids: animations.map(animation => animation.id).sort(),
+      opacitySamples,
+      contentOnly: animations.every(animation => animation.effect?.target instanceof Element &&
+        Boolean(animation.effect.target.closest('[data-gpu-chart]'))),
+      outgoing: outgoing && {
+        hidden: outgoing.getAttribute('aria-hidden'), inert: outgoing.inert,
+        pointerEvents: getComputedStyle(outgoing).pointerEvents,
+        backgroundAlpha: context.getImageData(0, 0, 1, 1).data[3],
+        keyframes: outgoing.getAnimations()[0].effect.getKeyframes().map(frame => ({ opacity: frame.opacity, transform: frame.transform })),
+        content: outgoing.textContent.trim(),
+      },
+    };
+  });
+  assert.deepEqual(crossfade.ids, ['desk-craft-content', 'desk-craft-outgoing'],
+    'pointer selection crossfades the previous content into the selected view');
+  assert.deepEqual(crossfade.opacitySamples, [1, 1, 1, 1, 1],
+    'the incoming chart stays fully painted throughout the transition');
+  assert.equal(crossfade.contentOnly, true, 'pointer transitions animate only the chart content');
+  assert.ok(crossfade.outgoing?.content, 'the previous chooser remains visible during the crossfade');
+  assert.equal(crossfade.outgoing.backgroundAlpha, 255,
+    'the outgoing surface has an opaque background so the transition cannot dim both views');
+  assert.ok(crossfade.outgoing.keyframes.every(frame => Number(frame.opacity) === 1) &&
+    crossfade.outgoing.keyframes.at(-1).transform.startsWith('translateX(-'),
+    'the type menu slides left at full opacity rather than blinking away');
+  assert.equal(crossfade.outgoing.hidden, 'true', 'outgoing content is hidden from assistive technology');
+  assert.equal(crossfade.outgoing.inert, true, 'outgoing controls cannot receive focus');
+  assert.equal(crossfade.outgoing.pointerEvents, 'none', 'outgoing controls cannot intercept pointer input');
+  await assertFrame(keyboardFrame, 'active pointer transition');
+  const interrupted = await page.evaluate(() => {
+    const opacities = [];
+    const click = selector => {
+      document.querySelector(selector).dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+      const incoming = document.querySelector('[data-gpu-chart]').getAnimations({ subtree: true })
+        .find(animation => animation.id === 'desk-craft-content');
+      opacities.push(Number(getComputedStyle(incoming.effect.target).opacity));
+      incoming.currentTime = Number(incoming.effect.getTiming().duration) / 2;
+    };
+    click('[data-craft-home]');
+    click('[data-craft-type="quote-view"]');
+    click('[data-craft-home]');
+    click('[data-craft-type="deal-view"]');
+    click('[data-craft-home]');
+    click('[data-craft-type="quote-view"]');
+    return {
+      opacities,
+      outgoingCount: document.querySelectorAll('[data-craft-transition-outgoing]').length,
+      animations: document.querySelector('[data-gpu-chart]').getAnimations({ subtree: true })
+        .filter(animation => animation.id.startsWith('desk-craft-') && (animation.pending || animation.playState === 'running')).length,
+    };
+  });
+  assert.deepEqual(interrupted.opacities, [1, 1, 1, 1, 1, 1],
+    'interrupted switches keep each replacement fully painted from its first frame');
+  assert.equal(interrupted.outgoingCount, 1, 'rapid switches retain only the latest outgoing content');
+  assert.equal(interrupted.animations, 2, 'rapid switches retain only the current crossfade');
+  await assertSelected('quote-view');
+  await page.waitForFunction(() => !document.querySelector('[data-gpu-chart]').getAnimations({ subtree: true })
+    .some(animation => animation.id.startsWith('desk-craft-') && (animation.pending || animation.playState === 'running')));
+  assert.equal(await page.locator('[data-craft-transition-outgoing]').count(), 0, 'completed crossfades remove outgoing content');
+  await assertFrame(keyboardFrame, 'interrupted pointer selection');
+  assert.equal(new URL(page.url()).searchParams.get('card'), 'quote-view', 'the latest selection wins after interrupted transitions');
+
+  await views.dispatchEvent('click', { detail: 1 });
+  const duplicateIds = await page.locator('[id]').evaluateAll(nodes => nodes.map(node => node.id)
+    .filter((id, index, ids) => ids.indexOf(id) !== index));
+  assert.deepEqual(duplicateIds, [], 'outgoing chart copies do not duplicate live SVG or control IDs');
+  await motionPreference('reduce');
+  await assertNoChartAnimation('enabling reduced motion during a pointer transition');
+  await motionPreference('no-preference');
+  await buttons.first().dispatchEvent('click', { detail: 1 });
+  await views.focus();
+  await page.keyboard.press('Enter');
+  await assertNoChartAnimation('keyboard input interrupts an active pointer transition');
+  await assertFrame(keyboardFrame, 'keyboard interruption');
+
+  await views.focus();
+  await page.keyboard.press('Enter');
+  await buttons.last().focus();
+  await page.keyboard.press('Enter');
+  await assertSelected(cardIds.at(-1));
   await page.waitForFunction(() => document.querySelector('[data-card-compare-toggle]') === document.activeElement);
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForFunction(() => document.querySelector('[data-card-ready="true"]'));
@@ -102,6 +321,90 @@ test('Craft type picker stays readable and reachable at every width', async t =>
   await picker.waitFor({ state: 'visible' });
   assert.equal(await buttons.count(), cardIds.length);
   assert.equal(await picker.locator('button:disabled').count(), 0);
+
+  await motionPreference('reduce');
+  await buttons.first().dispatchEvent('click', { detail: 0 });
+  await assertSelected(cardIds[0]);
+  await page.locator('[data-desk-mode="monitor"]').dispatchEvent('click', { detail: 0 });
+  await page.waitForFunction(() => document.documentElement.dataset.deskView === 'monitor');
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await open(page, '/?card=gpu-index&view=monitor&gpu=B300&layers=B300&scale=price&range=7d&palette=sage&theme=dark');
+  await page.evaluate(() => {
+    window.__smokeCraftEntryFrame = document.querySelector('.gpu-index-detail');
+    window.__smokeCraftEntryBounds = window.__smokeCraftEntryFrame.getBoundingClientRect().toJSON();
+    window.__smokeCraftEntryDocument = document.documentElement;
+    window.__smokeCraftEntryViewTransitions = 0;
+    const startViewTransition = document.startViewTransition;
+    if (startViewTransition) document.startViewTransition = function (...args) {
+      window.__smokeCraftEntryViewTransitions++;
+      return startViewTransition.apply(this, args);
+    };
+  });
+  await motionPreference('no-preference');
+  await page.evaluate(() => {
+    document.querySelector('[data-desk-mode="craft"]').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    document.getAnimations().filter(animation => animation.id.startsWith('desk-craft-')).forEach(animation => {
+      animation.pause();
+      animation.currentTime = 0;
+    });
+  });
+  await page.waitForFunction(() => document.documentElement.dataset.deskView === 'craft' &&
+    document.querySelector('[data-gpu-chart]').getAnimations({ subtree: true })
+      .some(animation => animation.id === 'desk-craft-content'));
+  const entry = await page.evaluate(() => ({
+    sameFrame: window.__smokeCraftEntryFrame === document.querySelector('.gpu-index-detail'),
+    sameDocument: window.__smokeCraftEntryDocument === document.documentElement,
+    pageTransitions: window.__smokeCraftEntryViewTransitions,
+    before: window.__smokeCraftEntryBounds,
+    firstFrame: document.querySelector('.gpu-index-detail').getBoundingClientRect().toJSON(),
+    outsideFrame: document.getAnimations().filter(animation => animation.id.startsWith('desk-craft-'))
+      .some(animation => !animation.effect?.target?.closest('.gpu-index-detail')),
+    surface: getComputedStyle(document.querySelector('[data-craft-transition-outgoing]')).backgroundColor,
+  }));
+  assert.equal(entry.sameFrame && entry.sameDocument, true, 'opening Craft preserves the current document and frame');
+  assert.equal(entry.pageTransitions, 0, 'opening Craft does not animate a page snapshot');
+  assert.equal(entry.outsideFrame, false, 'opening Craft leaves the surrounding page untouched');
+  for (const dimension of ['x', 'y', 'width', 'height']) {
+    assert.ok(Math.abs(entry.before[dimension] - entry.firstFrame[dimension]) <= 1,
+      `Craft starts at the visible Monitor ${dimension}, rather than jumping to the new layout`);
+  }
+  assert.equal(entry.surface, 'rgb(24, 24, 24)', 'the first outgoing surface stays dark');
+  await motionPreference('reduce');
+  await assertNoChartAnimation('reduced motion interrupts opening Craft');
+  assert.equal(await page.locator('.gpu-index-detail').evaluate(node => getComputedStyle(node).transform), 'none',
+    'reduced motion immediately settles the frame');
+
+  await buttons.first().dispatchEvent('click', { detail: 0 });
+  await motionPreference('no-preference');
+  const fallback = await page.evaluate(() => {
+    document.startViewTransition = undefined;
+    document.querySelector('[data-desk-mode="monitor"]').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    const animations = document.getAnimations().filter(animation => !animation.transitionProperty &&
+      animation.effect?.target?.closest('.desk-stage'));
+    return {
+      mode: document.documentElement.dataset.deskView,
+      opacityDips: animations.some(animation => animation.effect.getKeyframes()
+        .some(frame => frame.opacity !== undefined && Number(frame.opacity) < 1)),
+      chartReveals: animations.some(animation => animation.id.startsWith('desk-chart-')),
+    };
+  });
+  assert.equal(fallback.mode, 'monitor', 'fallback navigation never waits for the old screen to fade out');
+  assert.equal(fallback.opacityDips || fallback.chartReveals, false,
+    'fallback navigation moves fully painted content without a screen fade or second chart reveal');
+
+  await open(page, '/?card=gpu-index&view=monitor&gpu=B300&layers=B300&range=7d&palette=sage&theme=dark&entry=preset-gpu-index-b300');
+  await page.locator('[data-desk-mode="catalog"]').click();
+  await page.waitForFunction(() => document.documentElement.dataset.deskView === 'catalog' &&
+    !document.getAnimations().some(animation => animation.effect?.pseudoElement));
+  const unmatched = await page.evaluate(() => {
+    let calls = 0;
+    const nativeTransition = document.startViewTransition;
+    document.startViewTransition = (...args) => { calls++; return nativeTransition.apply(document, args); };
+    document.querySelector('[data-desk-mode="monitor"]').dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    return { calls, mode: document.documentElement.dataset.deskView };
+  });
+  assert.equal(unmatched.calls, 0, 'a card absent from the catalog does not create an unmatched browser snapshot');
+  assert.equal(unmatched.mode, 'monitor', 'an unmatched chart is drawn immediately');
 });
 
 test('Desk commands keep keyboard control and preserve Craft drafts', async t => {
@@ -161,8 +464,9 @@ test('Desk commands keep keyboard control and preserve Craft drafts', async t =>
       await search.press('ArrowDown');
       assert.notEqual(await search.getAttribute('aria-activedescendant'), active);
       await search.fill('Copy view link');
-      await page.getByRole('option', { name: 'Copy view link', exact: true }).waitFor();
-      assert.equal(await rows.first().getAttribute('aria-selected'), 'true');
+      await page.waitForFunction(() => document.querySelector('[data-command-results] [role="option"] strong')?.textContent === 'Copy view link');
+      assert.equal(await rows.first().isDisabled(), true, 'an empty Craft view has no view link to copy');
+      assert.equal(await rows.first().getAttribute('aria-selected'), 'false', 'disabled commands are not the active result');
       assert.equal(await rows.first().locator('small, .desk-command-menu__meta').count(), 0, 'simple actions have no path or repeated hint');
     }
     await page.locator('[data-command-input]').fill('Resume draft');
@@ -177,20 +481,309 @@ test('Desk commands keep keyboard control and preserve Craft drafts', async t =>
 
 test('Data controls and source disclosures keep the chart in place', async t => {
   const page = await pageFor(t);
-  await open(page, '/?card=equities&symbol=CRWV&view=craft&scale=index&layers=CRWV,H100,H200&range=90d&style=bars');
   const toggle = page.locator('[data-card-compare-toggle]');
   const panel = page.locator('[data-card-compare-panel]');
-  const chart = page.locator('[data-gpu-chart]');
-  for (const [width, height] of [[1440, 1000], [390, 844]]) {
+  const craftGeometry = () => page.evaluate(() =>
+    ['[data-gpu-chart]', '.gpu-index-detail', '[data-card-composer]'].map(selector => {
+      const { x, y, width, height } = document.querySelector(selector).getBoundingClientRect();
+      return { x, y, width, height };
+    }));
+  const assertCraftGeometry = (actual, expected, message) => {
+    for (const [index, box] of actual.entries()) {
+      for (const dimension of ['x', 'y', 'width', 'height']) {
+        assert.ok(Math.abs(box[dimension] - expected[index][dimension]) <= 1,
+          `${message}: ${['chart', 'frame', 'composer'][index]} ${dimension}`);
+      }
+    }
+  };
+  const headerByWidth = new Map();
+  const assertCraftHeader = async (label, width) => {
+    const header = await page.locator('[data-card-composer]').evaluate(node => {
+      const composer = node.getBoundingClientRect();
+      const controls = [...node.querySelectorAll(':scope > button')]
+        .filter(button => button.checkVisibility())
+        .map(button => {
+          const box = button.getBoundingClientRect();
+          return {
+            label: (button.querySelector('[data-card-data-label]') || button).innerText.trim(),
+            x: box.x - composer.x, y: box.y - composer.y,
+            width: box.width, height: box.height,
+            clipped: button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1,
+          };
+        });
+      return { width: composer.width, controls };
+    });
+    assert.deepEqual(header.controls.map(control => control.label), ['Views', 'Data', 'Save'],
+      `Craft uses the same three header controls for ${label}`);
+    const [views, data, save] = header.controls;
+    assert.ok(views.x >= -1 && views.x <= 16 && data.x >= views.x + views.width &&
+      data.x + data.width < header.width / 2, `Views and Data stay together on the left for ${label}`);
+    assert.ok(save.x > data.x + data.width && header.width - save.x - save.width >= -1 &&
+      header.width - save.x - save.width <= 16, `Save stays on the right for ${label}`);
+    for (const control of header.controls) {
+      assert.ok(control.height > 0 && control.height <= 44 && !control.clipped,
+        `${control.label} stays compact and readable for ${label}`);
+      assert.ok(Math.abs(control.y + control.height / 2 - views.y - views.height / 2) <= 1,
+        `${control.label} shares the header baseline for ${label}`);
+    }
+    if (!headerByWidth.has(width)) headerByWidth.set(width, header);
+    const reference = headerByWidth.get(width);
+    for (const [index, control] of header.controls.entries()) {
+      for (const dimension of ['x', 'y', 'width', 'height']) {
+        assert.ok(Math.abs(control[dimension] - reference.controls[index][dimension]) <= 1,
+          `${control.label} ${dimension} is consistent across Craft types for ${label}`);
+      }
+    }
+  };
+  const assertDataFits = async label => {
+    const layout = await panel.evaluate(node => {
+      const bounds = node.getBoundingClientRect();
+      const selectors = '.gpu-benchmark__input-field > span, .gpu-benchmark__input-display, .gpu-benchmark__month-trigger, .deal-craft__field > span:first-child, input:not([hidden]), [data-card-primary], [data-card-layer], [data-card-option], [data-depth-craft-scale]';
+      const fields = [...node.querySelectorAll(selectors)]
+        .filter(field => field.checkVisibility({ visibilityProperty: true }))
+        .map(field => {
+          const box = field.getBoundingClientRect();
+          return {
+            label: field.getAttribute('aria-label') || field.textContent || field.value,
+            contained: box.left >= bounds.left - 1 && box.right <= bounds.right + 1,
+            clipped: field.scrollWidth > field.clientWidth + 1 || field.scrollHeight > field.clientHeight + 1,
+            choiceHeight: field.matches('button[data-card-primary], button[data-card-layer], button[data-card-option], button[data-depth-craft-scale]') ? box.height : null,
+          };
+        });
+      return { overflows: node.scrollWidth > node.clientWidth + 1, fields };
+    });
+    assert.equal(layout.overflows, false, `Data has no horizontal overflow for ${label}`);
+    for (const field of layout.fields) {
+      assert.ok(field.contained && !field.clipped, `${field.label.trim()} fits in Data for ${label}`);
+      if (field.choiceHeight !== null) {
+        assert.ok(field.choiceHeight <= 44, `${field.label.trim()} keeps a compact button height for ${label}`);
+      }
+    }
+  };
+  const dataEdits = [
+    ['gpu-index', '[data-card-primary="B200"]', 'gpu', 'B200'],
+    ['gpu-price-snapshot', '[data-card-primary="B300"]', 'gpu', 'B300'],
+    ['gpu-market-depth', '[data-card-option="target"][data-card-option-value="256"]', 'target', '256'],
+    ['equities', '[data-card-primary="NVDA"]', 'symbol', 'NVDA'],
+    ['power-basis', '[data-card-primary="ERCOT-NORTH"]', 'location', 'ERCOT-NORTH'],
+    ['forward-prices', '[data-card-primary="H200"]', 'gpu', 'H200'],
+    ['gpu-hedge', '[data-card-option-input="hours"]', 'hours', '250000'],
+    ['gpu-lease', '[data-card-option-input="term"]', 'term', '24'],
+    ['sandbox-cost', '[data-card-primary="blaxel"]', 'provider', 'blaxel'],
+    ['quote-view', '[data-deal-craft-quantity]', 'quantity', '512'],
+    ['deal-view', '[data-deal-craft-quantity]', 'quantity', '512'],
+  ];
+  assert.deepEqual(dataEdits.map(([id]) => id).sort(),
+    CARD_REGISTRY.filter(card => card.craftable !== false).map(card => card.id).sort(),
+    'every Craft card has a Data regression case');
+  for (const [width, height] of [[1440, 1000], [900, 900], [390, 844], [320, 568]]) {
     await page.setViewportSize({ width, height });
-    const closed = await chart.boundingBox();
-    await toggle.click();
-    const controls = await panel.boundingBox();
-    const expanded = await chart.boundingBox();
-    assert.ok(controls.y + controls.height <= expanded.y + 1, `Data controls do not cover the chart at ${width}px`);
-    assert.ok(Math.abs(expanded.height - closed.height) <= 1, `opening Data keeps the chart height at ${width}px`);
-    await toggle.click();
-    assert.ok(Math.abs((await chart.boundingBox()).height - closed.height) <= 1, `closing Data restores the chart height at ${width}px`);
+    for (const [card, selector, parameter, value] of dataEdits) {
+      if (width === 900 && !['gpu-hedge', 'gpu-lease'].includes(card)) continue;
+      const composition = card === 'equities' ? '&symbol=CRWV&scale=index&layers=CRWV,H100,H200&range=90d&style=bars' : '';
+      await open(page, `/?card=${card}&view=craft${composition}`);
+      await toggle.scrollIntoViewIfNeeded();
+      const label = `${card} at ${width}×${height}`;
+      await assertCraftHeader(label, width);
+      const closed = await craftGeometry();
+      await toggle.click();
+      await panel.waitFor({ state: 'visible' });
+      const controls = await panel.boundingBox();
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'true', label);
+      assertCraftGeometry(await craftGeometry(), closed, `opening Data keeps ${label} in place`);
+      assert.ok(controls.x >= -1 && controls.x + controls.width <= width + 1 &&
+        controls.y >= -1 && controls.y + controls.height <= height + 1, `Data fits the viewport for ${label}`);
+      assert.ok(controls.height <= 321, `Data height is bounded for ${label}`);
+      assert.ok(Math.abs(controls.x - closed[2].x) <= 1 && Math.abs(controls.width - closed[2].width) <= 1,
+        `Data spans the composer for ${label}`);
+      await assertDataFits(label);
+
+      const edit = panel.locator(selector);
+      if (await edit.evaluate(node => node instanceof HTMLInputElement)) {
+        await edit.fill(value);
+        await edit.press('Tab');
+      } else await edit.click();
+      await page.waitForURL(url => url.searchParams.get(parameter) === value);
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `editing keeps Data open for ${label}`);
+      assertCraftGeometry(await craftGeometry(), closed, `editing Data keeps ${label} in place`);
+      await assertDataFits(label);
+
+      if (card === 'gpu-market-depth') {
+        const depth = panel.locator('[data-depth-craft]');
+        assert.equal(await depth.isVisible(), true, `market depth settings belong to Data for ${label}`);
+        assert.equal(await page.locator('[data-depth-target-trigger], [data-depth-view-trigger], [data-depth-target-menu], [data-depth-view-menu]').count(), 0,
+          'market depth has no separate target or chart dropdowns');
+        const targets = depth.locator('[data-depth-target-options] [role="radio"]');
+        assert.deepEqual(await targets.evaluateAll(nodes => nodes.map(node => node.dataset.cardOptionValue)), ['64', '128', '256']);
+        assert.equal(await targets.evaluateAll(nodes => nodes.every(node => node.checkVisibility())), true,
+          `target choices are inline for ${label}`);
+        assert.equal(await edit.getAttribute('aria-checked'), 'true');
+        await edit.focus();
+        await edit.press('ArrowLeft');
+        await page.waitForURL(url => url.searchParams.get('target') === '128');
+        const selectedTarget = depth.locator('[data-depth-target-options] [role="radio"][aria-checked="true"]');
+        assert.equal(await selectedTarget.getAttribute('data-card-option-value'), '128');
+        assert.equal(await selectedTarget.evaluate(node => node === document.activeElement), true,
+          `keyboard target selection keeps focus on its inline choice for ${label}`);
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+        assertCraftGeometry(await craftGeometry(), closed, `keyboard target editing keeps ${label} in place`);
+
+        const scales = depth.locator('[data-depth-craft-views] [data-depth-craft-scale]');
+        assert.deepEqual(await scales.evaluateAll(nodes => nodes.map(node => node.dataset.depthCraftScale)), ['depth', 'history']);
+        assert.equal(await scales.evaluateAll(nodes => nodes.every(node => node.checkVisibility())), true,
+          `chart choices are inline for ${label}`);
+        for (const scale of ['history', 'depth']) {
+          const choice = depth.locator(`[data-depth-craft-scale="${scale}"]`);
+          await choice.focus();
+          await choice.press('Enter');
+          await page.waitForURL(url => url.searchParams.get('scale') === scale);
+          assert.equal(await choice.getAttribute('aria-pressed'), 'true');
+          assert.equal(await choice.evaluate(node => node === document.activeElement), true,
+            `keyboard chart selection keeps focus on its inline choice for ${label}`);
+          const rendering = scale === 'history' ? '[data-depth-history-heatmap]' : '[data-depth-current-profile]';
+          assert.equal(await page.locator(`[data-gpu-chart-svg] ${rendering}`).count(), 1,
+            `${scale} renders after changing the depth chart for ${label}`);
+          assert.equal(await toggle.getAttribute('aria-expanded'), 'true');
+          assertCraftGeometry(await craftGeometry(), closed, `switching depth to ${scale} keeps ${label} in place`);
+          await assertDataFits(`${label} with ${scale}`);
+        }
+      }
+
+      if (card === 'gpu-price-snapshot' && width === 1440) {
+        await panel.locator('[data-card-layer="H200"]').click();
+        await page.waitForURL(url => url.searchParams.get('layers')?.split(',').length === 3);
+        assert.deepEqual(new URL(page.url()).searchParams.get('layers').split(',').sort(), ['B200', 'B300', 'H100']);
+        assert.equal(await panel.locator('[data-card-primary="B300"]').getAttribute('aria-checked'), 'true');
+        assert.equal(await panel.locator('[data-card-layer="H200"]').getAttribute('aria-pressed'), 'false');
+        const compact = await panel.boundingBox();
+        assert.ok(compact.height >= 80 && compact.height <= 88, 'snapshot Data stays near 83px for its two compact rows');
+        await assertDataFits('snapshot after highlighting B300 and removing H200');
+        assertCraftGeometry(await craftGeometry(), closed, 'changing snapshot bars keeps the chart in place');
+      }
+
+      if (card === 'gpu-lease' && width === 320) {
+        const cost = panel.locator('[data-card-option-input="cost"]');
+        await cost.fill('1000000000000');
+        await cost.press('Tab');
+        await page.waitForURL(url => url.searchParams.get('cost') === '1000000000000');
+        assert.equal(await panel.locator('[data-option-field="cost"] .gpu-benchmark__input-display').textContent(),
+          '1,000,000,000,000', 'the largest valid equipment cost remains readable');
+        await assertDataFits(`${label} with the largest valid equipment cost`);
+        assertCraftGeometry(await craftGeometry(), closed, 'editing a long cost keeps the chart in place');
+      }
+
+      if (card === 'equities' && width === 320) {
+        assert.equal(await panel.evaluate(node => node.scrollHeight > node.clientHeight), true,
+          'the tall equities controls have their own scroll area');
+        await panel.evaluate(node => { node.scrollTop = 0; });
+        const scrollY = await page.evaluate(() => window.scrollY);
+        await page.mouse.move(controls.x + controls.width / 2, controls.y + controls.height / 2);
+        await page.mouse.wheel(0, 240);
+        await page.waitForFunction(() => document.querySelector('[data-card-compare-panel]').scrollTop > 0);
+        assert.equal(await page.evaluate(() => window.scrollY), scrollY, 'scrolling Data does not scroll the document');
+        assertCraftGeometry(await craftGeometry(), closed, 'scrolling Data keeps the chart and frame in place');
+      }
+
+      if (card === 'gpu-hedge') {
+        const more = panel.locator('.gpu-benchmark__calculator-more');
+        const summary = more.locator('summary');
+        const collapsed = await panel.boundingBox();
+        await summary.click();
+        const fields = more.locator('[data-option-field]');
+        await fields.first().waitFor({ state: 'visible' });
+        const summaryBounds = await summary.boundingBox();
+        const fieldBounds = await fields.evaluateAll(nodes => nodes.map(node => {
+          const { left, top, bottom } = node.getBoundingClientRect();
+          return { left, top, bottom };
+        }));
+        for (const field of fieldBounds) {
+          assert.ok(field.left >= summaryBounds.x + summaryBounds.width - 1,
+            `Costs & basis fields open to the right of the summary for ${label}`);
+        }
+        assert.ok(fieldBounds[0].top < summaryBounds.y + summaryBounds.height &&
+          fieldBounds[0].bottom > summaryBounds.y, `Costs & basis starts beside the summary for ${label}`);
+        if (width >= 900) {
+          assert.ok(Math.abs((await panel.boundingBox()).height - collapsed.height) <= 1,
+            `opening Costs & basis keeps Data height unchanged for ${label}`);
+        }
+        await assertDataFits(`${label} with Costs & basis expanded`);
+        assertCraftGeometry(await craftGeometry(), closed, `expanding Costs & basis keeps ${label} in place`);
+
+        const profit = page.locator('[data-gpu-chart-svg] [data-gpu-hedge-hedged]');
+        for (const [option, value] of [['costs', '125000'], ['basis', '0.25']]) {
+          const priorProfit = await profit.textContent();
+          const input = more.locator(`[data-card-option-input="${option}"]`);
+          await input.fill(value);
+          await input.press('Shift+Tab');
+          await page.waitForURL(url => url.searchParams.get(option) === value);
+          assert.notEqual(await profit.textContent(), priorProfit, `editing ${option} updates Hedge profit for ${label}`);
+          assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `editing ${option} keeps Data open for ${label}`);
+          assert.equal(await more.evaluate(node => node.open), true, `editing ${option} keeps Costs & basis open for ${label}`);
+        }
+        await assertDataFits(`${label} after editing Costs & basis`);
+        assertCraftGeometry(await craftGeometry(), closed, `editing Costs & basis keeps ${label} in place`);
+
+        await summary.focus();
+        await summary.press('Enter');
+        await fields.first().waitFor({ state: 'hidden' });
+        assert.equal(await more.evaluate(node => node.open), false, `Enter closes Costs & basis for ${label}`);
+        assert.equal(await summary.evaluate(node => node === document.activeElement), true,
+          `closing Costs & basis keeps summary focus for ${label}`);
+        await summary.press('Space');
+        await fields.first().waitFor({ state: 'visible' });
+        assert.equal(await more.evaluate(node => node.open), true, `Space opens Costs & basis for ${label}`);
+      }
+
+      if (card === 'gpu-hedge' && width <= 390) {
+        const month = panel.locator('.gpu-benchmark__month-trigger');
+        const calendar = panel.getByRole('dialog', { name: 'Settlement month' });
+        await month.click();
+        await calendar.waitFor({ state: 'visible' });
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'the month picker preserves the Data panel');
+        const monthBounds = await calendar.boundingBox();
+        assert.ok(monthBounds.x >= -1 && monthBounds.x + monthBounds.width <= width + 1 &&
+          monthBounds.y >= -1 && monthBounds.y + monthBounds.height <= height + 1,
+          `the month picker fits the viewport for ${label}`);
+        await page.keyboard.press('Escape');
+        await calendar.waitFor({ state: 'hidden' });
+        assert.equal(await month.evaluate(node => node === document.activeElement), true, 'month Escape restores its trigger');
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'true', 'month Escape leaves Data open');
+        await month.press('ArrowDown');
+        await calendar.getByRole('button', { name: 'November 2026', exact: true }).click();
+        await page.waitForURL(url => url.searchParams.get('delivery') === '2026-11');
+        await calendar.waitFor({ state: 'hidden' });
+        assertCraftGeometry(await craftGeometry(), closed, 'changing the settlement month keeps the chart in place');
+      }
+
+      await toggle.click();
+      await panel.waitFor({ state: 'hidden' });
+      assertCraftGeometry(await craftGeometry(), closed, `closing Data keeps ${label} in place`);
+      await assertCraftHeader(`${label} after editing`, width);
+      if (width === 390) {
+        await toggle.focus();
+        await page.keyboard.press('Enter');
+        await page.waitForFunction(() => document.querySelector('[data-card-compare-panel]').contains(document.activeElement));
+        await page.keyboard.press('Escape');
+        await panel.waitFor({ state: 'hidden' });
+        assert.equal(await toggle.getAttribute('aria-expanded'), 'false', `Escape closes Data for ${label}`);
+        assert.equal(await toggle.evaluate(node => node === document.activeElement), true, `Escape restores Data focus for ${label}`);
+        assertCraftGeometry(await craftGeometry(), closed, `keyboard Data controls keep ${label} in place`);
+
+        await toggle.click();
+        await page.locator('[data-card-save]').click();
+        await page.locator('[data-save-dialog]').waitFor({ state: 'visible' }).catch(error => {
+          throw new Error(`Save opens from Data for ${label}`, { cause: error });
+        });
+        assert.equal(await panel.isVisible(), false, `Save closes Data for ${label}`);
+        await page.locator('[data-save-cancel]').click();
+        await page.locator('[data-save-dialog]').waitFor({ state: 'hidden' });
+        assertCraftGeometry(await craftGeometry(), closed, `cancelling Save keeps ${label} in place`);
+        await toggle.click();
+        await page.locator('[data-craft-home]').click();
+        await page.locator('[data-craft-type-list]').waitFor({ state: 'visible' });
+        assert.equal(await panel.isVisible(), false, `Views closes Data and returns to the chooser for ${label}`);
+      }
+    }
   }
 
   const geometry = () => page.evaluate(() => ({

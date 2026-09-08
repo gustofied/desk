@@ -17,6 +17,7 @@
 :root {
   --desk-gallery-top-space: 80px;
   --desk-monitor-chart-height: min(calc(40vw + 33px), 513px);
+  --desk-craft-frame-height: calc(var(--desk-monitor-chart-height) + 41px);
   color-scheme: light;
   font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
   background: var(--desk-canvas, #fff);
@@ -93,8 +94,7 @@ body {
   aspect-ratio: 1200 / 630;
 }
 
-/* The type picker is content, not an empty chart. It must size itself at every
-   viewport rather than inherit the plot's fixed height or aspect ratio. */
+/* The picker replaces chart content inside the shared Craft frame. */
 .desk-stage .gpu-index[data-craft-empty="true"] .gpu-benchmark__chart {
   height: auto;
   min-height: 0;
@@ -156,6 +156,7 @@ body {
 @media (max-width: 640px) {
   :root {
     --desk-monitor-chart-height: min(327px, calc(66.6667vw + 67px));
+    --desk-craft-frame-height: clamp(320px, calc(100dvh - 200px), 400px);
   }
 
   body {
@@ -235,6 +236,73 @@ body {
     .gpu-benchmark__chart {
     height: 100%;
     aspect-ratio: auto;
+  }
+}
+
+/* Keep the same perimeter through type selection, editing, and data changes. */
+.desk-craft-outgoing {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.desk-craft-outgoing * {
+  pointer-events: none !important;
+  animation: none !important;
+  transition: none !important;
+}
+
+:root[data-desk-view="craft"][data-desk-layout="focus"] .desk-stage .gpu-index-detail {
+  height: var(--desk-craft-frame-height);
+}
+
+:root[data-desk-view="craft"][data-desk-layout="focus"] .desk-stage :is(.gpu-index-detail__body, .gpu-benchmark) {
+  height: 100%;
+  min-height: 0;
+}
+
+:root[data-desk-view="craft"][data-desk-layout="focus"] .desk-stage .gpu-benchmark {
+  display: grid;
+  grid-template-rows: 41px minmax(0, 1fr) auto;
+}
+
+:root[data-desk-view="craft"][data-desk-layout="focus"] .desk-stage .gpu-benchmark__mobile-summary {
+  display: none;
+}
+
+:root[data-desk-view="craft"][data-desk-layout="focus"] .desk-stage .gpu-benchmark__composer {
+  grid-row: 1;
+}
+
+:root[data-desk-view="craft"][data-desk-layout="focus"] .desk-stage .gpu-benchmark__chart {
+  grid-row: 2;
+  width: calc(100% + 16px);
+  height: 100%;
+  min-height: 0;
+  margin-inline: -8px;
+  aspect-ratio: auto;
+}
+
+:root[data-desk-view="craft"][data-desk-layout="focus"] .desk-stage .gpu-benchmark__footer {
+  grid-row: 3;
+}
+
+:root[data-desk-view="craft"][data-desk-layout="focus"] .gpu-benchmark__craft-empty {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--desk-chrome-rule) transparent;
+  align-content: safe center;
+  scroll-padding: 16px;
+}
+
+@media (max-width: 640px) {
+  :root[data-desk-view="craft"] .gpu-index[data-craft-empty="true"] .gpu-benchmark__craft-empty {
+    padding: 12px;
   }
 }
 

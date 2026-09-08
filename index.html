@@ -95,13 +95,13 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=116">
-    <link rel="stylesheet" href="./styles/desk-workspace.css?v=68">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=122">
+    <link rel="stylesheet" href="./styles/desk-workspace.css?v=71">
     <link rel="stylesheet" href="./styles/monitor-data.css?v=23">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
-    <link rel="stylesheet" href="./styles/deal-view.css?v=43">
+    <link rel="stylesheet" href="./styles/deal-view.css?v=44">
     <link rel="stylesheet" href="./styles/command-palette.css?v=21">
-    <link rel="stylesheet" href="./styles/demo.css?v=31">
+    <link rel="stylesheet" href="./styles/demo.css?v=33">
     <link rel="stylesheet" href="./styles/desk-shell.css?v=11">
     <link rel="stylesheet" href="./styles/market-strip.css?v=13">
   </head>
@@ -211,7 +211,7 @@
                     <span data-mobile-summary-range>7D</span>
                   </header>
 
-                  <div class="gpu-benchmark__composer" data-card-composer>
+                  <div class="gpu-benchmark__composer" role="group" aria-label="Configure view" data-card-composer>
                     <button
                       class="gpu-benchmark__craft-home"
                       type="button"
@@ -228,39 +228,6 @@
                       <span data-card-data-label>Data</span>
                       <strong data-card-compare-count hidden></strong>
                     </button>
-                    <div class="gpu-benchmark__depth-craft" data-depth-craft hidden>
-                      <p class="gpu-benchmark__depth-contract" data-depth-contract>
-                        <span data-depth-contract-gpu>H100</span>
-                        <span data-depth-contract-region>US</span>
-                        <span data-depth-contract-node>8 GPU</span>
-                        <span data-depth-contract-network>IB</span>
-                        <span data-depth-contract-term>30D</span>
-                      </p>
-                      <div class="gpu-benchmark__depth-choice" data-depth-target-choice>
-                        <button
-                          type="button"
-                          aria-haspopup="true"
-                          aria-expanded="false"
-                          aria-controls="gpu-depth-target-menu"
-                          data-depth-target-trigger
-                        ><span data-depth-target-label>128 nodes</span></button>
-                        <div class="gpu-benchmark__depth-menu" id="gpu-depth-target-menu" data-depth-target-menu hidden inert>
-                          <div role="radiogroup" aria-label="Target capacity" data-depth-target-options></div>
-                        </div>
-                      </div>
-                      <div class="gpu-benchmark__depth-choice" data-depth-view-choice>
-                        <button
-                          type="button"
-                          aria-haspopup="true"
-                          aria-expanded="false"
-                          aria-controls="gpu-depth-view-menu"
-                          data-depth-view-trigger
-                        ><span data-depth-view-label>Now</span></button>
-                        <div class="gpu-benchmark__depth-menu" id="gpu-depth-view-menu" data-depth-view-menu hidden inert>
-                          <div role="group" aria-label="Market depth view" data-depth-craft-views></div>
-                        </div>
-                      </div>
-                    </div>
                     <button
                       class="gpu-benchmark__save"
                       type="button"
@@ -272,9 +239,33 @@
                       class="gpu-benchmark__compare-panel gpu-benchmark__data-panel"
                       id="gpu-index-compare-options"
                       data-card-compare-panel
+                      popover="manual"
+                      role="region"
+                      aria-label="Data settings"
+                      tabindex="-1"
                       hidden
                       inert
                     >
+                      <div class="gpu-benchmark__depth-craft" data-depth-craft hidden inert>
+                        <div class="gpu-benchmark__data-row">
+                          <span class="gpu-benchmark__compare-label">Contract</span>
+                          <p class="gpu-benchmark__depth-contract" data-depth-contract>
+                            <span data-depth-contract-gpu>H100</span>
+                            <span data-depth-contract-region>US</span>
+                            <span data-depth-contract-node>8 GPU</span>
+                            <span data-depth-contract-network>IB</span>
+                            <span data-depth-contract-term>30D</span>
+                          </p>
+                        </div>
+                        <div class="gpu-benchmark__data-row">
+                          <span class="gpu-benchmark__compare-label">Nodes</span>
+                          <div class="gpu-benchmark__options" role="radiogroup" aria-label="Target capacity" data-depth-target-options></div>
+                        </div>
+                        <div class="gpu-benchmark__data-row">
+                          <span class="gpu-benchmark__compare-label">Chart</span>
+                          <div class="gpu-benchmark__scales" role="group" aria-label="Market depth view" data-depth-craft-views></div>
+                        </div>
+                      </div>
                       <fieldset class="deal-craft" aria-label="Private capacity terms" data-deal-craft hidden inert>
                         <div class="deal-craft__field deal-craft__field--model">
                           <span>Model</span>
@@ -669,6 +660,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=270"></script>
+    <script type="module" src="./desk.js?v=281"></script>
   </body>
 </html>

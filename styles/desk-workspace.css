@@ -502,6 +502,22 @@
   display: none;
 }
 
+/* Keep the workspace opaque; only the named card and rail surfaces transition. */
+::view-transition-group(root),
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  display: none;
+}
+
+::view-transition-new(root) {
+  opacity: 1;
+}
+
 ::view-transition-group(desk-active-card),
 ::view-transition-group(desk-card-rail) {
   animation-duration: 280ms;
@@ -533,11 +549,6 @@
 
 .gpu-index[data-card-renderer="categorical-bar"] .gpu-benchmark__footer {
   display: none;
-}
-
-.gpu-index[data-card-renderer="categorical-bar"] .gpu-benchmark__compare-panel {
-  position: relative;
-  top: auto;
 }
 
 .gpu-index[data-card-renderer="categorical-bar"] .gpu-benchmark__chart {
@@ -620,11 +631,6 @@
     opacity 240ms var(--desk-ease-out),
     stroke-width 240ms var(--desk-ease-out),
     stroke-opacity 240ms var(--desk-ease-out);
-}
-
-.gpu-index[data-card-renderer="cumulative-depth"] .gpu-benchmark__compare-panel {
-  position: relative;
-  top: auto;
 }
 
 @media (hover: hover) and (pointer: fine) {

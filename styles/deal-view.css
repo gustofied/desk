@@ -319,8 +319,8 @@
 }
 
 .gpu-index[data-card-renderer="deal"] .deal-craft__models button[aria-checked="true"] {
-  background: color-mix(in srgb, var(--desk-accent) 13%, transparent);
-  box-shadow: inset 0 -2px 0 var(--desk-accent-deep);
+  background: var(--desk-chrome-selected);
+  box-shadow: none;
   opacity: 1;
 }
 
@@ -368,11 +368,6 @@
   height: auto;
   overflow: hidden;
   aspect-ratio: 2 / 1;
-}
-
-.gpu-index[data-card-renderer="deal"][data-workspace-surface="craft"] .gpu-benchmark__compare-panel {
-  position: relative;
-  inset: auto;
 }
 
 .gpu-index[data-card-renderer="deal"] .desk-card-focus-action:active {
