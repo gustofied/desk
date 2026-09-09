@@ -13,9 +13,13 @@ export function createMonitorDataModel({
   forwardModel = null,
   hedgeModel = null,
   leaseModel = null,
+  dealModel = null,
   runtimePayload = null,
   runtimePayloads = new Map(),
 }) {
+  if (card?.dataAdapter === "deal" && dealModel) {
+    return createDealDataModel(card, cardState, dealModel);
+  }
   if (card?.id === "gpu-lease" && leaseModel) {
     const m = leaseModel;
     const money = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
@@ -97,6 +101,37 @@ export function createMonitorDataModel({
     return createPowerBasisDataModel(card, cardState, powerModel);
   }
   return null;
+}
+
+function createDealDataModel(card, state, model) {
+  const quote = card.viewKind === "quote";
+  const status = quote ? model.priceStatusLabel : model.contractStatusLabel || model.statusLabel;
+  const detailFields = [
+    ["Capacity", `${model.quantityFormatted} ${model.asset} GPUs`],
+    ["Rate", model.rateLabel],
+    ["Location", [model.region, model.fabric].filter(Boolean).join(" · ")],
+    ["Service", model.service],
+    ["Term", model.termLabel],
+    ["Ready for service", model.rfsLabel],
+    ["Prepayment", `${model.quote.prepayPercent.toLocaleString("en-US")}%`],
+    ...(!quote ? [["Deal ID", model.id], ["Contract", model.contractStatusLabel]] : []),
+  ].filter(([, value]) => value);
+
+  return finalizeModel(card, {
+    id: `${card.id}-details`,
+    railLabel: "Details",
+    label: model.label,
+    summary: [model.asset, status].filter(Boolean).join(" · "),
+    detailDescription: cardDetailDescription(card, state),
+    detailFields,
+    breadcrumbs: [],
+    rowCount: 0,
+    asOf: null,
+    accessKind: "source",
+    status: "ready",
+    unit: `${model.quote.currency} per ${model.quote.unit}`,
+    priceBasis: "reserved-capacity",
+  });
 }
 
 function createSandboxDataModel(card, state = {}, model) {
@@ -370,7 +405,11 @@ function createPowerBasisDataModel(card, state, model) {
 function finalizeModel(card, values) {
   const key = JSON.stringify([
     card.id,
+    values.id,
+    values.railLabel,
+    values.label,
     values.summary,
+    values.breadcrumbs,
     values.rowCount,
     values.asOf instanceof Date ? values.asOf.getTime() : values.asOf,
     values.endpoint,
@@ -382,7 +421,11 @@ function finalizeModel(card, values) {
     values.detailDescription,
     values.sourceUrl,
     values.source,
+    values.status,
+    values.priceBasis,
+    values.unit,
     values.calculationFields,
+    values.detailFields,
   ]);
   return Object.freeze({
     key,
@@ -392,6 +435,9 @@ function finalizeModel(card, values) {
     summary: values.summary,
     detailDescription: values.detailDescription,
     calculationFields: values.calculationFields,
+    detailFields: values.detailFields
+      ? Object.freeze(values.detailFields.map((field) => Object.freeze([...field])))
+      : undefined,
     breadcrumbs: Object.freeze([...values.breadcrumbs]),
     rowCount: values.rowCount,
     asOf: values.asOf,

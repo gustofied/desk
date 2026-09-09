@@ -125,31 +125,8 @@
   box-shadow: none;
 }
 
-.deal-journey-rail .desk-data-rail__toggle {
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  color: var(--index-ink-soft);
-}
-
-.deal-journey-rail .desk-data-rail__toggle > strong {
-  color: var(--index-ink);
-  font-family: "Geist", ui-sans-serif, system-ui, sans-serif;
-  font-size: 13px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
-  text-transform: none;
-}
-
-.deal-journey-rail .desk-data-rail__toggle > small {
-  font-weight: 650;
-  opacity: 0.58;
-}
-
-.deal-journey-rail__body {
-  overflow: hidden;
-  animation: desk-data-rail-enter 180ms cubic-bezier(0.32, 0.72, 0, 1);
-}
-
 .deal-journey-rail__activity-list {
+  position: relative;
   display: flex;
   gap: 4px;
   min-width: 0;
@@ -397,16 +374,6 @@
     line-height: 48px;
   }
 
-  .deal-journey-rail .desk-data-rail__toggle {
-    grid-template-columns: auto minmax(0, 1fr) auto auto;
-    min-height: 48px;
-    padding-inline: 12px;
-  }
-
-  .deal-journey-rail .desk-data-rail__toggle > small {
-    display: block;
-  }
-
   .deal-view-host--focus .deal-view--static .deal-view__ticket,
   .deal-view-host--workspace .deal-view__ticket {
     gap: 8px;
@@ -469,15 +436,8 @@
   }
 }
 
-@media (prefers-contrast: more) {
-  .deal-journey-rail__body {
-    border-color: var(--desk-accent-deep);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .gpu-index[data-card-renderer="deal"] .desk-card-focus-action,
-  .deal-journey-rail__body,
   .deal-journey-rail__activity-select {
     animation: none;
     transition: none;

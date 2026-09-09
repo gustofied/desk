@@ -592,7 +592,7 @@ export const CARD_REGISTRY = Object.freeze([
     stateKind: "deal",
     viewKind: "deal",
     publishable: false,
-    title: "Deal 041",
+    title: "Juniper reserve",
     craftLabel: "Deal",
     description: "Reserved B200 capacity at an agreed rate.",
     sourceFile: "api/dashboard-snapshots/deal-041.json",
@@ -625,7 +625,7 @@ export const CARD_REGISTRY = Object.freeze([
     catalogPresets: Object.freeze([
       Object.freeze({
         id: "deal-041",
-        label: "Deal 041",
+        label: "Juniper reserve",
       }),
     ]),
     visualizations: Object.freeze([
@@ -715,6 +715,13 @@ export const CARD_REGISTRY = Object.freeze([
         label: "CoreWeave + compute",
         state: Object.freeze({
           symbol: "CRWV", layers: Object.freeze(["CRWV", "H100", "H200"]), scale: "index", range: "90d",
+        }),
+      }),
+      Object.freeze({
+        id: "nvidia-compute-bars",
+        label: "NVIDIA + compute",
+        state: Object.freeze({
+          symbol: "NVDA", layers: Object.freeze(["NVDA", "H100", "H200"]), scale: "index", range: "90d", style: "bars",
         }),
       }),
       Object.freeze({

@@ -1,5 +1,3 @@
-import { cardDetailDescription } from "./card-descriptions.js";
-
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   day: "2-digit",
   month: "short",
@@ -20,11 +18,6 @@ export function createDealJourneyRail({ root, reducedMotion = false } = {}) {
   if (!root) return createEmptyRail();
 
   const nodes = {
-    toggle: root.querySelector("[data-deal-journey-toggle]"),
-    body: root.querySelector("[data-deal-journey-body]"),
-    summary: root.querySelector("[data-deal-journey-summary]"),
-    description: root.querySelector("[data-deal-journey-description]"),
-    count: root.querySelector("[data-deal-journey-count]"),
     activity: root.querySelector("[data-deal-journey-events-list]"),
     status: root.querySelector("[data-deal-journey-status]"),
   };
@@ -45,23 +38,6 @@ export function createDealJourneyRail({ root, reducedMotion = false } = {}) {
   let playbackSteps = [];
 
   if (reducedMotion) root.dataset.reducedMotion = "true";
-
-  nodes.toggle?.addEventListener("click", () => {
-    open = !open;
-    if (open) touchPaused = false;
-    syncOpenState();
-    if (open && !canPlay()) revealCurrentEvent();
-    announce(open ? "Activity opened" : "Activity closed");
-  }, listenerOptions);
-
-  root.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape" || !open) return;
-    event.preventDefault();
-    open = false;
-    syncOpenState();
-    nodes.toggle?.focus({ preventScroll: true });
-    announce("Activity closed");
-  }, listenerOptions);
 
   nodes.activity?.addEventListener("pointerenter", (event) => {
     if (event.pointerType === "touch") return;
@@ -122,7 +98,7 @@ export function createDealJourneyRail({ root, reducedMotion = false } = {}) {
 
   setVisible(false);
 
-  return Object.freeze({ setModel, setVisible, destroy });
+  return Object.freeze({ setModel, setVisible, setOpen, destroy });
 
   function setModel(nextModel) {
     stopPlayback({ reset: true });
@@ -134,15 +110,20 @@ export function createDealJourneyRail({ root, reducedMotion = false } = {}) {
       return;
     }
     root.dataset.dealId = String(model.id);
-    if (nodes.description) {
-      nodes.description.textContent = cardDetailDescription({
-        id: model.viewKind === "quote" ? "quote-view" : "deal-view",
-      });
-    }
-
     renderActivity();
     syncSummary();
     syncOpenState();
+  }
+
+  // The shared details disclosure owns opening, focus and motion. Activity only
+  // runs while that disclosure is actually visible, including across view changes.
+  function setOpen(value) {
+    const next = Boolean(value && model && !root.hidden);
+    if (open === next) return;
+    open = next;
+    if (open) touchPaused = false;
+    syncOpenState();
+    if (open && !canPlay()) revealCurrentEvent();
   }
 
   function setVisible(visible) {
@@ -205,27 +186,13 @@ export function createDealJourneyRail({ root, reducedMotion = false } = {}) {
     const summary = compactTermSummary(model);
     const count = eventsForModel().length;
     const eventCount = formatEvents(count);
-    if (nodes.summary) nodes.summary.textContent = "";
-    if (nodes.count) nodes.count.textContent = NUMBER_FORMATTER.format(count);
     root.setAttribute(
       "aria-label",
       `Deal activity. ${eventCount}. Current status: ${summary}.`,
     );
-    nodes.toggle?.setAttribute(
-      "aria-label",
-      `${open ? "Close" : "Open"} deal activity. ${eventCount}. Current status: ${summary}.`,
-    );
   }
 
   function syncOpenState() {
-    nodes.toggle?.setAttribute("aria-expanded", String(open));
-    if (nodes.body) {
-      if (!open && nodes.body.contains(root.ownerDocument.activeElement)) {
-        nodes.toggle?.focus({ preventScroll: true });
-      }
-      nodes.body.hidden = !open;
-      nodes.body.toggleAttribute("inert", !open);
-    }
     root.dataset.open = String(open);
     if (!open) clearActivitySelection();
     if (model) syncSummary();
@@ -487,9 +454,6 @@ export function createDealJourneyRail({ root, reducedMotion = false } = {}) {
     playbackSteps = [];
     nodes.activity?.replaceChildren();
     delete root.dataset.dealId;
-    if (nodes.summary) nodes.summary.textContent = "";
-    if (nodes.count) nodes.count.textContent = "";
-    if (nodes.description) nodes.description.textContent = "";
   }
 
   function eventsForModel() {
@@ -573,6 +537,7 @@ function createEmptyRail() {
   return Object.freeze({
     setModel() {},
     setVisible() {},
+    setOpen() {},
     destroy() {},
   });
 }

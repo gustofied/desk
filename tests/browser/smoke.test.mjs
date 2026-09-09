@@ -46,6 +46,53 @@ test('gallery defaults and every chart family render', async t => {
   }
 });
 
+test('Deal and Quote use one stable details row with private content', async t => {
+  const page = await pageFor(t);
+  for (const width of [1440, 390, 320]) {
+    await page.setViewportSize({ width, height: 850 });
+    for (const card of ['deal-view', 'quote-view']) {
+      await open(page, `/?card=${card}&view=monitor`);
+      const toggle = page.locator('[data-monitor-data-toggle]');
+      assert.equal(await toggle.isVisible(), true, `${card} has a details row`);
+      assert.equal(await page.locator('.desk-data-rail:visible').count(), 1);
+      const geometry = () => page.locator('.gpu-index-detail').evaluate(node => {
+        const r = node.getBoundingClientRect();
+        return { x: r.x, y: r.y + scrollY, width: r.width, height: r.height };
+      });
+      const before = await geometry();
+      await toggle.press('Enter');
+      await page.locator('[data-monitor-data-body]').waitFor({ state: 'visible' });
+      assert.deepEqual(await geometry(), before, `${card} stays in place at ${width}px`);
+      assert.ok(await page.locator('[data-monitor-detail-fields] dd').count());
+      assert.equal(await page.locator('[data-monitor-data-api]:visible, [data-monitor-data-source-link]:visible').count(), 0);
+      const events = page.locator('[data-deal-event-timestamp]');
+      if (card === 'deal-view') {
+        assert.ok(await events.count());
+        await page.getByRole('slider', { name: 'Quote revision', exact: true }).press('Home');
+        assert.equal(await page.locator('[data-deal-journey] [data-selected]').evaluate(node => {
+          const item = node.getBoundingClientRect();
+          const list = node.closest('[data-deal-journey-events-list]').getBoundingClientRect();
+          return item.top >= list.top && item.bottom <= list.bottom && item.left >= list.left && item.right <= list.right;
+        }), true, 'chart inspection reveals the matching event inside its scroll list');
+        const event = page.locator('[data-deal-event-id="ask-405"]');
+        await event.click();
+        assert.equal(await event.getAttribute('data-selected'), 'true');
+        assert.match(await page.locator('[data-deal-workspace]').innerText(), /\$4\.05/);
+        await event.press('Escape');
+      } else {
+        assert.equal(await events.count(), 0, 'Quote never gets the Deal activity log');
+        assert.doesNotMatch(await page.locator('[data-monitor-data-body]').innerText(), /Terms review|Review service terms|Activity/);
+        await toggle.press('Escape');
+      }
+      assert.equal(await toggle.getAttribute('aria-expanded'), 'false');
+      assert.equal(await toggle.evaluate(node => node === document.activeElement), true);
+      assert.equal(await page.locator('[data-deal-journey]').getAttribute('data-playing'), null);
+      assert.deepEqual(await geometry(), before, `${card} stays in place after closing at ${width}px`);
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+    }
+  }
+});
+
 test('mobile touch navigation, Data and inspection stay usable', async t => {
   for (const [width, height] of [[320, 568], [390, 740], [430, 820], [740, 390]]) {
     await t.test(`${width}×${height}`, async t => {
@@ -1121,7 +1168,8 @@ test('a shared desk preserves personal views and stable mode navigation', async 
       await page.setViewportSize({ width, height: 1000 });
       await open(page, `/?view=gallery#desk=${encodeSharedDesk(desk)}`);
       await page.evaluate(() => document.fonts.ready);
-      assert.equal(await page.locator('[data-shared-desk-name]').innerText(), `${name} Shared`);
+      assert.equal(await page.locator('[data-shared-desk-banner]').count(), 0);
+      assert.equal(await page.locator('[data-shared-desk-error]').isVisible(), false);
       assert.equal(await page.locator('[data-catalog-switcher-name]').textContent(), name);
       assert.equal(await page.locator('[data-card-gallery-grid] .desk-gallery-card:visible').count(), 2);
       if (!referenceByWidth.has(width)) referenceByWidth.set(width, await navigationLayout());
@@ -1158,6 +1206,28 @@ test('a shared desk preserves personal views and stable mode navigation', async 
     }
   }
   assert.deepEqual(await page.evaluate(() => [localStorage.getItem('desk.catalog.v2'), localStorage.getItem('desk.catalog-collections.v1')]), before);
+  const runCommand = async title => {
+    await page.locator('[data-command-open]').click();
+    if (await page.locator('[data-desk-login]').isVisible()) await page.locator('[data-desk-login]').click();
+    await page.locator('[data-command-input]').fill(title);
+    await page.getByRole('option', { name: new RegExp(`^${title}`) }).click();
+  };
+  await runCommand('My desk');
+  assert.equal(new URL(page.url()).hash.startsWith('#desk='), false);
+  assert.deepEqual(await page.evaluate(() => [localStorage.getItem('desk.catalog.v2'), localStorage.getItem('desk.catalog-collections.v1')]), before);
+  await open(page, '/?view=gallery#desk=invalid');
+  assert.equal(await page.locator('[data-shared-desk-error]').isVisible(), true);
+  await runCommand('My desk');
+  assert.equal(await page.locator('[data-shared-desk-error]').isVisible(), false);
+  const shared = createSharedDesk({ name: 'Shared copy', entries: [
+    { cardId: 'gpu-index', name: 'H200', state: { gpu: 'H200', range: '7d' } },
+  ] });
+  await open(page, `/?view=gallery#desk=${encodeSharedDesk(shared)}`);
+  await runCommand('Save a copy');
+  assert.equal(new URL(page.url()).hash.startsWith('#desk='), false);
+  assert.equal(await page.locator('[data-catalog-switcher-name]').textContent(), 'Shared copy');
+  assert.equal(await page.locator('[data-card-gallery-grid] .desk-gallery-card:visible').count(), 1);
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('desk.catalog-collections.v1')).collections.some(collection => collection.name === 'Shared copy')), true);
 });
 
 test('mixed comparison styles keep data, inspection and saved rendering intact', async t => {

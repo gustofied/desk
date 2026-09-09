@@ -95,11 +95,11 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=123">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=124">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=71">
     <link rel="stylesheet" href="./styles/monitor-data.css?v=23">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
-    <link rel="stylesheet" href="./styles/deal-view.css?v=44">
+    <link rel="stylesheet" href="./styles/deal-view.css?v=45">
     <link rel="stylesheet" href="./styles/command-palette.css?v=21">
     <link rel="stylesheet" href="./styles/demo.css?v=33">
     <link rel="stylesheet" href="./styles/desk-shell.css?v=11">
@@ -178,12 +178,7 @@
         data-gpu-benchmark-card
         data-card-id="gpu-index"
       >
-        <div class="desk-shared-context" data-shared-desk-banner hidden>
-          <span data-shared-desk-name></span>
-          <button type="button" data-shared-desk-save>Save a copy</button>
-          <button type="button" data-shared-desk-leave>My desk</button>
-          <p role="status" data-shared-desk-error></p>
-        </div>
+        <p class="desk-shared-error" role="status" data-shared-desk-error hidden></p>
         <header class="desk-card-rail">
           <div class="desk-card-tabs" role="tablist" aria-label="Views in this catalog" aria-description="A for the previous view. D for the next view." aria-keyshortcuts="A D" data-view-tabs></div>
           <button class="desk-card-gallery-tab" type="button" aria-controls="desk-card-gallery" aria-label="Show all catalog views" aria-keyshortcuts="Escape" title="Gallery (Esc)" data-index-gallery-toggle>All</button>
@@ -392,6 +387,15 @@
                   <p data-monitor-data-source-description></p>
                   <a data-monitor-data-source-link target="_blank" rel="noopener">Source docs</a>
                 </div>
+                <section class="deal-journey-rail" aria-label="Deal activity" data-deal-journey hidden inert>
+                  <h3 class="desk-data-rail__description">Activity</h3>
+                  <ol
+                    class="deal-journey-rail__activity-list"
+                    aria-label="Deal activity"
+                    data-deal-journey-events-list
+                  ></ol>
+                  <p class="desk-data-rail__sr-only" aria-live="polite" data-deal-journey-status></p>
+                </section>
                 <nav class="desk-data-rail__path" aria-label="Dataset path" tabindex="0" data-monitor-data-api>
                   <ol data-monitor-data-path></ol>
                 </nav>
@@ -425,44 +429,6 @@
               <p class="desk-data-rail__sr-only" aria-live="polite" data-monitor-data-status></p>
             </section>
 
-            <section
-              class="desk-data-rail deal-journey-rail"
-              aria-label="Deal activity"
-              data-deal-journey
-              hidden
-              inert
-            >
-              <button
-                class="desk-data-rail__toggle"
-                id="deal-journey-toggle"
-                type="button"
-                aria-expanded="false"
-                aria-controls="deal-journey-body"
-                data-deal-journey-toggle
-              >
-                <strong>Activity</strong>
-                <span data-deal-journey-summary></span>
-                <small data-deal-journey-count></small>
-              </button>
-              <div
-                class="desk-data-rail__body deal-journey-rail__body"
-                id="deal-journey-body"
-                role="region"
-                aria-labelledby="deal-journey-toggle"
-                aria-describedby="deal-journey-description"
-                data-deal-journey-body
-                hidden
-                inert
-              >
-                <p class="desk-data-rail__description" id="deal-journey-description" data-deal-journey-description></p>
-                <ol
-                  class="deal-journey-rail__activity-list"
-                  aria-label="Deal activity"
-                  data-deal-journey-events-list
-                ></ol>
-              </div>
-              <p class="desk-data-rail__sr-only" aria-live="polite" data-deal-journey-status></p>
-            </section>
           </div>
 
           <div
@@ -662,6 +628,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=285"></script>
+    <script type="module" src="./desk.js?v=289"></script>
   </body>
 </html>

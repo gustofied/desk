@@ -10,6 +10,8 @@ import { createMarketWatchlist } from '../src/market-watchlist.js';
 import { createSharedDesk, encodeSharedDesk, decodeSharedDesk } from '../src/shared-desk.js';
 import { normalizePricePoints, alignIndexedPriceSeries } from '../src/price-series.js';
 import { createForwardPricesModel } from '../src/forward-prices-model.js';
+import { createDealViewModel, DEAL_041_PAYLOAD, JUNIPER_RESERVE_PAYLOAD } from '../src/deal-view-model.js';
+import { createMonitorDataModel } from '../src/monitor-data-model.js';
 import { forwardContours, nearestContour } from '../src/forward-contours.js';
 import { renderCatalogShareArtifact } from '../scripts/catalog-share-artifacts.mjs';
 import { renderForwardPricesSvg } from '../src/forward-prices-presentation.js';
@@ -80,6 +82,73 @@ test('sharing excludes private deal views by default and rejects broken links', 
   const desk = createSharedDesk({ name: 'Public', entries: ['gpu-index', 'quote-view', 'deal-view'].map(cardId => ({ cardId, name: cardId, state: {} })) });
   assert.deepEqual(desk.entries.map(entry => entry.cardId), ['gpu-index']);
   assert.throws(() => decodeSharedDesk('not-a-desk'));
+});
+
+test('deal names preserve authored titles while transaction ids remain stable', () => {
+  const source = JSON.parse(readFileSync(new URL('../api/dashboard-snapshots/deal-041.json', import.meta.url)));
+  const deal = createDealViewModel(JUNIPER_RESERVE_PAYLOAD);
+  assert.equal(source.id, 'JNP-256');
+  assert.equal(source.label, 'Juniper reserve');
+  assert.equal(deal.id, source.id);
+  assert.equal(deal.label, source.label);
+  assert.equal(DEAL_041_PAYLOAD, JUNIPER_RESERVE_PAYLOAD, 'legacy imports remain supported');
+  for (const kind of ['deal', 'quote']) {
+    const authored = createDealViewModel(JUNIPER_RESERVE_PAYLOAD, { kind, viewName: '  Training reserve  ' });
+    assert.equal(authored.label, 'Training reserve');
+    assert.equal(authored.id, 'JNP-256');
+  }
+  assert.equal(createDealViewModel(JUNIPER_RESERVE_PAYLOAD, { kind: 'quote' }).label, 'Quote B200');
+  assert.equal(createDealViewModel(JUNIPER_RESERVE_PAYLOAD, { viewName: '  ' }).label, 'Juniper reserve');
+  const legacy = createDealViewModel({ ...JUNIPER_RESERVE_PAYLOAD, id: '041', label: undefined });
+  assert.equal(legacy.id, '041');
+  assert.equal(legacy.label, 'Deal 041');
+});
+
+test('private card details update current terms without exposing activity or data access', () => {
+  const payload = JSON.parse(readFileSync(new URL('../data/deal-041.json', import.meta.url)));
+  for (const cardId of ['quote-view', 'deal-view']) {
+    const card = CARD_REGISTRY.find(candidate => candidate.id === cardId);
+    const cardState = normalizeCardState(cardId);
+    const dealModel = createDealViewModel(payload, { kind: card.viewKind });
+    const details = model => createMonitorDataModel({ card, cardState, dealModel: model });
+    const original = details(dealModel);
+    const fields = Object.fromEntries(original.detailFields);
+    assert.equal(original.railLabel, 'Details');
+    assert.equal(original.label, dealModel.label);
+    assert.equal(original.accessKind, 'source');
+    assert.ok(original.detailDescription);
+    assert.equal(fields.Capacity, '256 B200 GPUs');
+    assert.equal(fields.Rate, '$3.65 / GPU hour');
+    assert.equal(fields.Location, 'US East · InfiniBand');
+    assert.equal(fields['Ready for service'], 'OCT 2026');
+    assert.equal(fields.Prepayment, '20%');
+    assert.equal(fields.Contract, cardId === 'deal-view' ? dealModel.contractStatusLabel : undefined);
+    assert.equal(fields['Deal ID'], cardId === 'deal-view' ? dealModel.id : undefined);
+    for (const key of ['sourceUrl', 'endpoint', 'command', 'sql', 'eventLog', 'quoteHistory', 'workflowStatus', 'nextAction']) {
+      assert.equal(original[key], undefined, `${cardId} excludes ${key}`);
+    }
+    assert.equal(original.source, null);
+    const renamed = details({ ...dealModel, label: 'Reserved training capacity' });
+    assert.equal(renamed.label, 'Reserved training capacity');
+    assert.notEqual(renamed.key, original.key, 'renaming refreshes the disclosure');
+    const revised = details(createDealViewModel(payload, {
+      kind: card.viewKind,
+      overrides: { gpu: 'H200', quantity: 512, quote: 2.85, rfs: '2027-02' },
+    }));
+    const revisedFields = Object.fromEntries(revised.detailFields);
+    assert.equal(revisedFields.Capacity, '512 H200 GPUs');
+    assert.equal(revisedFields.Rate, '$2.85 / GPU hour');
+    assert.equal(revisedFields['Ready for service'], 'FEB 2027');
+    assert.notEqual(revised.key, original.key, 'edited terms refresh the disclosure');
+    assert.notEqual(details({ ...dealModel, region: 'US West' }).key, original.key, 'detail fields alone refresh the disclosure');
+    if (cardId === 'quote-view') {
+      assert.match(original.summary, /Rate agreed/);
+      const privateWorkflow = details({ ...dealModel, statusLabel: 'Hidden workflow status', contractStatusLabel: 'Hidden contract status',
+        eventLog: [{ label: 'Hidden activity' }], nextAction: 'Hidden next action' });
+      assert.equal(privateWorkflow.key, original.key, 'Quote ignores Deal workflow and event changes');
+      assert.doesNotMatch(JSON.stringify(privateWorkflow), /Hidden|Terms review|Review service terms/);
+    }
+  }
 });
 
 test('comparison lines start on the same date and baseline', () => {

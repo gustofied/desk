@@ -7,8 +7,8 @@ import { EQUITY_LAYERS, paletteIds, THEMES } from "./card-registry.js";
 import { createSharedDesk } from "./shared-desk.js";
 
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 17;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+const STORAGE_VERSION = 18;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
@@ -21,6 +21,20 @@ const COMPUTE_CATALOG_ID = "compute";
 const DEALS_CATALOG_ID = "deals";
 const TEAM_CATALOG_ID = "team";
 const LEGACY_QUOTE_KEY = "preset-quote-view-quote-041";
+const PREVIOUS_OVERVIEW_STARTER = Object.freeze({
+  id: OVERVIEW_CATALOG_ID,
+  name: "Overview",
+  keys: Object.freeze([
+    "preset-gpu-price-snapshot-prices",
+    "preset-gpu-index-h200",
+    "preset-gpu-market-depth-h100-us",
+    "preset-power-basis-pjm-dominion",
+    "preset-equities-coreweave-compute",
+    "preset-sandbox-cost-cost",
+    "preset-forward-prices-h100-curve",
+    "preset-forward-prices-h100",
+  ]),
+});
 const STARTER_CATALOGS = Object.freeze([
   Object.freeze({
     id: OVERVIEW_CATALOG_ID,
@@ -30,10 +44,14 @@ const STARTER_CATALOGS = Object.freeze([
       "preset-gpu-index-h200",
       "preset-gpu-market-depth-h100-us",
       "preset-power-basis-pjm-dominion",
-      "preset-equities-coreweave-compute",
-      "preset-sandbox-cost-cost",
+      "preset-equities-nvidia-compute-bars",
       "preset-forward-prices-h100-curve",
       "preset-forward-prices-h100",
+      "preset-gpu-hedge-buyer",
+      "preset-gpu-hedge-seller",
+      "preset-gpu-lease-residual",
+      "preset-deal-view-deal-041",
+      "preset-sandbox-cost-cost",
     ]),
   }),
   Object.freeze({
@@ -501,7 +519,7 @@ function persistLoadedState(state) {
 
 function normalizeState(value) {
   if (LEGACY_STORAGE_VERSIONS.has(value?.version)) {
-    return normalizeState(migrateLegacyState(value));
+    return normalizeState(upgradeOverviewStarter(migrateLegacyState(value)));
   }
   if (
     !value ||
@@ -723,6 +741,7 @@ function migrateLegacyState(value) {
     version: STORAGE_VERSION,
   });
   const now = new Date().toISOString();
+  if (sourceVersion >= 17) return legacyState;
   // Add Revenue hedge only to an untouched prior Hedge; never restore Lease.
   if (sourceVersion >= 16) return upgradeHedgeStarter(legacyState, now, sourceVersion);
   // Introduce Lease once, without restoring removed older starters or views.
@@ -803,6 +822,16 @@ function upgradeHedgeStarter(state, now, sourceVersion) {
   };
 }
 
+function upgradeOverviewStarter(state) {
+  const next = STARTER_CATALOGS.find(starter => starter.id === OVERVIEW_CATALOG_ID);
+  return {
+    ...state,
+    collections: state.collections.map(collection => matchesStarter(collection, PREVIOUS_OVERVIEW_STARTER)
+      ? { ...collection, keys: [...next.keys], updatedAt: new Date().toISOString() }
+      : collection),
+  };
+}
+
 function matchesStarter(collection, starter) {
   return collection.id === starter.id && collection.name === starter.name &&
     !Object.hasOwn(collection, "views") &&
@@ -823,7 +852,7 @@ function composeStarterUpgrade(state, now) {
     const previous = legacyById.get(collection.id);
     const next = starterById.get(collection.id);
     if (next?.id === OVERVIEW_CATALOG_ID) {
-      const oldKeys = next.keys.map(key => key === "preset-equities-coreweave-compute" ? "preset-equities-nvda" : key);
+      const oldKeys = PREVIOUS_OVERVIEW_STARTER.keys.map(key => key === "preset-equities-coreweave-compute" ? "preset-equities-nvda" : key);
       const variants = [oldKeys, oldKeys.filter(key => !key.startsWith("preset-forward-prices-"))];
       if (variants.some(keys => matchesStarter(collection, { ...next, keys }))) {
         return { ...collection, keys: [...next.keys], updatedAt: now };

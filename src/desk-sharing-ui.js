@@ -3,7 +3,7 @@ import { createSharedDesk, sharedDeskUrl } from "./shared-desk.js";
 
 // A share is a configuration snapshot. Opening or copying its link never saves
 // views in the recipient's browser; that is a separate, explicit action.
-export function createDeskSharing({ dialog, banner, getDesk, saveCopy, leave, copyText, returnFocus }) {
+export function createDeskSharing({ dialog, errorNotice, getDesk, copyText, returnFocus }) {
   const form = dialog.querySelector("form");
   const name = dialog.querySelector("[data-desk-share-name]");
   const includePrivate = dialog.querySelector("[data-desk-share-private]");
@@ -14,11 +14,7 @@ export function createDeskSharing({ dialog, banner, getDesk, saveCopy, leave, co
   const link = dialog.querySelector("[data-desk-share-link]");
   const linkField = dialog.querySelector("[data-desk-share-link-field]");
   const submit = dialog.querySelector("[data-desk-share-submit]");
-  const bannerName = banner.querySelector("[data-shared-desk-name]");
-  const bannerError = banner.querySelector("[data-shared-desk-error]");
-  const save = banner.querySelector("[data-shared-desk-save]");
   let draft = null;
-  let saving = false;
   let revision = 0;
 
   function refresh() {
@@ -78,17 +74,6 @@ export function createDeskSharing({ dialog, banner, getDesk, saveCopy, leave, co
   });
   link.addEventListener("click", () => link.select());
 
-  save.addEventListener("click", async () => {
-    if (saving) return;
-    saving = true;
-    save.disabled = true;
-    bannerError.textContent = "";
-    try { await saveCopy(); }
-    catch (cause) { bannerError.textContent = cause.message || "Could not save this desk."; }
-    finally { saving = false; save.disabled = false; }
-  });
-  banner.querySelector("[data-shared-desk-leave]").addEventListener("click", leave);
-
   return {
     open() {
       draft = getDesk();
@@ -100,11 +85,9 @@ export function createDeskSharing({ dialog, banner, getDesk, saveCopy, leave, co
       name.focus();
       name.select();
     },
-    sync({ snapshot = null, error: message = null } = {}) {
-      banner.hidden = !snapshot && !message;
-      bannerName.textContent = snapshot ? `${snapshot.name} Shared` : "Shared desk";
-      bannerError.textContent = message || "";
-      save.hidden = !snapshot;
+    sync({ error: message = null } = {}) {
+      errorNotice.hidden = !message;
+      errorNotice.textContent = message || "";
     },
   };
 }

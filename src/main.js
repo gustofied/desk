@@ -491,7 +491,7 @@ if (root) {
   });
   const deskSharing = createDeskSharing({
     dialog: document.querySelector("[data-desk-share-dialog]"),
-    banner: document.querySelector("[data-shared-desk-banner]"),
+    errorNotice: document.querySelector("[data-shared-desk-error]"),
     getDesk: () => ({
       name: currentCatalogCollection().name,
       entries: catalogEntries().map((entry) => ({
@@ -502,19 +502,18 @@ if (root) {
       palette: currentPalette(),
       theme: currentTheme(),
     }),
-    saveCopy: saveSharedDeskCopy,
-    leave: leaveSharedDesk,
     copyText: copyTextToClipboard,
     returnFocus: nodes.commandOpen,
+  });
+  const dealJourneyRail = createDealJourneyRail({
+    root: root.querySelector("[data-deal-journey]"),
+    reducedMotion,
   });
   const monitorDataRail = createMonitorDataRail({
     root: root.querySelector("[data-monitor-data]"),
     copyText: copyTextToClipboard,
     reducedMotion,
-  });
-  const dealJourneyRail = createDealJourneyRail({
-    root: root.querySelector("[data-deal-journey]"),
-    reducedMotion,
+    onOpenChange: open => dealJourneyRail.setOpen(open),
   });
   let dealPreviewMount = null;
   let dealWorkspaceMount = null;
@@ -1555,7 +1554,7 @@ if (root) {
         }
         refreshCatalogWorkspace("Views updated");
         syncSavedCatalogCommands();
-        if (isQuoteCard && state.layout === "focus") render(false);
+        if (isDealCard && state.layout === "focus") render(false);
         return;
       }
       if (event.key === CATALOG_ORDER_STORAGE_KEY) {
@@ -1663,7 +1662,6 @@ if (root) {
   function syncCatalogCollectionControls() {
     const collection = currentCatalogCollection();
     deskSharing.sync({
-      snapshot: collection.shared ? state.sharedDesk : null,
       error: state.sharedDeskError,
     });
     const allEntries = catalogEntriesAll();
@@ -2119,7 +2117,7 @@ if (root) {
       savedCard?.button.scrollIntoView({ block: "nearest", inline: "nearest" });
       savedCard?.button.focus({ preventScroll: true });
     } else {
-      if (isQuoteCard) render(false);
+      if (isDealCard) render(false);
       updateLocation();
       nodes.saveButton?.focus({ preventScroll: true });
     }
@@ -2214,8 +2212,7 @@ if (root) {
       return `Quote ${state.options.gpu}`;
     }
     if (isTransactionCard) {
-      const id = state.runtimePayload?.id || "041";
-      return `Deal ${id} ${state.options.gpu}`;
+      return state.runtimePayload?.label || cardDefinition.title;
     }
     const labels = orderedLayerLabels({
       gpu: state.selected,
@@ -2667,11 +2664,14 @@ if (root) {
         id: "catalog.deal-041",
         group: "Catalog",
         order: 5,
-        title: "Open Deal 041",
+        title: "Open Juniper reserve",
         subtitle: "Reserved B200 capacity",
         hint: "Deal",
         keywords: [
           "deal",
+          "juniper",
+          "jnp-256",
+          "041",
           "private",
           "capacity",
           "contract",
@@ -2736,10 +2736,21 @@ if (root) {
           try { await saveSharedDeskCopy(); }
           catch (error) {
             const message = error.message || "Could not save this desk.";
-            deskSharing.sync({ snapshot: state.sharedDesk, error: message });
+            state.sharedDeskError = message;
+            deskSharing.sync({ error: message });
             announceWorkspace(message);
           }
         },
+      }] : []),
+      ...(state.sharedDesk || state.sharedDeskError ? [{
+        id: "actions.leave-shared-desk",
+        group: "Actions",
+        order: 2,
+        title: "My desk",
+        subtitle: "Return to your own catalogs",
+        hint: "Back",
+        keywords: ["my", "desk", "back", "return", "leave", "shared"],
+        run: leaveSharedDesk,
       }] : []),
       {
         id: "actions.pin-to-strip",
@@ -4426,7 +4437,7 @@ if (root) {
     if (definition.renderer === "deal") {
       if (
         payload.cardId !== definition.id ||
-        payload.id !== "041" ||
+        !["041", "JNP-256"].includes(payload.id) ||
         !Array.isArray(payload.stages) ||
         payload.stages.length !== 3 ||
         !Array.isArray(payload.eventLog) ||
@@ -6318,7 +6329,7 @@ if (root) {
       if (nodes.shareStatus) {
         nodes.shareStatus.textContent = isQuoteCard
           ? `${workspaceLabel()} agreed ${formatUsd(state.options.quote)}`
-          : `${state.runtimePayload.label || "Deal 041"} terms review`;
+          : `${workspaceLabel()} terms review`;
       }
       if (nodes.shareObserved) {
         nodes.shareObserved.textContent = formatUtcDateTime(observed);
@@ -6475,13 +6486,8 @@ if (root) {
       state.mode === "monitor" &&
       state.panel === "detail" &&
       state.layout === "focus";
-    const dealVisible =
-      state.shareReady &&
-      state.mode === "monitor" &&
-      state.panel === "detail" &&
-      state.layout === "focus";
-    monitorDataRail.setVisible(dataVisible && !isDealCard);
-    dealJourneyRail.setVisible(dealVisible && isTransactionCard);
+    dealJourneyRail.setVisible(dataVisible && isTransactionCard);
+    monitorDataRail.setVisible(dataVisible);
   }
 
   function syncMonitorDataModel(context = {}) {

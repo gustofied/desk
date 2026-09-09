@@ -590,7 +590,7 @@ function buildDealRuntime(source, sourceFile) {
     version: 1,
     cardId: dealCard.id,
     asOf,
-    id: source.id.replace(/^deal-/, ""),
+    id: source.id === "deal-041" ? "041" : source.id,
     type: source.kind === "reserved-capacity"
       ? "Reserved capacity"
       : source.kind,
@@ -693,7 +693,7 @@ function validateDealSource(source, sourceFile) {
   if (
     source?.version !== 1 ||
     source?.contract !== "desk_deal_view" ||
-    source?.id !== "deal-041" ||
+    !["deal-041", "JNP-256"].includes(source?.id) ||
     source?.side !== "buy" ||
     source?.capacity?.accelerator_model !== "B200" ||
     Number(source?.capacity?.gpu_count) !== 256 ||

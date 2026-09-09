@@ -1,4 +1,4 @@
-export function createMonitorDataRail({ root, copyText, reducedMotion = false }) {
+export function createMonitorDataRail({ root, copyText, reducedMotion = false, onOpenChange = () => {} }) {
   if (!root) return createEmptyRail();
 
   const nodes = {
@@ -78,9 +78,11 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     }
     const sourceOnly = model.accessKind === "source";
     const calculator = Boolean(model.calculationFields);
+    const fields = model.detailFields || model.calculationFields;
+    const railLabel = model.railLabel || (calculator ? "Calculation" : sourceOnly ? "Source" : "Desk API");
     root.dataset.accessKind = model.accessKind || "cli";
-    root.setAttribute("aria-label", calculator ? `${model.railLabel || "Calculation"} details` : sourceOnly ? "Market data source" : "Desk API");
-    nodes.label.textContent = calculator ? model.railLabel || "Calculation" : sourceOnly ? "Source" : "Desk API";
+    root.setAttribute("aria-label", model.detailFields ? `${model.label} details` : calculator ? `${railLabel} details` : sourceOnly ? "Market data source" : "Desk API");
+    nodes.label.textContent = railLabel;
     nodes.dataset.textContent = model.label;
     nodes.context.textContent = sourceOnly ? model.summary : [model.summary, model.provenance].filter(Boolean).join(" ");
     nodes.context.title = nodes.context.textContent;
@@ -89,12 +91,13 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     for (const section of nodes.apiSections) section.hidden = sourceOnly;
     if (nodes.source) nodes.source.hidden = !model.description && !model.sourceUrl;
     if (nodes.sourceDescription) nodes.sourceDescription.textContent = model.description || "";
-    root.querySelector("[data-calculation-fields]")?.remove();
-    if (calculator && nodes.description) {
+    root.querySelector("[data-monitor-detail-fields]")?.remove();
+    if (fields && nodes.description) {
       const list = document.createElement("dl");
       list.className = "desk-data-rail__calculation";
-      list.dataset.calculationFields = "";
-      model.calculationFields.forEach(([label, value]) => {
+      list.dataset.monitorDetailFields = "";
+      if (calculator) list.dataset.calculationFields = "";
+      fields.forEach(([label, value]) => {
         const pair = document.createElement("div");
         const term = document.createElement("dt");
         const detail = document.createElement("dd");
@@ -126,6 +129,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     }
     root.hidden = !show;
     root.toggleAttribute("inert", !show);
+    onOpenChange(show && open);
   }
 
   function renderPath() {
@@ -189,6 +193,9 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       bodyAnimation?.cancel();
       bodyAnimation = null;
       nodes.body.toggleAttribute("inert", !open);
+      if (!open && nodes.body.contains(root.ownerDocument.activeElement)) {
+        nodes.toggle?.focus({ preventScroll: true });
+      }
       if (open) {
         nodes.body.hidden = false;
       } else if (
@@ -217,6 +224,7 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
       }
     }
     root.dataset.open = String(open);
+    onOpenChange(open && !root.hidden);
   }
 
   function announce(message) {
@@ -328,6 +336,7 @@ function sentenceLabel(value) {
 }
 
 function toggleLabel(model) {
+  if (model.detailFields) return `Details, ${model.label}, ${model.summary}`;
   if (model.calculationFields) return `${model.railLabel || "Calculation"} details, ${model.label}, ${model.summary}`;
   if (model.accessKind === "source") return `Data by ${model.label}, ${model.summary}`;
   const label = [

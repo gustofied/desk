@@ -200,7 +200,7 @@ test('legacy hedge snapshots become buyers while invalid sides remain rejected',
 test('catalog migration adds hedge presets only to untouched previous starters', t => {
   const storage = localStorageFor(t);
   const fresh = loadCatalogCollections({ readOnly: true });
-  assert.equal(fresh.version, 17);
+  assert.equal(fresh.version, 18);
   const hedge = fresh.collections.find(collection => collection.id === 'hedge');
   assert.deepEqual(hedge.keys.slice(0, 3), ['preset-gpu-hedge-buyer', 'preset-gpu-hedge-seller', 'preset-gpu-hedge-coverage']);
   assert.ok(!fresh.collections.find(collection => collection.id === 'overview').keys.includes('preset-gpu-hedge-coverage'));
@@ -222,7 +222,7 @@ test('catalog migration adds hedge presets only to untouched previous starters',
       (version >= 15 || key !== 'preset-gpu-hedge-coverage') &&
       (version >= 14 || key !== 'preset-gpu-hedge-buyer')) };
     const upgraded = migrate(version, [previous]);
-    assert.equal(upgraded.version, 17);
+    assert.equal(upgraded.version, 18);
     assert.equal(upgraded.collections.length, version < 16 ? 2 : 1);
     assert.deepEqual(withoutLease(upgraded)[0].keys, hedge.keys);
     assertLeaseAdded(upgraded, version < 16);
@@ -247,6 +247,75 @@ test('catalog migration adds hedge presets only to untouched previous starters',
   assert.deepEqual(migrate(16, [removedCoverage]).collections, [removedCoverage]);
   const removedSeller = { ...hedge, keys: hedge.keys.filter(key => key !== 'preset-gpu-hedge-seller') };
   assert.deepEqual(migrate(17, [removedSeller]).collections, [removedSeller]);
+});
+
+test('Overview expands untouched starters while preserving authored catalogs and removals', t => {
+  const storage = localStorageFor(t);
+  const fresh = loadCatalogCollections({ readOnly: true });
+  const overview = fresh.collections.find(collection => collection.id === 'overview');
+  assert.deepEqual(overview.keys, [
+    'preset-gpu-price-snapshot-prices', 'preset-gpu-index-h200',
+    'preset-gpu-market-depth-h100-us', 'preset-power-basis-pjm-dominion',
+    'preset-equities-nvidia-compute-bars', 'preset-forward-prices-h100-curve',
+    'preset-forward-prices-h100', 'preset-gpu-hedge-buyer',
+    'preset-gpu-hedge-seller', 'preset-gpu-lease-residual',
+    'preset-deal-view-deal-041', 'preset-sandbox-cost-cost',
+  ]);
+  const previous = { ...overview, keys: [
+    'preset-gpu-price-snapshot-prices', 'preset-gpu-index-h200',
+    'preset-gpu-market-depth-h100-us', 'preset-power-basis-pjm-dominion',
+    'preset-equities-coreweave-compute', 'preset-sandbox-cost-cost',
+    'preset-forward-prices-h100-curve', 'preset-forward-prices-h100',
+  ] };
+  const migrate = (version, collections) => {
+    storage.setItem(CATALOG_COLLECTIONS_STORAGE_KEY, JSON.stringify({ version, activeId: 'overview', collections }));
+    return loadCatalogCollections({ readOnly: true });
+  };
+  const findOverview = state => state.collections.find(collection => collection.id === 'overview');
+  for (const version of [10, 11, 12, 13, 14, 15, 16, 17]) {
+    const upgraded = migrate(version, [previous]);
+    assert.equal(upgraded.version, 18);
+    assert.equal(upgraded.activeId, 'overview');
+    assert.deepEqual(findOverview(upgraded).keys, overview.keys);
+    assert.equal(findOverview(upgraded).createdAt, previous.createdAt);
+    for (const customized of [
+      { ...previous, name: 'My overview' },
+      { ...previous, keys: [...previous.keys].reverse() },
+      { ...previous, keys: previous.keys.slice(1) },
+      { ...previous, keys: [...previous.keys, 'preset-gpu-index-b200'] },
+      { ...previous, palette: 'sage' },
+      { ...previous, theme: 'dark' },
+      { ...previous, views: [] },
+      { ...previous, views: [{ key: 'embedded-buyer', cardId: 'gpu-hedge', name: 'My buyer', state: normalizeCardState('gpu-hedge', {}) }] },
+    ]) {
+      assert.deepEqual(findOverview(migrate(version, [customized])), customized);
+    }
+    assert.equal(findOverview(migrate(version, [])), undefined);
+  }
+  const earlierKeys = previous.keys.map(key => key === 'preset-equities-coreweave-compute' ? 'preset-equities-nvda' : key);
+  for (const version of [10, 11, 12]) {
+    for (const keys of [earlierKeys, earlierKeys.filter(key => !key.startsWith('preset-forward-prices-'))]) {
+      assert.deepEqual(findOverview(migrate(version, [{ ...previous, keys }])).keys, overview.keys);
+    }
+  }
+  const originalKeys = [
+    'preset-gpu-price-snapshot-prices', 'preset-gpu-index-h200', 'preset-gpu-index-b200',
+    'preset-gpu-index-compute-market', 'preset-gpu-market-depth-h100-us',
+    'preset-gpu-market-depth-h100-history', 'preset-power-basis-pjm-west',
+    'preset-power-basis-pjm-west-spread', 'preset-deal-view-deal-041',
+  ];
+  assert.deepEqual(findOverview(migrate(9, [{ ...previous, keys: originalKeys }])).keys, overview.keys);
+  const reordered = [fresh.collections.find(collection => collection.id === 'sandbox'), previous];
+  assert.deepEqual(migrate(17, reordered).collections.map(collection => collection.id), ['sandbox', 'overview']);
+  const stored = storage.getItem(CATALOG_COLLECTIONS_STORAGE_KEY);
+  assert.equal(JSON.parse(stored).version, 17, 'read-only migration does not persist');
+  const upgraded = loadCatalogCollections();
+  assert.equal(JSON.parse(storage.getItem(CATALOG_COLLECTIONS_STORAGE_KEY)).version, 18);
+  assert.deepEqual(loadCatalogCollections(), upgraded);
+  const removed = { ...overview, keys: overview.keys.filter(key => key !== 'preset-gpu-hedge-seller') };
+  assert.deepEqual(migrate(18, [removed]).collections, [removed]);
+  assert.deepEqual(migrate(17, []).collections, []);
+  assert.deepEqual(migrate(18, []).collections, []);
 });
 
 test('zero revenue, no hours and loss-making scenarios render finite geometry', () => {

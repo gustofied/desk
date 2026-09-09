@@ -1322,51 +1322,15 @@ button.compute-share-card-frame:focus-visible {
   gap: 12px;
 }
 
-.desk-share-dialog [hidden], .desk-shared-context[hidden] {
+.desk-share-dialog [hidden], .desk-shared-error[hidden] {
   display: none;
 }
 
-.desk-shared-context {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-  align-items: center;
-  margin-bottom: 16px;
+.desk-shared-error {
+  margin: 0 0 16px;
   color: var(--desk-accent-deep);
   font: 600 12px/20px "Geist Mono", ui-monospace, monospace;
 }
-
-.desk-shared-context > span {
-  flex: 1 1 120px;
-  min-width: 0;
-  overflow-wrap: anywhere;
-  opacity: 0.65;
-}
-
-.desk-shared-context button {
-  min-height: 36px;
-  padding: 4px 0;
-  color: inherit;
-  font: inherit;
-  background: none;
-  border: 0;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
-  text-underline-offset: 4px;
-  cursor: pointer;
-}
-
-.desk-shared-context button:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 4px;
-}
-
-.desk-shared-context p {
-  flex-basis: 100%;
-  margin: 0;
-}
-
-.desk-shared-context p:empty { display: none; }
 
 .desk-save-dialog__form header {
   display: grid;

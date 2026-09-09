@@ -1,9 +1,10 @@
 const DEFAULT_STAGE = "execute";
 const STAGE_IDS = Object.freeze(["spec", "diligence", "execute"]);
 
-export const DEAL_041_PAYLOAD = Object.freeze({
+export const JUNIPER_RESERVE_PAYLOAD = Object.freeze({
   version: 1,
-  id: "041",
+  id: "JNP-256",
+  label: "Juniper reserve",
   type: "Reserved capacity",
   side: "buy",
   asset: "B200",
@@ -72,6 +73,9 @@ export const DEAL_041_PAYLOAD = Object.freeze({
   }),
 });
 
+// Preserve the existing import used by older card integrations.
+export const DEAL_041_PAYLOAD = JUNIPER_RESERVE_PAYLOAD;
+
 function createFallbackEventLog() {
   const rows = [
     ["mandate-opened", "2026-08-20T09:10:00.000Z", "spec", "Buyer", "Mandate opened", "done"],
@@ -127,9 +131,9 @@ export function createDealViewModel(
     overrides.gpu ?? dealPayload.asset ?? dealPayload.gpu ?? dealPayload.product,
     "Deal asset",
   ).toUpperCase();
-  const label = viewKind === "quote"
-    ? optionalText(viewName) || `Quote ${asset}`
-    : `Deal ${id}`;
+  const label = optionalText(viewName) || (viewKind === "quote"
+    ? `Quote ${asset}`
+    : optionalText(dealPayload.label) || `Deal ${id}`);
   const quantity = positiveInteger(
     overrides.quantity ?? dealPayload.quantity ?? dealPayload.gpuCount,
     "Deal quantity",
