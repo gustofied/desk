@@ -30,6 +30,7 @@ import { shareRangeLabel } from "../src/share-range-label.js";
 import { CATALOG_SHARE_CARD_IDS, catalogShareStates } from "../src/catalog-share-previews.js";
 import { renderCatalogShareArtifact } from "./catalog-share-artifacts.mjs";
 import { renderCatalogSharePage } from "./catalog-share-page.mjs";
+import { immutablePreviewPath, isPublishedPreviewPath } from "./published-preview-archive.mjs";
 import {
   chartYDomain,
   comparisonStrokeOpacity,
@@ -177,10 +178,10 @@ async function generateCatalogPreviews() {
   await runWithConcurrency(entries, workerCount, async ({ card, state }) => {
     const artifact = renderCatalogShareArtifact(card.id, state, catalogPayloads);
     const pageHref = publishedCardSharePath(card.id, state);
-    const imageHref = publishedCardPreviewPath(card.id, state, artifact.revision);
+    const preview = await encodePreview(artifact.svg);
+    const imageHref = immutablePreviewPath(publishedCardPreviewPath(card.id, state, artifact.revision), preview);
     const imagePath = join(root, imageHref);
     const pagePath = join(root, pageHref, "index.html");
-    const preview = await encodePreview(artifact.svg);
     await Promise.all([mkdir(dirname(imagePath), { recursive: true }), mkdir(dirname(pagePath), { recursive: true })]);
     await Promise.all([
       writeFile(imagePath, preview),
@@ -269,18 +270,18 @@ async function generatePublishedPreviews() {
   const states = publishedStates();
   await runWithConcurrency(states, workerCount, async (state) => {
     const model = previewModel(state);
+    const previewImage = await encodePreview(renderPublishedCardImage(model));
     const pageHref = publishedCardSharePath(
       cardDefinition.id,
       state,
     );
-    const imageHref = publishedCardPreviewPath(
+    const imageHref = immutablePreviewPath(publishedCardPreviewPath(
       cardDefinition.id,
       state,
       runtimeData.revision,
-    );
+    ), previewImage);
     const pagePath = join(root, pageHref, "index.html");
     const imagePath = join(root, imageHref);
-    const previewImage = await encodePreview(renderPublishedCardImage(model));
     const previewRevision = imageRevision(previewImage);
 
     await mkdir(dirname(imagePath), { recursive: true });
@@ -309,19 +310,17 @@ async function generatePublishedBarPreviews() {
   await runWithConcurrency(states, workerCount, async (state) => {
     const model = barPreviewModel(state);
     const pageHref = publishedCardSharePath(barCardDefinition.id, state);
-    const imageHref = publishedCardPreviewPath(
-      barCardDefinition.id,
-      state,
-      runtimeData.revision,
-    );
-    const pagePath = join(root, pageHref, "index.html");
-    const imagePath = join(root, imageHref);
     const svg = renderGpuPriceBarSvg(model, {
       colors: model.colors,
       title: barCardDefinition.title,
       artifact: true,
     });
     const previewImage = await encodePreview(svg);
+    const imageHref = immutablePreviewPath(publishedCardPreviewPath(
+      barCardDefinition.id, state, runtimeData.revision,
+    ), previewImage);
+    const pagePath = join(root, pageHref, "index.html");
+    const imagePath = join(root, imageHref);
     const previewRevision = imageRevision(previewImage);
 
     await mkdir(dirname(imagePath), { recursive: true });
@@ -350,13 +349,6 @@ async function generatePublishedDepthPreviews() {
   await runWithConcurrency(states, workerCount, async (state) => {
     const model = depthPreviewModel(state);
     const pageHref = publishedCardSharePath(depthCardDefinition.id, state);
-    const imageHref = publishedCardPreviewPath(
-      depthCardDefinition.id,
-      state,
-      depthRuntimeData.revision,
-    );
-    const pagePath = join(root, pageHref, "index.html");
-    const imagePath = join(root, imageHref);
     const previewImage = await encodePreview(
       renderGpuMarketDepthSvg(model, {
         colors: model.colors,
@@ -366,6 +358,11 @@ async function generatePublishedDepthPreviews() {
         view: model.scale === "history" ? "history" : "now",
       }),
     );
+    const imageHref = immutablePreviewPath(publishedCardPreviewPath(
+      depthCardDefinition.id, state, depthRuntimeData.revision,
+    ), previewImage);
+    const pagePath = join(root, pageHref, "index.html");
+    const imagePath = join(root, imageHref);
     const previewRevision = imageRevision(previewImage);
 
     await mkdir(dirname(imagePath), { recursive: true });
@@ -412,13 +409,6 @@ async function generatePublishedPowerPreviews() {
   await runWithConcurrency(states, workerCount, async (state) => {
     const model = powerPreviewModel(state);
     const pageHref = publishedCardSharePath(powerCardDefinition.id, state);
-    const imageHref = publishedCardPreviewPath(
-      powerCardDefinition.id,
-      state,
-      powerRuntimeData.revision,
-    );
-    const pagePath = join(root, pageHref, "index.html");
-    const imagePath = join(root, imageHref);
     const previewImage = await encodePreview(
       renderPowerBasisSvg(model, {
         colors: model.colors,
@@ -428,6 +418,11 @@ async function generatePublishedPowerPreviews() {
         artifactHeight: 630,
       }),
     );
+    const imageHref = immutablePreviewPath(publishedCardPreviewPath(
+      powerCardDefinition.id, state, powerRuntimeData.revision,
+    ), previewImage);
+    const pagePath = join(root, pageHref, "index.html");
+    const imagePath = join(root, imageHref);
     const previewRevision = imageRevision(previewImage);
 
     await mkdir(dirname(imagePath), { recursive: true });
@@ -1703,7 +1698,8 @@ async function retireOldGeneratedFiles(nextFiles) {
   const allowedRoots = generatedRoots.map((directory) => resolve(directory));
   for (const file of previousFiles) {
     if (next.has(file)) continue;
-    if (isRetainedDepthPreview(file)) continue;
+    // A chat may still request a previously published page or image years later.
+    if (isPublishedPreviewPath(file)) continue;
     const target = resolve(root, file);
     if (!allowedRoots.some((allowedRoot) => target.startsWith(`${allowedRoot}/`))) {
       throw new Error(`Refusing to remove generated file outside card roots: ${file}`);
@@ -1714,13 +1710,6 @@ async function retireOldGeneratedFiles(nextFiles) {
       if (error?.code !== "ENOENT") throw error;
     }
   }
-}
-
-function isRetainedDepthPreview(file) {
-  // Existing depth shares can still reference their versioned preview image.
-  return String(file).startsWith(
-    `${depthCardDefinition.previewImageDir}/published/v14/`,
-  );
 }
 
 async function pruneEmptyDirectories(rootDirectory) {

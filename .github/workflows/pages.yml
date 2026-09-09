@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      bootstrap_preview_archive:
+        description: Create the published-preview archive branch if it is absent (first deployment only)
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -20,9 +26,14 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: write
+      pages: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -48,6 +59,13 @@ jobs:
 
       - name: Assemble deployment
         run: npm run build:site
+
+      # Archive updates must succeed before publishing URLs that depend on them.
+      - name: Retain published previews across deployments
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESK_PREVIEW_ARCHIVE_BOOTSTRAP: ${{ inputs.bootstrap_preview_archive && 'true' || 'false' }}
+        run: node scripts/published-preview-archive.mjs
 
       - name: Upload GitHub Pages artifact
         uses: actions/upload-pages-artifact@v5

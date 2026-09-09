@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
+import { mkdtemp, mkdir, readFile, writeFile, rm, symlink } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
 import { CARD_REGISTRY, normalizeCardState } from '../src/card-registry.js';
 import { loadSavedCatalog, saveCatalogItem, deleteCatalogItem } from '../src/saved-catalog.js';
 import { createMarketWatchlist } from '../src/market-watchlist.js';
@@ -11,6 +14,7 @@ import { forwardContours, nearestContour } from '../src/forward-contours.js';
 import { renderCatalogShareArtifact } from '../scripts/catalog-share-artifacts.mjs';
 import { renderForwardPricesSvg } from '../src/forward-prices-presentation.js';
 import sharp from 'sharp';
+import { immutablePreviewPath, isPublishedPreviewPath, mergePublishedPreviews } from '../scripts/published-preview-archive.mjs';
 
 function storage() {
   const values = new Map();
@@ -91,6 +95,52 @@ test('comparison lines start on the same date and baseline', () => {
 test('the homepage has no default social preview image', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.doesNotMatch(html, /<meta[^>]+(?:property|name)=["'](?:og:image|twitter:image)["']/i);
+});
+
+test('published previews survive clean deployments without replacing historical images', async t => {
+  const scratch = await mkdtemp(join(tmpdir(), 'desk-preview-test-'));
+  t.after(() => rm(scratch, { recursive: true, force: true }));
+  const archiveRoot = join(scratch, 'archive');
+  const firstSite = join(scratch, 'first');
+  const nextSite = join(scratch, 'next');
+  const base = '/assets/social/forward-prices/published/v17/example/h200/price/h200/all/sage-light.png';
+  const oldBytes = Buffer.from('original published image');
+  const newBytes = Buffer.from('updated published image');
+  const oldImage = immutablePreviewPath(base, oldBytes).slice(1);
+  const newImage = immutablePreviewPath(base, newBytes).slice(1);
+  const page = 'cards/forward-prices/published/h200/price/h200/all/sage/light/index.html';
+  const retiredPage = page.replace('/sage/', '/linen/');
+  const put = async (root, file, content) => {
+    await mkdir(dirname(join(root, file)), { recursive: true });
+    await writeFile(join(root, file), content);
+  };
+  assert.notEqual(oldImage, newImage, 'new image bytes get a new pathname, not just a query string');
+  assert.equal(immutablePreviewPath(base, oldBytes), `/${oldImage}`);
+  for (const file of [oldImage, newImage, page, retiredPage,
+    'assets/social/gpu-market-depth/published/v14/old/h100/sage-light.png']) assert.equal(isPublishedPreviewPath(file), true);
+  for (const file of ['data/equities-source.json', 'assets/social/default.png', 'cards/private/index.html',
+    oldImage.replace('/example/', '/../'), oldImage.replace('/example/', '/%2e%2e/'), oldImage.replace('/example/', '/%2f/')]) {
+    assert.equal(isPublishedPreviewPath(file), false, file);
+  }
+  await put(firstSite, oldImage, oldBytes);
+  await put(firstSite, page, 'original page');
+  await put(firstSite, retiredPage, 'retired page');
+  await mergePublishedPreviews({ siteRoot: firstSite, archiveRoot });
+  await put(nextSite, newImage, newBytes);
+  await put(nextSite, page, 'current page');
+  await put(nextSite, 'data/private.json', 'not a preview');
+  const result = await mergePublishedPreviews({ siteRoot: nextSite, archiveRoot });
+  assert.equal(result.restored, 2, 'a clean checkout regains both old image and retired page');
+  assert.deepEqual(await readFile(join(nextSite, oldImage)), oldBytes);
+  assert.equal(await readFile(join(nextSite, page), 'utf8'), 'current page');
+  assert.equal(await readFile(join(archiveRoot, page), 'utf8'), 'current page');
+  await assert.rejects(readFile(join(archiveRoot, 'data/private.json')), { code: 'ENOENT' });
+  await put(nextSite, oldImage, 'changed at an old address');
+  await assert.rejects(mergePublishedPreviews({ siteRoot: nextSite, archiveRoot }), /immutable path/);
+  assert.deepEqual(await readFile(join(archiveRoot, oldImage)), oldBytes);
+  await put(nextSite, oldImage, oldBytes);
+  await symlink(join(scratch, 'outside'), join(archiveRoot, 'unsafe'));
+  await assert.rejects(mergePublishedPreviews({ siteRoot: nextSite, archiveRoot }), /symlink/);
 });
 
 test('forward curves and contours share valid quotes and render both modes', async () => {
