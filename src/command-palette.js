@@ -39,6 +39,8 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   let renderFrame = null;
   let focusRevision = 0;
   let sidebarReturnFocus = null;
+  let viewportEvents = null;
+  let viewportFrame = 0;
   const deskEntry = createDeskEntry({
     entry: root.querySelector("[data-desk-entry]"),
     content: root.querySelector("[data-command-content]"),
@@ -138,12 +140,16 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   }
 
   function handleResultsPointerMove(event) {
+    if (event.pointerType === "touch") return;
     setActiveIndex(commandIndexFromEvent(event), false);
   }
 
   function handleResultsPointerDown(event) {
     const index = commandIndexFromEvent(event);
     if (event.button !== 0 || !visibleCommands[index] || visibleCommands[index].disabled) return;
+    // Let a touch complete as a native click (or scroll). Cancelling its
+    // pointerdown suppresses that click in WebKit.
+    if (event.pointerType === "touch") return;
     // The combobox owns focus; option buttons only supply the active descendant.
     event.preventDefault();
     setActiveIndex(index, false);
@@ -200,6 +206,46 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     });
   }
 
+  function syncViewport() {
+    const viewport = window.visualViewport;
+    if (root.open && viewport && window.matchMedia("(max-width: 640px), (max-width: 960px) and (max-height: 500px) and (pointer: coarse)").matches) {
+      // iOS keeps the layout viewport tall when the keyboard opens. Size the
+      // command list to the visible viewport so its final results stay reachable.
+      root.style.setProperty("--desk-command-viewport-height", `${viewport.height}px`);
+      root.style.setProperty("--desk-command-viewport-top", `${viewport.offsetTop}px`);
+    } else {
+      root.style.removeProperty("--desk-command-viewport-height");
+      root.style.removeProperty("--desk-command-viewport-top");
+    }
+  }
+
+  function queueViewport() {
+    if (viewportFrame) return;
+    viewportFrame = window.requestAnimationFrame(() => {
+      viewportFrame = 0;
+      syncViewport();
+    });
+  }
+
+  function observeViewport() {
+    syncViewport();
+    if (viewportEvents) return;
+    viewportEvents = new AbortController();
+    const { signal } = viewportEvents;
+    window.addEventListener("resize", queueViewport, { signal });
+    window.visualViewport?.addEventListener("resize", queueViewport, { signal });
+    window.visualViewport?.addEventListener("scroll", queueViewport, { passive: true, signal });
+  }
+
+  function releaseViewport() {
+    viewportEvents?.abort();
+    viewportEvents = null;
+    window.cancelAnimationFrame(viewportFrame);
+    viewportFrame = 0;
+    root.style.removeProperty("--desk-command-viewport-height");
+    root.style.removeProperty("--desk-command-viewport-top");
+  }
+
   function open({ query = "", returnFocus = null, animateEntrance = false, focus = true } = {}) {
     if (otherModalOpen()) return;
     root.removeAttribute("data-closing");
@@ -210,6 +256,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     activeIndex = -1;
     deskEntry.open({ animateEntrance });
     if (!root.open) root.showModal();
+    observeViewport();
     trigger?.setAttribute("aria-expanded", "true");
     render();
     if (results) results.scrollTop = 0;
@@ -252,6 +299,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     root.setAttribute("data-closing", "");
     const finish = () => {
       root.close();
+      releaseViewport();
       root.removeAttribute("data-closing");
       if (restoreFocus) {
         const target = previousFocus?.isConnected && previousFocus !== document.body &&
@@ -494,6 +542,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   function destroy() {
     focusRevision++;
     window.cancelAnimationFrame(renderFrame);
+    releaseViewport();
     deskEntry.destroy();
     sidebarLogo.destroy();
     sidecar?.destroy();

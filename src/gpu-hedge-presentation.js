@@ -66,6 +66,7 @@ export function paintGpuHedgeChart(svg, model, options = {}) {
     const cursor = root.querySelector('[data-gpu-hedge-cursor]');
     const readout = root.querySelector('[data-gpu-hedge-readout]');
     let settlement = clamp(model.rate, ...model.domain);
+    let touchGesture = null;
     const show = (value, showCursor = true) => {
       // Inspection always uses the exact current model, even if a change was
       // still moving. It never waits for an entrance or geometry transition.
@@ -89,7 +90,7 @@ export function paintGpuHedgeChart(svg, model, options = {}) {
       if (svg.ownerDocument?.activeElement === root) return;
       show(model.rate, false);
     };
-    root.addEventListener('pointermove', event => {
+    const inspect = event => {
       const matrix = svg.getScreenCTM();
       if (!matrix) return;
       const point = svg.createSVGPoint();
@@ -98,8 +99,30 @@ export function paintGpuHedgeChart(svg, model, options = {}) {
       const local = point.matrixTransform(matrix.inverse());
       if (local.y < chart.plot.top || local.y > chart.plot.bottom || local.x < 0 || local.x > WIDTH) { clear(); return; }
       show(chart.x.invert(local.x));
+    };
+    root.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch') return;
+      touchGesture = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
     });
-    root.addEventListener('pointerleave', clear);
+    root.addEventListener('pointermove', event => {
+      if (event.pointerType !== 'touch') { inspect(event); return; }
+      if (!touchGesture || event.pointerId !== touchGesture.id) return;
+      if (Math.hypot(event.clientX - touchGesture.x, event.clientY - touchGesture.y) > 8) {
+        touchGesture.moved = true;
+        show(model.rate, false);
+      }
+    });
+    root.addEventListener('pointerup', event => {
+      if (!touchGesture || event.pointerId !== touchGesture.id) return;
+      const tapped = !touchGesture.moved;
+      touchGesture = null;
+      if (tapped) inspect(event);
+    });
+    root.addEventListener('pointercancel', () => {
+      touchGesture = null;
+      show(model.rate, false);
+    });
+    root.addEventListener('pointerleave', event => { if (event.pointerType !== 'touch') clear(); });
     root.addEventListener('focus', () => show(settlement));
     root.addEventListener('blur', () => show(model.rate, false));
     root.addEventListener('keydown', event => {

@@ -10,6 +10,30 @@ const day = seconds => utcFormat('%d %b')(new Date(seconds * 1000));
 const fullDay = seconds => utcFormat('%d %b %Y')(new Date(seconds * 1000));
 const esc = value => String(value).replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('"', '&quot;');
 
+function mobileContourCandidates(points, font, textWidth) {
+  const distances = [0];
+  for (let i = 1; i < points.length; i++) distances.push(distances.at(-1) +
+    Math.hypot(points[i][0] - points[i - 1][0], points[i][1] - points[i - 1][1]));
+  const pointAt = distance => {
+    const index = Math.max(1, distances.findIndex(value => value >= distance));
+    const fraction = (distance - distances[index - 1]) / Math.max(.001, distances[index] - distances[index - 1]);
+    return points[index].map((value, axis) => points[index - 1][axis] + fraction * (value - points[index - 1][axis]));
+  };
+  const candidates = [];
+  for (let distance = textWidth / 2; distance <= distances.at(-1) - textWidth / 2; distance += font / 4) {
+    const p = pointAt(distance), a = pointAt(distance - textWidth / 2), b = pointAt(distance + textWidth / 2);
+    if (Math.hypot(b[0] - a[0], b[1] - a[1]) < textWidth * .85) continue;
+    const angle = Math.atan2(b[1] - a[1], b[0] - a[0]);
+    const halfWidth = (Math.abs(Math.cos(angle)) * textWidth + Math.abs(Math.sin(angle)) * font * 1.5) / 2;
+    const halfHeight = (Math.abs(Math.sin(angle)) * textWidth + Math.abs(Math.cos(angle)) * font * 1.5) / 2;
+    candidates.push({ p, angle: angle * 180 / Math.PI,
+      bounds: { left: p[0] - halfWidth, right: p[0] + halfWidth, top: p[1] - halfHeight, bottom: p[1] + halfHeight } });
+  }
+  return candidates;
+}
+
+const overlaps = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
 export function renderForwardPricesSvg(model, options = {}) {
   const chart = markup(model, options);
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${chart.height}" viewBox="0 0 1200 ${chart.height}" role="img" aria-label="${esc(chart.label)}">${chart.inner}</svg>`;
@@ -34,6 +58,8 @@ export function paintForwardPricesChart(svg, model, options = {}) {
     root.setAttribute('role', 'group');
     root.setAttribute('aria-label', 'Forward quotes. Arrow keys inspect delivery months and quote dates.');
     let row = model.observations.length - 1, col = 0;
+    let touchGesture = null;
+    let touchSelected = false;
     const cursor = root.querySelector('[data-forward-cursor]');
     const readout = root.querySelector('[data-forward-readout]');
     const regions = [...root.querySelectorAll('[data-forward-region]')].reverse().map(node => {
@@ -111,7 +137,7 @@ export function paintForwardPricesChart(svg, model, options = {}) {
       emphasize(chart.history ? null : row);
       if (!keepRegion) highlightRegion(null);
     };
-    root.addEventListener('pointermove', event => {
+    const inspect = event => {
       const matrix = svg.getScreenCTM();
       if (!matrix) return;
       const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(matrix.inverse());
@@ -142,13 +168,43 @@ export function paintForwardPricesChart(svg, model, options = {}) {
       readout.textContent = chart.history
         ? `Quoted ${day(chart.y.invert(position.y))} → ${fullDay(chart.x.invert(position.x))}   ≈${money(hit.key)}`
         : `${day(model.observations[hit.key])} → ${fullDay(chart.x.invert(position.x))}   ≈${money(chart.y.invert(position.y))}`;
+    };
+    root.addEventListener('pointerdown', event => {
+      if (event.pointerType !== 'touch' || event.target.closest('[data-forward-date]')) return;
+      touchGesture = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
     });
-    root.addEventListener('pointerleave', () => clear());
-    root.addEventListener('focus', show);
+    root.addEventListener('pointermove', event => {
+      if (event.pointerType !== 'touch') { touchSelected = false; inspect(event); return; }
+      if (!touchGesture || event.pointerId !== touchGesture.id) return;
+      if (Math.hypot(event.clientX - touchGesture.x, event.clientY - touchGesture.y) > 8) {
+        touchGesture.moved = true;
+        touchSelected = false;
+        clear();
+      }
+    });
+    root.addEventListener('pointerup', event => {
+      if (!touchGesture || event.pointerId !== touchGesture.id) return;
+      const tapped = !touchGesture.moved;
+      touchGesture = null;
+      if (!tapped) return;
+      touchSelected = true;
+      inspect(event);
+    });
+    root.addEventListener('pointercancel', () => {
+      touchGesture = null;
+      touchSelected = false;
+      clear();
+    });
+    root.addEventListener('pointerleave', event => {
+      if (event.pointerType !== 'touch') clear();
+    });
+    root.addEventListener('focus', () => { if (!touchSelected) show(); });
+    root.addEventListener('blur', () => { touchSelected = false; clear(); });
     root.addEventListener('keydown', event => {
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       event.stopPropagation();
+      touchSelected = false;
       if (event.key === 'ArrowLeft') col--;
       if (event.key === 'ArrowRight') col++;
       if (event.key === 'ArrowUp' && chart.history) row++;
@@ -207,6 +263,15 @@ function markup(model, { colors, compact = false, gallery = false, title, height
     // Paint all fills first so higher bands cannot cover neighboring strokes.
     for (const contour of projected) geometry.push(`<path data-forward-band="" data-forward-region="${contour.value}" d="${contour.fill}" fill="${shade(contour.value)}"/>`);
     const labels = [];
+    const mobileLabels = mobile && !gallery;
+    const labelBounds = [];
+    const reserved = mobileLabels ? [
+      { left: 0, right, top: 0, bottom: 144 },
+      ...[176, ...[0, Math.floor(model.observations.length / 2), model.observations.length - 1]
+        .map(i => Math.max(240, Math.min(bottom - 64, y(model.observations[i]) + 8)))]
+        .map(baseline => ({ left: inset - 8, right: inset + 6 * font * .65 + 8,
+          top: baseline - font * 1.1, bottom: baseline + font * .35 })),
+    ] : [];
     for (const contour of projected) {
       const level = contour.value;
       for (const { points, d } of contour.paths) {
@@ -214,16 +279,22 @@ function markup(model, { colors, compact = false, gallery = false, title, height
         geometry.push(`<path data-forward-series="${level}" data-forward-line="" d="${d}" fill="none" stroke="${palette.line}" stroke-width="${gallery ? 4 : 3}" stroke-linejoin="round"/>`);
       }
       // Label an actual contour segment, outside the heading and date labels.
-      const candidates = contour.paths.flatMap(({ points }) => points.slice(1).map((b, i) => {
+      const candidates = contour.paths.flatMap(({ points }) => mobileLabels
+        ? mobileContourCandidates(points, font, money(level).length * .62 * font + 8)
+        : points.slice(1).map((b, i) => {
         const a = points[i], p = [(a[0]+b[0])/2, (a[1]+b[1])/2];
         return { p, angle: Math.atan2(b[1]-a[1], b[0]-a[0])*180/Math.PI,
           length: Math.hypot(b[0]-a[0], b[1]-a[1]) };
-      })).filter(({p, length}) => length > font*2 && p[0] > 144 && p[0] < right-96 &&
-        p[1] > (gallery ? 256 : 176) && p[1] < bottom-48 && labels.every(q => Math.hypot(p[0]-q[0], p[1]-q[1]) > 96));
+      })).filter(({p, length, bounds}) => mobileLabels
+        ? bounds.left > 8 && bounds.right < right - 8 && bounds.top > 8 && bounds.bottom < bottom - 64 &&
+          [...reserved, ...labelBounds].every(rect => !overlaps(bounds, rect))
+        : length > font*2 && p[0] > 144 && p[0] < right-96 &&
+          p[1] > (gallery ? 256 : 176) && p[1] < bottom-48 && labels.every(q => Math.hypot(p[0]-q[0], p[1]-q[1]) > 96));
       candidates.sort((a, b) => Math.abs(a.p[1]-height*.55) - Math.abs(b.p[1]-height*.55));
       if (!candidates.length) continue;
       let { p, angle } = candidates[0];
       labels.push(p);
+      if (mobileLabels) labelBounds.push(candidates[0].bounds);
       if (angle > 90) angle -= 180;
       if (angle < -90) angle += 180;
       geometry.push(`<text data-forward-series="${level}" data-forward-label="" transform="translate(${p[0]} ${p[1]}) rotate(${angle})" dy=".35em" text-anchor="middle" font-size="${gallery ? 32 : font}" fill="${palette.line}" stroke="${shade(level)}" stroke-width="8" stroke-linejoin="round" style="paint-order:stroke fill">${money(level)}</text>`);
@@ -239,10 +310,10 @@ function markup(model, { colors, compact = false, gallery = false, title, height
   }
   const axes = [];
   if (!gallery) {
-    if (history) axes.push(`<text x="${inset}" y="144" fill="${palette.text}">Quoted</text>`);
+    if (history) axes.push(`<text x="${inset}" y="${mobile ? 176 : 144}" fill="${palette.text}">Quoted</text>`);
     if (history) [0, Math.floor(model.observations.length/2), model.observations.length-1].forEach(i => {
       const band = levels.filter(level => level <= model.values[i][0]).at(-1) ?? model.low;
-      axes.push(`<text x="${inset}" y="${Math.max(176, Math.min(bottom-64, y(model.observations[i])+8))}" fill="${palette.line}" stroke="${shade(band)}" stroke-width="8" stroke-linejoin="round" style="paint-order:stroke fill">${day(model.observations[i])}</text>`);
+      axes.push(`<text x="${inset}" y="${Math.max(mobile ? 240 : 176, Math.min(bottom-64, y(model.observations[i])+8))}" fill="${palette.line}" stroke="${shade(band)}" stroke-width="8" stroke-linejoin="round" style="paint-order:stroke fill">${day(model.observations[i])}</text>`);
     });
     const step = mobile || compact ? 6 : 3;
     model.deliveries.forEach((date, i) => {
@@ -253,5 +324,5 @@ function markup(model, { colors, compact = false, gallery = false, title, height
   const header = gallery ? viewArtifactHeaderMarkup({ title: title || `${model.gpu} forwards`, context: history ? 'HISTORY' : 'CURVE', headline: money(model.latest[0]), colors: palette, compact: true })
     : `<text x="${inset}" y="${mobile ? 64 : 48}" font-family="Geist, sans-serif" font-weight="600" font-size="${mobile ? 48 : 36}" fill="${palette.line}">${esc(title || `${model.gpu} forwards`)}</text><text x="${right-inset}" y="${mobile ? 64 : 48}" text-anchor="end" font-size="${font}" fill="${palette.text}">USD / GPU-h</text><text data-forward-readout="" x="${inset}" y="${mobile ? 112 : 96}" font-size="${font}" fill="${palette.text}">${esc(readout)}</text>`;
   const dates = !history && !gallery ? rows.map((row, i) => `<text data-forward-date="${row}" aria-pressed="${i === 0}" x="${right-inset-i*(mobile ? 192 : 128)}" y="${mobile ? 152 : 96}" text-anchor="end" font-size="${font}" fill="${palette.line}" text-decoration="${i === 0 ? 'underline' : 'none'}" style="cursor:pointer">${day(model.observations[row])}</text>`).join('') : '';
-  return { height, history, x, y, readout, label, pickLines, curveArea, inner: `<rect width="1200" height="${height}" fill="${palette.paper}"/><g data-forward-chart="" font-family="Geist Mono, monospace" font-weight="500">${geometry.join('')}<g fill="${palette.text}" font-size="${font}">${axes.join('')}</g>${header}${dates}${gallery ? '' : `<g data-forward-cursor="" visibility="hidden" pointer-events="none"><circle r="6" fill="${palette.paper}" stroke="${palette.line}" stroke-width="3"/></g>`}</g>` };
+  return { height, history, x, y, readout, label, pickLines, curveArea, inner: `<g data-forward-chart="" font-family="Geist Mono, monospace" font-weight="500"><rect width="1200" height="${height}" fill="${palette.paper}"/>${geometry.join('')}<g fill="${palette.text}" font-size="${font}">${axes.join('')}</g>${header}${dates}${gallery ? '' : `<g data-forward-cursor="" visibility="hidden" pointer-events="none"><circle r="6" fill="${palette.paper}" stroke="${palette.line}" stroke-width="3"/></g>`}</g>` };
 }

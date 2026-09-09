@@ -1,0 +1,119 @@
+/* Touch-sized choices and editable values, without changing the desktop composer. */
+@media (max-width: 640px), (max-width: 960px) and (max-height: 500px) and (pointer: coarse) {
+  .gpu-benchmark__compare-panel {
+    padding-inline: 8px;
+    scroll-padding-block: 8px;
+  }
+
+  .gpu-benchmark__compare-panel button,
+  .gpu-benchmark__composer .gpu-benchmark__month-picker button {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 12px;
+    line-height: 16px;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__compare-label {
+    min-height: 44px;
+    padding-inline: 4px 8px;
+    opacity: .72;
+  }
+
+  .gpu-benchmark__compare-panel [data-card-layer-row] .gpu-benchmark__layers button {
+    padding-inline: 4px;
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .gpu-index[data-card-renderer="sandbox-cost"] .gpu-benchmark__compare-panel
+    [data-card-layer-row] .gpu-benchmark__layers {
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__calculator-inputs {
+    gap: 4px 8px;
+    padding-block: 4px;
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__input-field {
+    min-height: 64px;
+    padding: 4px 8px;
+    scroll-margin-block: 8px;
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__input-field > span {
+    opacity: .72;
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__input-value {
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__input-field input {
+    min-height: 40px;
+    padding-block: 8px;
+    font-size: 16px;
+    line-height: 24px;
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__input-display {
+    padding-block: 8px;
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__calculator-contract {
+    padding: 0;
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__calculator-contract .gpu-benchmark__input-field {
+    min-height: 44px;
+    padding-block: 0;
+  }
+
+  .gpu-benchmark__compare-panel .gpu-benchmark__calculator-contract .gpu-benchmark__input-value {
+    font-size: 12px;
+    line-height: 16px;
+  }
+
+  .gpu-benchmark__calculator-more summary {
+    width: 128px;
+    min-height: 44px;
+    margin-inline-end: 8px;
+    white-space: nowrap;
+    opacity: .72;
+    touch-action: manipulation;
+  }
+
+  .gpu-benchmark__calculator-more > div {
+    gap: 4px;
+  }
+
+  .gpu-benchmark__composer .gpu-benchmark__month-header button {
+    font-size: 20px;
+  }
+
+  .gpu-benchmark__month-header {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+
+  .gpu-benchmark__composer .gpu-benchmark__month-grid button {
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .gpu-benchmark__compare-panel button:active,
+  .gpu-benchmark__calculator-more summary:active {
+    background: var(--desk-chrome-selected);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 360px) {
+  /* Full equipment values need a full row on narrow phones; never shrink them. */
+  .gpu-benchmark__compare-panel .gpu-benchmark__calculator-inputs
+    .gpu-benchmark__input-field:is([data-value-length="medium"], [data-value-length="long"]) {
+    grid-column: 1 / -1;
+  }
+}

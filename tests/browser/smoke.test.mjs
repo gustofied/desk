@@ -17,8 +17,8 @@ before(async () => {
 });
 after(async () => { await browser?.close(); });
 
-async function pageFor(t) {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+async function pageFor(t, options = {}) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce', ...options });
   const page = await context.newPage();
   page.setDefaultTimeout(15000);
   const errors = [];
@@ -43,6 +43,143 @@ test('gallery defaults and every chart family render', async t => {
     await chart.waitFor({ state: 'visible' });
     assert.ok(await chart.locator('path, line, rect, circle').count(), card.id);
     assert.doesNotMatch(await chart.innerHTML(), /NaN|Infinity/, card.id);
+  }
+});
+
+test('mobile touch navigation, Data and inspection stay usable', async t => {
+  for (const [width, height] of [[320, 568], [390, 740], [430, 820], [740, 390]]) {
+    await t.test(`${width}×${height}`, async t => {
+      const page = await pageFor(t, { viewport: { width, height }, hasTouch: true, isMobile: true });
+      const noOverflow = async label => assert.equal(await page.evaluate(() =>
+        document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1), true,
+      `${label} has no horizontal page overflow at ${width}×${height}`);
+      const reachable = async (locator, label) => {
+        await locator.scrollIntoViewIfNeeded();
+        const box = await locator.evaluate(node => {
+          const r = node.getBoundingClientRect();
+          const ticker = document.querySelector('[data-market-strip]').getBoundingClientRect();
+          const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: innerWidth,
+            limit: Math.min(innerHeight, ticker.top), hit: node === hit || node.contains(hit) };
+        });
+        assert.ok(box.left >= -1 && box.right <= box.width + 1 && box.top >= -1 && box.bottom <= box.limit + 1 && box.hit,
+          `${label} is reachable above the ticker at ${width}×${height}: ${JSON.stringify(box)}`);
+      };
+      const navigation = async label => {
+        const layout = await page.evaluate(() => {
+          const desk = document.querySelector('[data-command-open]').getBoundingClientRect();
+          const group = document.querySelector('.desk-view-actions__group').getBoundingClientRect();
+          const buttons = [...document.querySelectorAll('[data-desk-mode], [data-command-open]')].map(node => {
+            const r = node.getBoundingClientRect();
+            return { text: node.textContent.trim(), left: r.left, right: r.right, font: parseFloat(getComputedStyle(node).fontSize),
+              clipped: node.scrollWidth > node.clientWidth + 1 || node.scrollHeight > node.clientHeight + 1 };
+          });
+          return { buttons, centerDifference: Math.abs(desk.y + desk.height / 2 - group.y - group.height / 2) };
+        });
+        assert.ok(layout.centerDifference <= 4, `Desk shares the navigation row for ${label}: ${layout.centerDifference}px`);
+        for (const button of layout.buttons) assert.ok(button.left >= -1 && button.right <= width + 1 && button.font >= 11 && !button.clipped,
+          `${button.text} stays readable for ${label}: ${JSON.stringify(button)}`);
+        await noOverflow(label);
+      };
+      const catalogActions = async label => {
+        await page.locator('[data-catalog-switcher]').tap();
+        await page.locator('[data-catalog-menu]').waitFor({ state: 'visible' });
+        for (const action of ['create', 'cards', 'rename', 'delete']) await reachable(page.locator(`[data-catalog-${action}]`), `${label} catalog ${action}`);
+        await noOverflow(`${label} catalog menu`);
+        await page.locator('[data-catalog-switcher]').tap();
+      };
+      await open(page, '/');
+      await page.evaluate(() => document.fonts.ready);
+      assert.equal(await page.evaluate(() => 'ontouchstart' in window && matchMedia('(pointer: coarse)').matches), true,
+        'the context uses touch APIs and a coarse pointer');
+      await page.evaluate(() => addEventListener('pointerdown', event => { window.__smokePointerType = event.pointerType; }, { once: true }));
+      await navigation('collapsed appearance');
+      await catalogActions('collapsed appearance');
+      assert.equal(await page.evaluate(() => window.__smokePointerType), 'touch', 'navigation uses a real emulated touch event');
+      await page.locator('[data-command-open]').tap();
+      if (await page.locator('[data-desk-login]').isVisible()) await page.locator('[data-desk-login]').tap();
+      const search = page.locator('[data-command-input]');
+      assert.ok(await search.evaluate(node => parseFloat(getComputedStyle(node).fontSize) >= 16), 'mobile search avoids focus zoom');
+      if (width === 390) {
+        await page.evaluate(() => {
+          Object.defineProperty(visualViewport, 'height', { configurable: true, value: 400 });
+          visualViewport.dispatchEvent(new Event('resize'));
+        });
+        await page.waitForFunction(() => document.querySelector('[data-command-palette]').style.getPropertyValue('--desk-command-viewport-height') === '400px');
+        const keyboardMenu = await page.locator('[data-command-palette]').boundingBox();
+        assert.ok(keyboardMenu.y >= 0 && keyboardMenu.y + keyboardMenu.height <= 400,
+          `commands fit above the simulated keyboard: ${JSON.stringify(keyboardMenu)}`);
+      }
+      await search.fill('Show display controls');
+      await page.getByRole('option', { name: /^Show display controls/ }).tap();
+      await page.waitForFunction(() => document.documentElement.dataset.displayToolbar === 'expanded');
+      if (width === 390) {
+        assert.equal(await page.locator('[data-command-palette]').evaluate(node => node.style.getPropertyValue('--desk-command-viewport-height')), '',
+          'closing commands clears the visual viewport override');
+        await page.evaluate(() => { delete visualViewport.height; visualViewport.dispatchEvent(new Event('resize')); });
+      }
+      await navigation('expanded appearance');
+      for (const button of await page.locator('.desk-display-controls button').all()) await reachable(button, 'appearance control');
+      await catalogActions('expanded appearance');
+
+      await open(page, '/?card=gpu-index&view=monitor&gpu=H200&layers=H200&range=7d');
+      const chart = page.locator('[data-gpu-chart]');
+      await reachable(page.locator('[data-monitor-data-toggle]'), 'source disclosure');
+      await page.locator('[data-monitor-data-toggle]').tap();
+      await page.locator('[data-monitor-data-body]').waitFor({ state: 'visible' });
+      for (const control of await page.locator('[data-monitor-data] .desk-data-rail__footer :is(a, button)').all()) await reachable(control, 'source action');
+      await noOverflow('expanded source');
+      await page.locator('[data-monitor-data-toggle]').tap();
+      await chart.scrollIntoViewIfNeeded();
+      const line = page.locator('[data-gpu-chart-svg] .gpu-benchmark__line.is-selected');
+      const tooltip = page.locator('[data-gpu-tooltip]');
+      let previousDate;
+      for (const fraction of [0.35, 0.7]) {
+        const point = await line.evaluate((node, progress) => {
+          const p = node.getPointAtLength(node.getTotalLength() * progress).matrixTransform(node.getScreenCTM());
+          return { x: p.x, y: p.y };
+        }, fraction);
+        await page.touchscreen.tap(point.x, point.y);
+        await tooltip.waitFor({ state: 'visible' });
+        await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+        assert.equal(await tooltip.isVisible(), true, 'a tapped observation remains after the finger lifts');
+        const date = await tooltip.locator('time').textContent();
+        assert.ok(date && date !== previousDate, 'a second tap inspects a different recorded observation');
+        assert.match(await tooltip.locator('[data-layer="H200"] strong').textContent(), /\d/);
+        previousDate = date;
+      }
+
+      await open(page, '/?card=gpu-lease&view=craft');
+      const data = page.locator('[data-card-compare-toggle]');
+      await reachable(data, 'Craft Data toggle');
+      const geometry = () => page.locator('.gpu-index-detail').evaluate(node => {
+        const r = node.getBoundingClientRect();
+        return { x: r.x + scrollX, y: r.y + scrollY, width: r.width, height: r.height };
+      });
+      const before = await geometry();
+      await data.tap();
+      const panel = page.locator('[data-card-compare-panel]');
+      await panel.waitFor({ state: 'visible' });
+      const after = await geometry();
+      for (const key of Object.keys(before)) assert.ok(Math.abs(after[key] - before[key]) <= 1, `Data does not move or resize the chart's ${key}`);
+      const panelBox = await panel.boundingBox();
+      assert.ok(panelBox.x >= -1 && panelBox.x + panelBox.width <= width + 1 && panelBox.y >= -1 && panelBox.y + panelBox.height <= height + 1,
+        `Data fits ${width}×${height}: ${JSON.stringify(panelBox)}`);
+      const inputs = panel.locator('input:not([type="hidden"]):not([readonly]):visible');
+      assert.ok(await inputs.count(), 'the numeric editor is present');
+      for (const input of await inputs.all()) {
+        assert.ok(await input.evaluate(node => parseFloat(getComputedStyle(node).fontSize) >= 16), 'editable mobile values avoid focus zoom');
+        await reachable(input, 'numeric input');
+      }
+      assert.equal(await panel.evaluate(node => node.scrollWidth <= node.clientWidth + 1), true, 'Data scrolls only vertically');
+      await noOverflow('Craft Data');
+      if (width === 390) {
+        await open(page, '/?card=gpu-hedge&view=craft');
+        await page.locator('[data-card-compare-toggle]').tap();
+        const basis = page.locator('[data-card-option-input="basis"]');
+        assert.equal(await basis.getAttribute('inputmode'), 'text', 'signed basis exposes the iPhone minus key');
+      }
+    });
   }
 });
 
@@ -794,8 +931,10 @@ test('Data controls and source disclosures keep the chart in place', async t => 
       return { x, y: y + (selector === '.desk-top-controls' ? 0 : scrollY), width };
     }),
   }));
-  for (const [card, width] of [['gpu-index', 1440], ['equities', 1440], ['gpu-index', 320]]) {
-    await page.setViewportSize({ width, height: 850 });
+  // The compact mobile shell fits an open source at 850px; use a short phone
+  // here so this still exercises the transition into a scrolling document.
+  for (const [card, width, height] of [['gpu-index', 1440, 850], ['equities', 1440, 850], ['gpu-index', 320, 568]]) {
+    await page.setViewportSize({ width, height });
     await open(page, `/?card=${card}&view=monitor`);
     // Exercise classic scrollbars even on hosts that use overlay scrollbars.
     await page.addStyleTag({ content: 'html::-webkit-scrollbar { width: 16px; }' });

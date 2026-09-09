@@ -1120,7 +1120,11 @@ if (root) {
       control.placeholder = "YYYY-MM";
     }
     control.setAttribute("aria-label", option.label);
-    if (option.type !== "month") control.inputMode = "decimal";
+    if (option.type !== "month") {
+      // iPhone's decimal keypad has no minus key; basis can be negative.
+      control.inputMode = option.min < 0 ? "text" : option.type === "decimal" ? "decimal" : "numeric";
+      control.enterKeyHint = "done";
+    }
     control.dataset.cardOptionInput = option.id;
     control.dataset.displayPrecision = ["rate", "basis", "apr"].includes(option.id) ? "2" : "0";
     const error = document.createElement("small");
@@ -6472,6 +6476,7 @@ if (root) {
 
   function render(drawAnimation) {
     // Retire the old surface's draw too when it becomes hidden (including Craft).
+    renderChart.clearTouch?.();
     cancelChartMotion(root);
     cancelGpuLeaseMotion(nodes.svg);
     cancelGpuLeaseMotion(nodes.shareArtifactSvg);
@@ -6866,7 +6871,7 @@ if (root) {
       view: depthViewMode(state.scale),
     });
     if (nodes.mobileSummaryLabel) {
-      nodes.mobileSummaryLabel.textContent = visualizationLabel(state.scale);
+      nodes.mobileSummaryLabel.textContent = `${model.instrument.gpu} ${visualizationLabel(state.scale)}`;
     }
     if (nodes.mobileSummaryValue) {
       nodes.mobileSummaryValue.textContent = `${model.targetNodes} nodes`;
@@ -6890,8 +6895,13 @@ if (root) {
         colors: palette,
         title: state.catalogName || cardDefinition.title,
         reducedMotion: reducedMotion || motion !== "reveal",
-        interactive: !mobileViewport.matches,
+        interactive: true,
         minimal: mobileViewport.matches,
+        onInspect: mobileViewport.matches ? ({ date, price, nodes: inspectedNodes }) => {
+          if (nodes.mobileSummaryLabel) nodes.mobileSummaryLabel.textContent = date || model.instrument.gpu;
+          if (nodes.mobileSummaryValue) nodes.mobileSummaryValue.textContent = `${inspectedNodes ?? model.targetNodes} nodes`;
+          if (nodes.mobileSummaryRange) nodes.mobileSummaryRange.textContent = price;
+        } : undefined,
         view: depthViewMode(state.scale),
       });
     }
@@ -7898,6 +7908,10 @@ if (root) {
         return (active - resting) / (1 - resting);
       });
     let focusIndex = selectedRows.length - 1;
+    let touchGesture = null;
+    let touchSelected = false;
+    let touchedBar = null;
+    let pendingTouch = null;
     const overlay = plot
       .append("rect")
       .attr("class", "gpu-benchmark__hit")
@@ -7917,7 +7931,7 @@ if (root) {
       )
       .on("focus", () => {
         interaction.style("display", null);
-        showPoint();
+        showPoint(touchSelected ? touchedBar : null);
       })
       .on("blur", hidePoint)
       .on("keydown", (event) => {
@@ -7951,8 +7965,8 @@ if (root) {
       .attr("fill", "transparent")
       .style("cursor", "crosshair")
       .style("pointer-events", "all")
-      .on("pointerenter", (_event, zone) => {
-        if (zoomDrag) return;
+      .on("pointerenter", (event, zone) => {
+        if (zoomDrag || event.pointerType === "touch") return;
         focusIndex = zone.index;
         interaction.style("display", null);
         showPoint();
@@ -8002,15 +8016,71 @@ if (root) {
         .attr("width", bar => bar.targetWidth).attr("height", bar => bar.targetHeight)
         .attr("fill", "transparent")
         .style("cursor", "crosshair")
-        .on("pointerenter", (_event, bar) => {
-          if (zoomDrag || bar.index === undefined) return;
+        .on("pointerenter", (event, bar) => {
+          if (zoomDrag || event.pointerType === "touch" || bar.index === undefined) return;
           focusIndex = bar.index;
           interaction.style("display", null);
           showPoint(bar);
         });
       if (zoomEnabled) barHits.on("pointerdown.zoom", beginZoom);
     }
-    plot.on("pointerleave", hidePoint);
+    plot.on("pointerleave", event => {
+      if (event.pointerType !== "touch") hidePoint();
+    });
+    plot.on("pointerdown.touch", event => {
+      pendingTouch = null;
+      if (event.pointerType !== "touch") {
+        touchSelected = false;
+        return;
+      }
+      touchGesture = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
+    });
+    plot.on("pointermove.touch", event => {
+      if (!touchGesture || event.pointerId !== touchGesture.id) return;
+      if (Math.hypot(event.clientX - touchGesture.x, event.clientY - touchGesture.y) > 8) {
+        touchGesture.moved = true;
+        hidePoint();
+      }
+    });
+    plot.on("pointerup.touch", event => {
+      if (!touchGesture || event.pointerId !== touchGesture.id) return;
+      const tapped = !touchGesture.moved;
+      touchGesture = null;
+      if (!tapped) return;
+      focusIndex = selectedRows.indexOf(nearestRow(selectedRows, x.invert(pointerX(event))));
+      const barTarget = event.target.closest("[data-bar-hit]");
+      touchedBar = barTarget ? d3.select(barTarget).datum() : null;
+      pendingTouch = { index: focusIndex, bar: touchedBar };
+      touchSelected = true;
+      interaction.style("display", null);
+      showPoint(touchedBar);
+    });
+    plot.on("pointercancel.touch", () => {
+      touchGesture = null;
+      pendingTouch = null;
+      hidePoint();
+    });
+    // Native tap focus occurs before click. Focus the keyboard target afterwards
+    // so leaving the chart dismisses the retained touch selection via blur.
+    plot.on("click.touch", () => {
+      if (!pendingTouch) return;
+      focusIndex = pendingTouch.index;
+      touchedBar = pendingTouch.bar;
+      pendingTouch = null;
+      touchSelected = true;
+      overlay.node().focus({ preventScroll: true });
+      interaction.style("display", null);
+      showPoint(touchedBar);
+    });
+    renderChart.clearTouch = () => {
+      touchGesture = null;
+      pendingTouch = null;
+      hidePoint();
+    };
+
+    function dismissTouch(event) {
+      if (event.pointerType === "touch" && !nodes.chart.contains(event.target)) hidePoint();
+    }
 
     function pointerX(event) {
       const bounds = nodes.svg.getBoundingClientRect();
@@ -8119,6 +8189,7 @@ if (root) {
     }
 
     function showPoint(activeBar = null) {
+      if (touchSelected) document.addEventListener("pointerdown", dismissTouch, true);
       const selectedRow = selectedRows[focusIndex];
       if (!selectedRow) return;
       const pointX = x(selectedRow.date);
@@ -8178,6 +8249,9 @@ if (root) {
     }
 
     function hidePoint() {
+      document.removeEventListener("pointerdown", dismissTouch, true);
+      touchSelected = false;
+      touchedBar = null;
       interaction.style("display", "none");
       nodes.tooltip.hidden = true;
     }

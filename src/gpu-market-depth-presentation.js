@@ -32,6 +32,7 @@ export function paintGpuMarketDepthChart(
     reducedMotion = false,
     interactive = true,
     decorative = false,
+    onInspect,
     ...options
   } = {},
 ) {
@@ -42,14 +43,16 @@ export function paintGpuMarketDepthChart(
   const focusedHistoryTimestamp =
     interactionTarget?.dataset.depthActiveTimestamp;
   const height = options.compact ? COMPACT_SVG_HEIGHT : SVG_HEIGHT;
+  const mobile = Boolean(options.minimal && interactive && !decorative);
   const { inner, ariaLabel } = gpuMarketDepthMarkup(model, {
     ...options,
+    minimal: options.minimal && !mobile,
     _renderScale: {
       x: svgAxisScale(svgNode.clientWidth, SVG_WIDTH),
       y: svgAxisScale(svgNode.clientHeight, height),
     },
   });
-  const canInteract = interactive && !decorative && !options.minimal;
+  const canInteract = interactive && !decorative;
   const view = depthView(model, options);
 
   svgNode.setAttribute("viewBox", `0 0 ${SVG_WIDTH} ${height}`);
@@ -64,11 +67,17 @@ export function paintGpuMarketDepthChart(
     svgNode.setAttribute("aria-label", ariaLabel);
   }
   svgNode.innerHTML = inner;
+  if (mobile) {
+    // The existing HTML summary is readable at phone size; keep only the
+    // inspection marks inside the SVG, not desktop-sized readout text.
+    svgNode.querySelectorAll('[data-depth-history-readout] text, [data-depth-bucket-readout]')
+      .forEach(node => node.remove());
+  }
 
   if (canInteract && view === "history") {
-    configureHistoryNavigation(svgNode, focusedHistoryTimestamp, ariaLabel);
+    configureHistoryNavigation(svgNode, focusedHistoryTimestamp, ariaLabel, { mobile, onInspect });
   } else if (canInteract) {
-    configureShelfNavigation(svgNode, focusedPrice, ariaLabel);
+    configureShelfNavigation(svgNode, focusedPrice, ariaLabel, { mobile, onInspect });
   } else {
     resetDepthNavigation(interactionTarget);
   }
@@ -428,7 +437,23 @@ function announceDepthValue(live, value) {
   });
 }
 
-function configureHistoryNavigation(svgNode, focusedTimestamp, ariaLabel) {
+function bindDepthTap(node, select, signal) {
+  let start = null;
+  node.addEventListener("pointerdown", event => {
+    if (event.pointerType === "touch") start = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  }, { signal });
+  node.addEventListener("pointermove", event => {
+    if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) start = null;
+  }, { signal });
+  node.addEventListener("pointerup", event => {
+    if (!start || event.pointerId !== start.id) return;
+    start = null;
+    select();
+  }, { signal });
+  node.addEventListener("pointercancel", () => { start = null; }, { signal });
+}
+
+function configureHistoryNavigation(svgNode, focusedTimestamp, ariaLabel, { mobile = false, onInspect } = {}) {
   const columns = Array.from(
     svgNode.querySelectorAll("[data-depth-history-column]"),
   );
@@ -509,26 +534,31 @@ function configureHistoryNavigation(svgNode, focusedTimestamp, ariaLabel) {
     setActive(columns[activeIndex], true);
     if (announce) {
       announceDepthValue(live, columns[activeIndex].dataset.ariaLabel);
+      onInspect?.({ date: columns[activeIndex].dataset.dateLabel, price: columns[activeIndex].dataset.clearingLabel });
     }
   };
 
   columns.forEach((column, index) => {
     column.setAttribute("aria-hidden", "true");
-    column.addEventListener("pointerenter", () => {
+    column.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "touch") return;
       setActive(columns[activeIndex], false);
       setActive(column, true);
     }, { signal });
-    column.addEventListener("pointerleave", () => {
+    column.addEventListener("pointerleave", (event) => {
+      if (event.pointerType === "touch") return;
       setActive(column, false);
       setActive(columns[activeIndex], true);
     }, { signal });
-    column.addEventListener("pointerdown", () => {
+    column.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "touch") return;
       setActive(columns[activeIndex], false);
       activeIndex = index;
       target.dataset.depthActiveTimestamp = column.dataset.timestamp;
       target.focus({ preventScroll: true });
       selectColumn(index);
     }, { signal });
+    bindDepthTap(column, () => selectColumn(index), signal);
   });
   target.addEventListener("focus", () => selectColumn(activeIndex, false), {
     signal,
@@ -553,6 +583,7 @@ function configureHistoryNavigation(svgNode, focusedTimestamp, ariaLabel) {
     }
   }, { signal });
   selectColumn(activeIndex, false);
+  if (mobile) setActive(columns[activeIndex], false);
 }
 
 function historyColumnMarkup(
@@ -808,7 +839,7 @@ function setText(root, selector, value) {
   if (node) node.textContent = value || "";
 }
 
-function configureShelfNavigation(svgNode, focusedPrice, ariaLabel) {
+function configureShelfNavigation(svgNode, focusedPrice, ariaLabel, { onInspect } = {}) {
   const buckets = Array.from(svgNode.querySelectorAll("[data-depth-bucket]"));
   if (!buckets.length) return;
   const navigation = createDepthNavigation(
@@ -847,28 +878,33 @@ function configureShelfNavigation(svgNode, focusedPrice, ariaLabel) {
     setActive(buckets[activeIndex], true);
     if (announce) {
       announceDepthValue(live, buckets[activeIndex].dataset.ariaLabel);
+      onInspect?.({ price: formatPrice(Number(buckets[activeIndex].dataset.price)), nodes: Number(buckets[activeIndex].dataset.nodes) });
     }
   };
 
   buckets.forEach((bucket, index) => {
     bucket.setAttribute("aria-hidden", "true");
-    bucket.addEventListener("pointerenter", () => {
+    bucket.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "touch") return;
       setActive(buckets[activeIndex], false);
       setActive(bucket, true);
     }, { signal });
-    bucket.addEventListener("pointerleave", () => {
+    bucket.addEventListener("pointerleave", (event) => {
+      if (event.pointerType === "touch") return;
       setActive(bucket, false);
       if (target === target.ownerDocument.activeElement) {
         setActive(buckets[activeIndex], true);
       }
     }, { signal });
-    bucket.addEventListener("pointerdown", () => {
+    bucket.addEventListener("pointerdown", (event) => {
+      if (event.pointerType === "touch") return;
       setActive(buckets[activeIndex], false);
       activeIndex = index;
       target.dataset.depthActivePrice = bucket.dataset.price;
       target.focus({ preventScroll: true });
       selectBucket(index);
     }, { signal });
+    bindDepthTap(bucket, () => selectBucket(index), signal);
   });
   target.addEventListener("focus", () => selectBucket(activeIndex, false), {
     signal,
@@ -966,7 +1002,7 @@ function bucketMarkup(model, palette, layout, x, y, compact, priceDomain) {
       const readoutY = layout.plotTop + 24;
 
       return `
-        <g class="gpu-market-depth__bucket" data-depth-bucket="" data-price="${escapeXml(bucket.price)}"
+        <g class="gpu-market-depth__bucket" data-depth-bucket="" data-price="${escapeXml(bucket.price)}" data-nodes="${bucket.cumulativeNodes}"
           data-aria-label="${escapeXml(ariaLabel)}">
           <rect data-depth-bucket-highlight="" x="${layout.plotLeft}" y="${coordinate(rowTop)}"
             width="${coordinate(layout.plotRight - layout.plotLeft)}" height="${coordinate(rowHeight)}"

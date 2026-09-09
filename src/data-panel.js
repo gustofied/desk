@@ -6,12 +6,14 @@ export function createDataPanel({ panel, trigger, anchor, obstruction, onDismiss
   let openEvents;
   let resizeObserver;
   let positionFrame = 0;
+  let focusFrame = 0;
   let pointerActive = false;
+  let revealFocusedControl = false;
 
   const contains = target => target instanceof Node &&
     (panel.contains(target) || trigger.contains(target));
 
-  function position() {
+  function position({ revealFocus = false } = {}) {
     if (!opened) return;
     const bounds = anchor.getBoundingClientRect();
     const viewport = window.visualViewport;
@@ -21,13 +23,38 @@ export function createDataPanel({ panel, trigger, anchor, obstruction, onDismiss
     panel.style.top = `${bounds.bottom}px`;
     panel.style.width = `${bounds.width}px`;
     panel.style.setProperty('--desk-data-panel-height', `${Math.max(0, Math.min(320, bottom - reserved - 12 - bounds.bottom))}px`);
+    if (revealFocus && window.matchMedia('(max-width: 640px), (max-width: 960px) and (max-height: 500px) and (pointer: coarse)').matches) {
+      window.cancelAnimationFrame(focusFrame);
+      // WebKit updates the scroll range one frame after the new max-height.
+      // Reveal the field then; doing it here clamps to the old scroll range.
+      focusFrame = window.requestAnimationFrame(revealFocusWithinPanel);
+    }
   }
 
-  function queuePosition() {
+  function revealFocusWithinPanel() {
+    focusFrame = 0;
+    if (!opened) return;
+    // Scroll only this surface on focus/viewport changes. Ordinary touch
+    // scrolling must remain under the user's control while a field is focused.
+    const focused = document.activeElement;
+    if (panel.contains(focused) && focused.matches('input, select, textarea')) {
+      const target = focused.closest('.gpu-benchmark__input-field') || focused;
+      const targetBounds = target.getBoundingClientRect();
+      const panelBounds = panel.getBoundingClientRect();
+      const top = panelBounds.top + panel.clientTop + 8;
+      const bottom = panelBounds.top + panel.clientTop + panel.clientHeight - 8;
+      if (targetBounds.bottom > bottom) panel.scrollTop += targetBounds.bottom - bottom;
+      else if (targetBounds.top < top) panel.scrollTop += targetBounds.top - top;
+    }
+  }
+
+  function queuePosition(event) {
+    revealFocusedControl ||= event?.type === 'resize' || event?.type === 'focusin';
     if (positionFrame) return;
     positionFrame = window.requestAnimationFrame(() => {
       positionFrame = 0;
-      position();
+      position({ revealFocus: revealFocusedControl });
+      revealFocusedControl = false;
     });
   }
 
@@ -37,8 +64,11 @@ export function createDataPanel({ panel, trigger, anchor, obstruction, onDismiss
     resizeObserver?.disconnect();
     resizeObserver = null;
     window.cancelAnimationFrame(positionFrame);
+    window.cancelAnimationFrame(focusFrame);
     positionFrame = 0;
+    focusFrame = 0;
     pointerActive = false;
+    revealFocusedControl = false;
   }
 
   function attach() {
@@ -56,6 +86,7 @@ export function createDataPanel({ panel, trigger, anchor, obstruction, onDismiss
     document.addEventListener('focusin', event => {
       // Pointer focus is handled by click; Safari can focus the containing article.
       if (!pointerActive && !contains(event.target)) onDismiss({ animate: false });
+      else if (panel.contains(event.target)) queuePosition(event);
     }, { signal });
     document.addEventListener('keydown', event => {
       pointerActive = false;

@@ -1,0 +1,237 @@
+/* Mobile gets its own compact shell; chart palettes and desktop geometry stay intact. */
+@media (max-width: 960px) {
+  :root {
+    --desk-mobile-top: calc(8px + env(safe-area-inset-top, 0px));
+    --desk-mobile-header: calc(72px + env(safe-area-inset-top, 0px));
+    --desk-gallery-top-space: var(--desk-mobile-header);
+  }
+
+  :root[data-display-toolbar="expanded"] {
+    --desk-mobile-header: calc(124px + env(safe-area-inset-top, 0px));
+    --desk-gallery-top-space: var(--desk-mobile-header);
+  }
+
+  :root[data-display-toolbar] body,
+  :root[data-display-toolbar][data-desk-layout="all"] body,
+  :root[data-display-toolbar][data-desk-view="monitor"][data-desk-layout="focus"] body {
+    align-items: start;
+    padding-top: var(--desk-mobile-header);
+    padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
+  }
+
+  .desk-top-controls {
+    top: var(--desk-mobile-top);
+    gap: 6px;
+  }
+
+  .desk-corners::before {
+    position: absolute;
+    inset: 0 0 auto;
+    height: var(--desk-mobile-header);
+    content: "";
+    background: var(--desk-canvas);
+  }
+
+  :root[data-display-toolbar="expanded"] .desk-corners::before {
+    height: var(--desk-mobile-header);
+  }
+
+  .desk-search {
+    top: calc(var(--desk-mobile-top) + 3px);
+    right: max(8px, env(safe-area-inset-right, 0px));
+    min-height: 44px;
+    padding-inline: 8px;
+    font-size: 11px;
+    letter-spacing: 0.03em;
+    opacity: 0.85;
+  }
+
+  .desk-search__shortcut { display: none; }
+
+  .desk-view-action,
+  .desk-display-option {
+    min-height: 44px;
+  }
+
+  :root[data-display-toolbar] .desk-stage .gpu-index {
+    scroll-margin-top: var(--desk-mobile-header);
+  }
+
+  .desk-catalog-menu {
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100svh - var(--desk-mobile-header) - var(--desk-market-strip-space) - 12px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .desk-catalog-menu[hidden] { display: none; }
+
+  .desk-catalog-menu [role="listbox"] {
+    flex: 1 1 auto;
+    min-height: 88px;
+    max-height: 42svh;
+    overscroll-behavior: contain;
+  }
+
+  .desk-catalog-menu__create,
+  .desk-catalog-menu footer { flex: 0 0 auto; }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --desk-monitor-chart-height: clamp(296px, min(96vw, calc(100svh - var(--desk-mobile-header) - 144px)), 408px);
+    --desk-craft-frame-height: clamp(368px, calc(100svh - var(--desk-mobile-header) - 64px), 408px);
+  }
+
+  html { scrollbar-gutter: auto; }
+
+  :root .desk-stage,
+  :root[data-desk-layout="all"] .desk-stage {
+    width: 100%;
+  }
+
+  :root[data-display-toolbar] .desk-top-controls {
+    right: calc(66px + env(safe-area-inset-right, 0px));
+    left: max(12px, env(safe-area-inset-left, 0px));
+    transform: none;
+    align-items: stretch;
+  }
+
+  .desk-view-actions__group {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) repeat(2, minmax(0, 1fr));
+    gap: 0;
+    padding: 2px;
+    border-radius: var(--desk-radius-control);
+  }
+
+  .desk-view-action,
+  .desk-view-action[data-catalog-switcher] {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    min-height: 44px;
+    padding-inline: 5px;
+    font-size: 11px;
+    letter-spacing: 0.01em;
+    border-radius: var(--desk-radius-field);
+  }
+
+  .desk-view-action { opacity: 0.85; }
+
+  .desk-display-controls {
+    justify-content: space-between;
+    width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    gap: 2px;
+    border-radius: var(--desk-radius-control);
+  }
+
+  .desk-display-option,
+  .desk-palette-option {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 40px;
+    min-height: 42px;
+    font-size: 11px;
+  }
+
+  .desk-catalog-menu {
+    left: 0;
+    translate: none;
+    width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+    min-width: 0;
+  }
+
+  .desk-card-rail { min-height: 44px; }
+
+  .compute-card-skin--market .desk-card-rail :is(.desk-card-tabs button, .desk-card-gallery-tab) {
+    min-height: 44px;
+    font-size: 11px;
+    opacity: 0.8;
+  }
+
+  .compute-card-skin--market .desk-card-rail .desk-card-tabs button[aria-selected="true"] {
+    color: var(--desk-control-ink);
+    opacity: 1;
+  }
+
+  /* Remove the narrow inset that gave depth charts a second, smaller frame. */
+  :root[data-desk-layout="focus"] .desk-stage .gpu-benchmark__chart {
+    width: calc(100% + 16px);
+    margin-inline: -8px;
+    border-inline: 0;
+  }
+
+  :root[data-desk-view="monitor"][data-desk-layout="focus"] .desk-stage .gpu-benchmark__mobile-summary {
+    align-items: center;
+    min-height: 44px;
+    background: var(--desk-canvas);
+  }
+
+  .gpu-benchmark__mobile-summary > span {
+    font-size: 11px;
+    letter-spacing: 0.02em;
+  }
+
+  .compute-card-skin--market .gpu-benchmark__footer {
+    min-height: 46px;
+    padding: 0 10px;
+    border-inline: 0;
+  }
+
+  .compute-card-skin--market .gpu-benchmark__footer time { font-size: 11px; }
+
+  .compute-card-skin--market .gpu-benchmark__ranges,
+  .compute-card-skin--market .gpu-benchmark__footer { gap: 4px; }
+
+  .compute-card-skin--market .gpu-benchmark__ranges button,
+  .gpu-benchmark__depth-view button {
+    min-width: 40px;
+    min-height: 44px;
+    font-size: 11px;
+  }
+
+  [data-monitor-data] .desk-data-rail__toggle {
+    min-height: 44px;
+    font-size: 11px;
+  }
+
+  :root[data-desk-view="monitor"][data-desk-layout="focus"]
+    .desk-stage .gpu-index:is([data-card-renderer="gpu-hedge"][data-card-scale="coverage"], [data-card-renderer="gpu-lease"]) .gpu-benchmark__chart {
+    /* Keep the square tiles, without stretching their card beyond a phone screen. */
+    aspect-ratio: 1 / 1.12;
+  }
+
+  .gpu-index[data-craft-empty="true"] .gpu-benchmark__craft-empty { padding: 12px; }
+
+  .gpu-benchmark__craft-types { gap: 6px; }
+
+  .gpu-benchmark__craft-types button {
+    flex-basis: calc((100% - 6px) / 2);
+    min-height: 46px;
+    padding: 10px 6px;
+    color: var(--desk-control-ink);
+    font-size: 12px;
+    border-radius: var(--desk-radius-field);
+  }
+
+}
+
+@media (max-width: 640px), (max-width: 960px) and (max-height: 500px) and (pointer: coarse) {
+  .desk-command-menu {
+    margin-top: calc(var(--desk-command-viewport-top, 0px) + var(--desk-mobile-top) + 48px);
+    max-height: calc(var(--desk-command-viewport-height, 100dvh) - var(--desk-mobile-top) - 60px - env(safe-area-inset-bottom, 0px));
+  }
+
+  .desk-command-menu__surface { max-height: inherit; }
+
+  .desk-command-menu__stage {
+    height: min(584px, calc(var(--desk-command-viewport-height, 100dvh) - var(--desk-mobile-top) - 64px - env(safe-area-inset-bottom, 0px)));
+  }
+
+  .desk-command-menu__close,
+  .desk-command-menu__option { min-height: 44px; }
+
+  .desk-command-menu__footer { display: none; }
+}
