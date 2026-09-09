@@ -53,6 +53,20 @@ test('mobile touch navigation, Data and inspection stay usable', async t => {
       const noOverflow = async label => assert.equal(await page.evaluate(() =>
         document.documentElement.scrollWidth <= innerWidth + 1 && document.body.scrollWidth <= innerWidth + 1), true,
       `${label} has no horizontal page overflow at ${width}×${height}`);
+      const centered = async label => {
+        const layout = await page.evaluate(async () => {
+          await document.fonts.ready;
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          const stage = document.querySelector('.desk-stage').getBoundingClientRect();
+          // The header backdrop resolves --desk-mobile-header, including safe-area insets.
+          const header = parseFloat(getComputedStyle(document.querySelector('.desk-corners'), '::before').height);
+          const bottom = document.querySelector('[data-market-strip]').getBoundingClientRect().top;
+          return { top: stage.top + scrollY, height: stage.height, header, bottom,
+            expectedTop: Math.max(header, header + (bottom - header - stage.height) / 2) };
+        });
+        assert.ok(Math.abs(layout.top - layout.expectedTop) <= 2,
+          `${label} centers between the header and ticker, or starts below the header when too tall at ${width}×${height}: ${JSON.stringify(layout)}`);
+      };
       const reachable = async (locator, label) => {
         await locator.scrollIntoViewIfNeeded();
         const box = await locator.evaluate(node => {
@@ -124,11 +138,15 @@ test('mobile touch navigation, Data and inspection stay usable', async t => {
 
       await open(page, '/?card=gpu-index&view=monitor&gpu=H200&layers=H200&range=7d');
       const chart = page.locator('[data-gpu-chart]');
+      await centered('Monitor');
       await reachable(page.locator('[data-monitor-data-toggle]'), 'source disclosure');
+      const chartTop = await chart.evaluate(node => node.getBoundingClientRect().top + scrollY);
       await page.locator('[data-monitor-data-toggle]').tap();
       await page.locator('[data-monitor-data-body]').waitFor({ state: 'visible' });
       for (const control of await page.locator('[data-monitor-data] .desk-data-rail__footer :is(a, button)').all()) await reachable(control, 'source action');
       await noOverflow('expanded source');
+      assert.ok(Math.abs(await chart.evaluate(node => node.getBoundingClientRect().top + scrollY) - chartTop) <= 2,
+        `opening Source keeps the centered chart in place at ${width}×${height}`);
       await page.locator('[data-monitor-data-toggle]').tap();
       await chart.scrollIntoViewIfNeeded();
       const line = page.locator('[data-gpu-chart-svg] .gpu-benchmark__line.is-selected');
@@ -149,7 +167,12 @@ test('mobile touch navigation, Data and inspection stay usable', async t => {
         previousDate = date;
       }
 
+      await open(page, '/?card=gpu-lease&view=monitor');
+      await centered('Monitor with variable-height tiles');
+      await noOverflow('Monitor with variable-height tiles');
+
       await open(page, '/?card=gpu-lease&view=craft');
+      await centered('Craft');
       const data = page.locator('[data-card-compare-toggle]');
       await reachable(data, 'Craft Data toggle');
       const geometry = () => page.locator('.gpu-index-detail').evaluate(node => {

@@ -19,6 +19,15 @@
     padding-inline: max(12px, env(safe-area-inset-left, 0px)) max(12px, env(safe-area-inset-right, 0px));
   }
 
+  /* Center the closed workspace, not the extra source details below it.
+     Short screens keep the header clearance and scroll naturally. */
+  :root[data-display-toolbar][data-desk-layout="focus"]:is([data-desk-view="monitor"], [data-desk-view="craft"]) body {
+    padding-top: max(var(--desk-mobile-header), calc(
+      (100dvh + var(--desk-mobile-header) - var(--desk-market-strip-space)
+        - var(--desk-mobile-focus-height, var(--desk-craft-frame-height))) / 2
+    ));
+  }
+
   .desk-top-controls {
     top: var(--desk-mobile-top);
     gap: 6px;

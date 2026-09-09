@@ -897,6 +897,18 @@ if (root) {
     });
     nodes.zoomReset?.addEventListener("click", resetCustomZoom);
 
+    if ("ResizeObserver" in window) {
+      const details = root.querySelector("[data-monitor-data-body]");
+      const workspaceObserver = new ResizeObserver(() => {
+        if (state.layout !== "focus" || !window.matchMedia("(max-width: 960px)").matches) return;
+        // Measure the actual frame, including auto-height tile cards and tabs.
+        // Expanded source content must not move the chart's resting position.
+        const height = root.getBoundingClientRect().height - (details?.getBoundingClientRect().height || 0);
+        document.documentElement.style.setProperty("--desk-mobile-focus-height", `${height}px`);
+      });
+      workspaceObserver.observe(root);
+    }
+
     if ("ResizeObserver" in window && nodes.chart) {
       const observer = new ResizeObserver(() => {
         if (
