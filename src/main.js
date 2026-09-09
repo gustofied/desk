@@ -744,7 +744,7 @@ if (root) {
         } else if (definition.renderer === "gpu-hedge") {
           const model = createGpuHedgeModel(payload, cardState);
           displayValue = cardState.scale === "coverage" ? `${model.coverage}%` : formatHedgeProfit(model.headlineProfit);
-          displayUnit = cardState.scale === "coverage" ? "hedged" : "profit";
+          displayUnit = cardState.scale === "coverage" ? "hedged" : hedgeOutcomeLabel(model.side, model.costs);
         } else if (definition.renderer === "forward-prices") {
           const model = createForwardPricesModel(payload, cardState);
           displayValue = formatUsd(model.latest[0]);
@@ -946,6 +946,7 @@ if (root) {
     nodes.optionButtons = [];
     nodes.optionInputs = [];
     root.querySelector("[data-calculator-contract]")?.remove();
+    root.querySelector("[data-hedge-side]")?.remove();
     nodes.depthCraftViewButtons = [];
 
     if (nodes.primaryGroup) {
@@ -1060,21 +1061,31 @@ if (root) {
           "aria-checked",
           "radio",
         );
-        const fragment = document.createDocumentFragment();
+        const hedgeOption = cardDefinition.renderer === "gpu-hedge";
+        const fragment = hedgeOption ? document.createElement("div") : document.createDocumentFragment();
+        if (hedgeOption) {
+          fragment.className = "gpu-benchmark__data-row";
+          fragment.dataset.optionField = option.id;
+        }
         fragment.append(label, buttons);
         return fragment;
       });
       if (cardDefinition.renderer === "gpu-hedge") {
+        const side = optionControls.find(field => field.dataset?.optionField === "side");
+        if (side) {
+          side.dataset.hedgeSide = "";
+          nodes.primaryRow?.before(side);
+        }
         const contract = document.createElement("div");
         contract.className = "gpu-benchmark__calculator-contract";
         contract.dataset.calculatorContract = "";
         contract.append(optionControls.find(field => field.dataset.optionField === "delivery"));
         nodes.primaryGroup?.closest("[data-card-primary-row]")?.append(contract);
-        const basic = optionControls.filter(field => !["delivery", "costs", "basis"].includes(field.dataset.optionField));
+        const basic = optionControls.filter(field => !["side", "delivery", "costs", "basis"].includes(field.dataset.optionField));
         const advanced = document.createElement("details");
         advanced.className = "gpu-benchmark__calculator-more";
         const summary = document.createElement("summary");
-        summary.textContent = "Costs & basis";
+        summary.textContent = "Costs & pricing";
         const fields = document.createElement("div");
         fields.append(...optionControls.filter(field => ["costs", "basis"].includes(field.dataset.optionField)));
         advanced.append(summary, fields);
@@ -1101,7 +1112,7 @@ if (root) {
     field.className = "gpu-benchmark__input-field";
     field.dataset.optionField = option.id;
     const label = document.createElement("span");
-    label.textContent = option.id === "delivery" ? "Settlement" : option.id === "coverage" ? "Hedged" : option.id === "basis" ? "Basis" : option.label;
+    label.textContent = option.id === "delivery" ? "Settlement" : option.id === "coverage" ? "Hedged" : option.id === "basis" ? "Price gap" : option.label;
     if (["rate", "basis"].includes(option.id)) {
       const unit = document.createElement("span");
       unit.className = "gpu-benchmark__input-unit";
@@ -1214,7 +1225,7 @@ if (root) {
 
   function validateCalculatorInputs() {
     if (cardDefinition.stateKind !== "calculator" || state.mode !== "craft" || state.craftEmpty) return true;
-    const inputs = nodes.optionInputs.filter(input => input.type !== "range");
+    const inputs = nodes.optionInputs.filter(input => input.type !== "range" && !input.disabled);
     const invalid = inputs.find(input => {
       syncMonthFallbackValidity(input);
       return !input.checkValidity();
@@ -2178,7 +2189,7 @@ if (root) {
 
   function suggestedCatalogName() {
     if (cardDefinition.renderer === "gpu-lease") return "Residual value";
-    if (cardDefinition.renderer === "gpu-hedge") return state.scale === "coverage" ? "GPU coverage" : "GPU hedge";
+    if (cardDefinition.renderer === "gpu-hedge") return hedgeViewLabel();
     if (isSandboxCard) return "Sandbox cost";
     if (isBarCard) return "Latest prices";
     if (isDepthCard) return `H100 depth ${state.options.target} nodes`;
@@ -2481,6 +2492,9 @@ if (root) {
   }
 
   function visualizationLabel(scale, definition = cardDefinition) {
+    if (definition.id === "gpu-hedge" && scale === "price") {
+      return state.options.side === "seller" ? "Revenue" : "Profit";
+    }
     return definition.visualizations.find(
       (visualization) => visualization.id === scale,
     )?.label || scale;
@@ -5289,7 +5303,7 @@ if (root) {
     if (cardDefinition.renderer === "gpu-hedge" && state.runtimePayload && !state.craftEmpty) {
       const model = createGpuHedgeModel(state.runtimePayload, currentCardState());
       const coverageView = state.scale === "coverage";
-      if (nodes.mobileSummaryLabel) nodes.mobileSummaryLabel.textContent = `${model.gpu} ${coverageView ? "coverage" : "hedge"}`;
+      if (nodes.mobileSummaryLabel) nodes.mobileSummaryLabel.textContent = hedgeViewLabel();
       if (nodes.mobileSummaryValue) nodes.mobileSummaryValue.textContent = coverageView ? `${model.coverage}%` : formatHedgeProfit(model.headlineProfit);
       if (nodes.mobileSummaryRange) nodes.mobileSummaryRange.textContent = coverageView ? "hedged" : `${model.coverage}%`;
       return;
@@ -5487,10 +5501,13 @@ if (root) {
         empty ||
         (button.dataset.cardScale === "spread" && !spreadReady);
       button.tabIndex = button.disabled ? -1 : 0;
+      if (cardDefinition.renderer === "gpu-hedge" && button.dataset.cardScale === "price") {
+        button.textContent = state.options.side === "seller" ? "Revenue" : "Profit";
+      }
       button.setAttribute(
         "aria-label",
         cardDefinition.renderer === "gpu-hedge"
-          ? button.dataset.cardScale === "coverage" ? "Show GPU coverage" : "Show hedge profit"
+          ? button.dataset.cardScale === "coverage" ? "Show GPU coverage" : `Show hedged ${hedgeOutcomeLabel()}`
         : button.dataset.cardScale === "price"
           ? isSandboxCard ? "Show estimated cost per job" : cardId === "equities" ? "Show daily close in USD per share" : "Show hourly price"
           : button.dataset.cardScale === "index"
@@ -5560,7 +5577,9 @@ if (root) {
       const hasInvalidDraft = state.mode === "craft" && invalidCalculatorInputs.has(input) && !input.checkValidity();
       if (!hasInvalidDraft) syncDealCraftControlValue(input, state.options[input.dataset.cardOptionInput]);
       syncCalculatorFieldDisplay(input);
-      input.disabled = !state.shareReady || empty;
+      const unusedRevenue = cardDefinition.renderer === "gpu-hedge" && state.options.side === "seller" && input.dataset.cardOptionInput === "revenue";
+      input.closest('[data-option-field="revenue"]')?.toggleAttribute("hidden", unusedRevenue);
+      input.disabled = !state.shareReady || empty || unusedRevenue;
       const picker = nodes.monthPickers.get(input);
       picker?.sync();
       if (state.mode !== "craft" || !state.compareOpen) picker?.close();
@@ -5590,6 +5609,7 @@ if (root) {
       );
     }
     root.dataset.cardScale = state.scale;
+    root.dataset.hedgeDirection = cardDefinition.renderer === "gpu-hedge" ? state.options.side : "";
     root.dataset.crossMarket = String(hasCrossMarketLayers(cardDefinition, [...state.layers]));
     root.dataset.comparisonCount = String(comparisonCount);
     root.dataset.craftEmpty = String(empty);
@@ -5619,7 +5639,7 @@ if (root) {
         cardDefinition.renderer === "gpu-lease" ? "Lease payments and resale value" : cardDefinition.renderer === "gpu-hedge"
           ? state.scale === "coverage"
             ? `${state.selected} GPU-hours, ${state.options.coverage}% hedged`
-            : `${state.selected} profit with and without a GPU price hedge`
+            : `${state.selected} ${hedgeOutcomeLabel()} with and without a GPU price hedge`
         : isSandboxCard
           ? `${labels}, estimated sandbox cost per job, ${rangeControlLabel(state.range)}`
         : isPowerCard
@@ -5640,7 +5660,7 @@ if (root) {
         : cardDefinition.renderer === "gpu-hedge"
           ? state.scale === "coverage"
             ? "GPU-hours split between hedged and exposed. Each square represents one percent of total hours."
-            : "Profit across settlement prices with and without a hedge. Inputs are fixed across the price range."
+            : `${state.options.side === "seller" ? "Revenue from selling GPU-hours" : "Profit after buying GPU-hours"} across rental prices, with and without a hedge.`
         : isSandboxCard
           ? state.range === "now"
             ? "Estimated cost per benchmark job. Whiskers show minimum to maximum, bars show the middle half, and ticks mark the median."
@@ -5973,7 +5993,7 @@ if (root) {
   function workspaceLabel() {
     if (state.craftEmpty) return "Craft";
     if (state.catalogName) return state.catalogName;
-    if (cardDefinition.renderer === "gpu-hedge") return state.scale === "coverage" ? "GPU coverage" : "GPU hedge";
+    if (cardDefinition.renderer === "gpu-hedge") return hedgeViewLabel();
     if (isQuoteCard) return `Quote ${state.options.gpu}`;
     if (isPowerCard) {
       if (state.scale === "energy") return "H100 power cost";
@@ -6703,6 +6723,14 @@ if (root) {
     return d3.format("$.3~s")(value).replace("G", "bn");
   }
 
+  function hedgeViewLabel() {
+    return state.scale === "coverage" ? "GPU coverage" : state.options.side === "seller" ? "Revenue hedge" : "Cost hedge";
+  }
+
+  function hedgeOutcomeLabel(side = state.options.side, costs = state.options.costs) {
+    return side === "seller" ? Number(costs) > 0 ? "net revenue" : "revenue" : "profit";
+  }
+
   function paintHedgeView(svg, model, scale, options) {
     if (scale === "coverage") {
       cancelGpuHedgeMotion(svg);
@@ -7150,7 +7178,7 @@ if (root) {
         });
         cardNodes.button.setAttribute("aria-label", cardState.scale === "coverage"
           ? `Monitor ${title}, ${model.gpu}, ${model.coverage}% hedged, ${model.hedgedHours.toLocaleString()} hedged GPU-hours, ${model.exposedHours.toLocaleString()} exposed`
-          : `Monitor ${title}, ${model.gpu}, ${model.coverage}% hedged, ${formatHedgeProfit(model.headlineProfit)} profit at entry price`);
+          : `Monitor ${title}, ${model.gpu}, ${model.coverage}% hedged, ${formatHedgeProfit(model.headlineProfit)} ${hedgeOutcomeLabel(model.side, model.costs)} at the hedge price`);
         continue;
       }
       if (entryCard.renderer === "sandbox-cost") {

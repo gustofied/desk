@@ -19,13 +19,11 @@ export function createMonitorDataModel({
   if (card?.id === "gpu-lease" && leaseModel) {
     const m = leaseModel;
     const money = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
-    const sourceUrl = "https://www.amcompute.com/blog/gpu-depreciation-residual-value-report-2026";
     return finalizeModel(card, {
       id: "gpu-lease-inputs", label: "Residual value", summary: `${m.term} months`,
       detailDescription: cardDetailDescription(card, cardState),
       breadcrumbs: ["Inputs"], rowCount: 0, asOf: null, accessKind: "source", status: "ready",
       unit: "USD", provenance: "Your inputs", priceBasis: "calculator",
-      source: { name: "American Compute", url: sourceUrl }, sourceUrl,
       description: "Payments are made at month-end. The squares split total lease payments and resale proceeds.",
       calculationFields: [
         ["Equipment cost", money(m.cost)], ["Lease term", `${m.term} months`],
@@ -38,6 +36,8 @@ export function createMonitorDataModel({
   }
   if (card?.id === "gpu-hedge" && hedgeModel) {
     const m = hedgeModel;
+    const selling = m.side === "seller";
+    const outcome = selling ? m.costs > 0 ? "Net revenue" : "Revenue" : "Profit";
     const coverageView = (cardState?.scale || card.defaults?.scale) === "coverage";
     const money = value => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
     const calculationFields = coverageView ? [
@@ -45,20 +45,23 @@ export function createMonitorDataModel({
       ["Hedged GPU-hours", m.hedgedHours.toLocaleString("en-US")],
       ["Exposed GPU-hours", m.exposedHours.toLocaleString("en-US")],
     ] : [
-      ["GPU-hours", m.hours.toLocaleString("en-US")], ["Revenue", money(m.revenue)],
+      ["GPU-hours", m.hours.toLocaleString("en-US")],
+      ...(!selling ? [["Revenue", money(m.revenue)]] : []),
       ["Hedge price", `${money(m.rate)}/GPU-h`], ["Hedged", `${m.coverage}%`],
-      ["Other costs", money(m.costs)], ["Rental minus index", `${money(m.basis)}/GPU-h`],
-      ["Profit at hedge price", money(m.headlineProfit)], ["Margin", m.margin === null ? "—" : `${m.margin.toFixed(1)}%`],
+      ["Other costs", money(m.costs)], ["Price difference", `${money(m.basis)}/GPU-h`],
+      [`${outcome} at hedge price`, money(m.headlineProfit)],
+      ...(!selling ? [["Margin", m.margin === null ? "—" : `${m.margin.toFixed(1)}%`]] : []),
     ];
     return finalizeModel(card, {
-      id: "gpu-hedge-inputs", label: coverageView ? "GPU coverage" : "GPU hedge", summary: `${m.gpu} ${m.delivery}`,
+      id: "gpu-hedge-inputs", railLabel: "Scenario",
+      label: coverageView ? "GPU coverage" : selling ? "Revenue hedge" : "Cost hedge", summary: `${m.gpu} ${m.delivery}`,
       detailDescription: cardDetailDescription(card, cardState),
       breadcrumbs: ["Inputs"], rowCount: 0, asOf: null, accessKind: "source", status: "ready",
       unit: coverageView ? "GPU-hours" : "USD", provenance: "Your inputs", priceBasis: "calculator",
       description: coverageView
-        ? "Coverage applies to the entered GPU-hours. Exposed hours remain sensitive to settlement prices."
-        : "Fixed GPU-hours, revenue and rental-to-index difference. Hedge fees and financing excluded.",
-      calculationFields,
+        ? "Each square is 1% of the entered hours. Unhedged hours move with market prices."
+        : `${selling ? "Assumes all entered hours are sold." : "Uses your entered hours, revenue and costs."} The price difference is your rental rate minus the hedge’s settlement rate.`,
+      calculationFields: [["Side", selling ? "Selling" : "Buying"], ...calculationFields],
     });
   }
   if (card?.dataAdapter === "forward" && forwardModel) {
@@ -384,6 +387,7 @@ function finalizeModel(card, values) {
   return Object.freeze({
     key,
     id: values.id || card.dataTable.id,
+    railLabel: values.railLabel,
     label: values.label || card.dataTable.label,
     summary: values.summary,
     detailDescription: values.detailDescription,

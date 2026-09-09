@@ -86,7 +86,7 @@ export function renderCatalogShareArtifact(cardId, stateParams = {}, payloads = 
   } else if (cardId === "gpu-hedge") {
     const model = createGpuHedgeModel(requirePayload(cardId), normalized);
     const coverageView = normalized.scale === "coverage";
-    title = coverageView ? "GPU coverage" : "GPU hedge";
+    title = coverageView ? "GPU coverage" : model.side === "seller" ? "Revenue hedge" : "Cost hedge";
     imageAlt = coverageView
       ? `${model.gpu} GPU coverage. Settlement month ${model.delivery}. ${model.hours.toLocaleString("en-US")} GPU-hours: ${model.hedgedHours.toLocaleString("en-US")} hedged, ${model.exposedHours.toLocaleString("en-US")} exposed. ${description}`
       : `${normalized.gpu} ${title.toLowerCase()}. Settlement month ${normalized.delivery}. ${normalized.hours.toLocaleString("en-US")} GPU-hours, ${normalized.coverage}% hedged at ${usd(normalized.rate)} per GPU-hour. ${description}`;

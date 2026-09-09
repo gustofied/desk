@@ -59,7 +59,7 @@ export function paintGpuHedgeChart(svg, model, options = {}) {
   if (canInteract) {
     root.setAttribute('tabindex', '0');
     root.setAttribute('role', 'slider');
-    root.setAttribute('aria-label', `${model.gpu} settlement price. Arrow keys inspect hedged and unhedged profit.`);
+    root.setAttribute('aria-label', `${model.gpu} settlement price. Arrow keys inspect hedged and unhedged ${amountLabel(model)}.`);
     root.setAttribute('aria-valuemin', String(model.domain[0]));
     root.setAttribute('aria-valuemax', String(model.domain[1]));
     root.setAttribute('aria-orientation', 'horizontal');
@@ -210,29 +210,39 @@ function markup(model, { colors = {}, compact = false, gallery = false, title, h
   const inset = 48;
   const plot = { top: gallery ? 192 : mobile ? 208 : 160, bottom: gallery ? height - 8 : height - 64 };
   const x = scaleLinear().domain(model.domain).range([0, WIDTH]).clamp(true);
-  // Two samples suffice: both profit curves are exactly linear in settlement.
+  // Two samples suffice: both outcome curves are exactly linear in settlement.
   const points = model.domain.map(settlement => ({ settlement, ...model.profitAt(settlement) }));
-  const values = [0, ...points.flatMap(point => [point.unhedged, point.hedged])];
+  const values = points.flatMap(point => [point.unhedged, point.hedged]);
+  if (model.side !== 'seller') values.push(0);
   const minimum = Math.min(...values), maximum = Math.max(...values);
-  const padding = Math.max((maximum - minimum) * 0.16, Math.abs(maximum) * 0.05, 1);
-  const y = scaleLinear().domain([minimum - padding, maximum + padding]).range([plot.bottom, plot.top]);
+  const padding = model.side === 'seller' && maximum > minimum
+    ? (maximum - minimum) * 0.16
+    : Math.max((maximum - minimum) * 0.16, Math.abs(maximum) * 0.05, 1);
+  const yDomain = [minimum - padding, maximum + padding];
+  const zeroVisible = yDomain[0] <= 0 && yDomain[1] >= 0;
+  const y = scaleLinear().domain(yDomain).range([plot.bottom, plot.top]);
   const path = key => line().x(point => x(point.settlement)).y(point => y(point[key]))(points);
   const spread = area().x(point => x(point.settlement)).y0(point => y(point.unhedged)).y1(point => y(point.hedged));
   const delivery = deliveryLabel(model.delivery);
-  const safeTitle = !title || title === 'GPU hedge' ? `${model.gpu} hedge` : title;
+  const safeTitle = purposeTitle(model, title);
+  const measure = amountLabel(model);
   const context = String(safeTitle).includes(model.gpu) ? delivery : `${model.gpu}  ${delivery}`;
-  const label = `${safeTitle}. ${delivery}. Buyer profit by settlement price in USD per GPU-hour. ${model.coverage}% hedged at ${dollar(model.rate)}. At entry: hedged profit ${profit(model.headlineProfit)}. Manual scenario.`;
-  const baseline = gallery ? '' : `<line data-gpu-hedge-zero="" x1="0" x2="${WIDTH}" y1="${coordinate(y(0))}" y2="${coordinate(y(0))}" stroke="${palette.secondary}" stroke-opacity=".28" stroke-width="1" stroke-dasharray="3 7"/>`;
+  const label = `${safeTitle}. ${model.gpu}. ${delivery}. ${model.side === 'seller' ? 'Seller' : 'Buyer'} ${measure} in USD by settlement price in USD per GPU-hour. ${model.coverage}% hedged at ${dollar(model.rate)} per GPU-hour. At entry: hedged ${measure} ${profit(model.headlineProfit)}.`;
+  const baseline = gallery || !zeroVisible ? '' : `<line data-gpu-hedge-zero="" x1="0" x2="${WIDTH}" y1="${coordinate(y(0))}" y2="${coordinate(y(0))}" stroke="${palette.secondary}" stroke-opacity=".28" stroke-width="1" stroke-dasharray="3 7"/>`;
   const geometry = `<path data-gpu-hedge-area="" d="${spread(points)}" fill="${palette.area}" fill-opacity=".10"/>
     ${baseline}
     <path data-gpu-hedge-line="unhedged" d="${path('unhedged')}" fill="none" stroke="${palette.secondary}" stroke-opacity=".64" stroke-width="${gallery ? 3.5 : 3}"/>
     <path data-gpu-hedge-line="hedged" d="${path('hedged')}" fill="none" stroke="${palette.line}" stroke-width="${gallery ? 5 : 4}"/>`;
+  const hedgedReadout = `Hedged ${profit(model.headlineProfit)}`;
+  const unhedgedReadout = `Unhedged ${profit(model.profitAt(model.rate).unhedged)}`;
+  const hedgedReadoutWidth = mobile ? 520 : 320;
+  const unhedgedReadoutWidth = mobile ? 544 : 288;
   const header = viewArtifactHeaderMarkup({
     title: safeTitle, context: context.toUpperCase(), headline: gallery ? profit(model.headlineProfit) : '', colors: palette, compact: gallery,
   }) + (gallery ? '' : `<g data-gpu-hedge-readout="" font-size="${font}" pointer-events="none">
     <text data-gpu-hedge-settlement="" data-readout-width="${mobile ? 1104 : 440}" x="${inset}" y="128" fill="${palette.line}">Settlement ${priceLabel(model.rate)} /GPU-h</text>
-    <text data-gpu-hedge-hedged="" data-readout-width="${mobile ? 520 : 320}" x="${mobile ? inset : 528}" y="${mobile ? 176 : 128}" fill="${palette.line}">Hedged ${profit(model.headlineProfit)}</text>
-    <text data-gpu-hedge-unhedged="" data-readout-width="${mobile ? 544 : 288}" x="${WIDTH-inset}" y="${mobile ? 176 : 128}" text-anchor="end" fill="${palette.secondary}" fill-opacity=".72">Unhedged ${profit(model.profitAt(model.rate).unhedged)}</text>
+    <text data-gpu-hedge-hedged="" data-readout-width="${hedgedReadoutWidth}" font-size="${readoutFont(hedgedReadout, font, hedgedReadoutWidth)}" x="${mobile ? inset : 528}" y="${mobile ? 176 : 128}" fill="${palette.line}">${hedgedReadout}</text>
+    <text data-gpu-hedge-unhedged="" data-readout-width="${unhedgedReadoutWidth}" font-size="${readoutFont(unhedgedReadout, font, unhedgedReadoutWidth)}" x="${WIDTH-inset}" y="${mobile ? 176 : 128}" text-anchor="end" fill="${palette.secondary}" fill-opacity=".72">${unhedgedReadout}</text>
   </g>`);
   let annotations = '';
   if (!gallery) {
@@ -261,7 +271,7 @@ function markup(model, { colors = {}, compact = false, gallery = false, title, h
     annotations += `<g font-size="${font}" stroke="${palette.paper}" stroke-width="6" stroke-opacity=".86" stroke-linejoin="round" style="paint-order:stroke fill" pointer-events="none">
       <text data-gpu-hedge-label="hedged" x="${WIDTH-48}" y="${coordinate(clamp(hedgedY, plot.top+font, plot.bottom))}" text-anchor="end" fill="${palette.line}">Hedged</text>
       <text data-gpu-hedge-label="unhedged" x="${WIDTH-48}" y="${coordinate(clamp(unhedgedY, plot.top+font, plot.bottom))}" text-anchor="end" fill="${palette.secondary}" fill-opacity=".72">Unhedged</text>
-      ${model.breakEven !== null && model.breakEven >= model.domain[0] && model.breakEven <= model.domain[1]
+      ${zeroVisible && model.breakEven !== null && model.breakEven >= model.domain[0] && model.breakEven <= model.domain[1]
         ? `<text data-gpu-hedge-breakeven="" x="${coordinate(breakEvenX)}" y="${coordinate(breakEvenY)}" text-anchor="${breakEvenAnchor}" fill="${palette.secondary}" fill-opacity=".72" font-size="${font}">Breakeven ${priceLabel(model.breakEven)}</text>` : ''}
     </g>
     <line data-gpu-hedge-cursor="" visibility="hidden" y1="${plot.top}" y2="${plot.bottom}" stroke="${palette.secondary}" stroke-opacity=".28" stroke-width="1" pointer-events="none"/>`;
@@ -275,7 +285,20 @@ function markup(model, { colors = {}, compact = false, gallery = false, title, h
 
 function readoutText(model, settlement) {
   const values = model.profitAt(settlement);
-  return `Settlement ${priceLabel(settlement)} /GPU-h   Hedged profit ${profit(values.hedged)}   Unhedged profit ${profit(values.unhedged)}`;
+  const measure = amountLabel(model);
+  return `Settlement ${priceLabel(settlement)} /GPU-h   Hedged ${measure} ${profit(values.hedged)}   Unhedged ${measure} ${profit(values.unhedged)}`;
+}
+
+function amountLabel(model) {
+  return model.side === 'seller' ? model.costs > 0 ? 'net revenue' : 'revenue' : 'profit';
+}
+
+function purposeTitle(model, title) {
+  const genericTitles = ['gpu hedge', `${model.gpu} hedge`];
+  const normalized = String(title || '').trim().toLowerCase();
+  return !normalized || genericTitles.some(generic => generic.toLowerCase() === normalized)
+    ? model.side === 'seller' ? 'Revenue hedge' : 'Cost hedge'
+    : title;
 }
 
 function fitReadout(readout, font) {
@@ -285,6 +308,12 @@ function fitReadout(readout, font) {
     const measured = node.getComputedTextLength?.() || node.textContent.length * font * .62;
     if (measured > width) node.setAttribute('font-size', font * width / measured);
   });
+}
+
+function readoutFont(text, font, width) {
+  // Static SVG exports have no text measurement API. Interactive readouts
+  // replace this estimate with their measured width in fitReadout.
+  return coordinate(Math.min(font, width / (text.length * .62)));
 }
 
 function spacedTicks(scale, count, font, inset) {

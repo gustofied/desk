@@ -1922,6 +1922,12 @@ button.compute-share-card-frame:focus-visible {
   mask-image: none;
 }
 
+@media (min-width: 1201px) {
+  .gpu-index[data-hedge-direction="seller"][data-card-scale="price"] .gpu-benchmark__calculator-inputs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .gpu-benchmark__calculator-more {
   grid-column: 1 / -1;
   display: flow-root;

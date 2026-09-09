@@ -96,6 +96,7 @@ const PRIVATE_CAPACITY_OPTIONS = Object.freeze([
 ]);
 
 const GPU_HEDGE_OPTIONS = Object.freeze([
+  { id: "side", label: "Side", values: Object.freeze(["buyer", "seller"]), valueLabels: Object.freeze({ buyer: "Buying", seller: "Selling" }), default: "buyer", skipDefaultPath: true },
   { id: "delivery", label: "Settlement month", type: "month", min: "2026-01", max: "2035-12", default: "2026-10" },
   { id: "hours", label: "GPU-hours", type: "integer", min: 1, max: 1_000_000_000, default: 500_000 },
   { id: "revenue", label: "Revenue", type: "decimal", min: 0, max: 1_000_000_000_000, precision: 2, default: 1_500_000 },
@@ -765,7 +766,7 @@ export const CARD_REGISTRY = Object.freeze([
     primaryParam: "gpu",
     title: "GPU hedge",
     craftLabel: "GPU hedge",
-    description: "Gross profit across GPU rental prices, using your operating and hedge assumptions.",
+    description: "Compare buying costs or selling revenue with and without a hedge.",
     dataFile: GPU_HEDGE_DATA_FILE,
     dataUrl: `./${GPU_HEDGE_DATA_FILE}`,
     dataAdapter: "calculator",
@@ -783,7 +784,8 @@ export const CARD_REGISTRY = Object.freeze([
     layers: GPU_HEDGE_LAYERS,
     stateOptions: GPU_HEDGE_OPTIONS,
     catalogPresets: Object.freeze([
-      Object.freeze({ id: "buyer", label: "GPU hedge", state: Object.freeze({ gpu: "H100" }) }),
+      Object.freeze({ id: "buyer", label: "Cost hedge", state: Object.freeze({ gpu: "H100" }) }),
+      Object.freeze({ id: "seller", label: "Revenue hedge", state: Object.freeze({ gpu: "H100", side: "seller", hours: 1_120_000, rate: 4.4, costs: 0, coverage: 100, basis: 0 }) }),
       Object.freeze({ id: "coverage", label: "GPU coverage", state: Object.freeze({ gpu: "H100", scale: "coverage", coverage: 60 }) }),
     ]),
     visualizations: Object.freeze([

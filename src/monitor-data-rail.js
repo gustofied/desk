@@ -79,8 +79,8 @@ export function createMonitorDataRail({ root, copyText, reducedMotion = false })
     const sourceOnly = model.accessKind === "source";
     const calculator = Boolean(model.calculationFields);
     root.dataset.accessKind = model.accessKind || "cli";
-    root.setAttribute("aria-label", calculator ? "Calculation details" : sourceOnly ? "Market data source" : "Desk API");
-    nodes.label.textContent = calculator ? "Calculation" : sourceOnly ? "Source" : "Desk API";
+    root.setAttribute("aria-label", calculator ? `${model.railLabel || "Calculation"} details` : sourceOnly ? "Market data source" : "Desk API");
+    nodes.label.textContent = calculator ? model.railLabel || "Calculation" : sourceOnly ? "Source" : "Desk API";
     nodes.dataset.textContent = model.label;
     nodes.context.textContent = sourceOnly ? model.summary : [model.summary, model.provenance].filter(Boolean).join(" ");
     nodes.context.title = nodes.context.textContent;
@@ -328,7 +328,7 @@ function sentenceLabel(value) {
 }
 
 function toggleLabel(model) {
-  if (model.calculationFields) return `Calculation details, ${model.summary}`;
+  if (model.calculationFields) return `${model.railLabel || "Calculation"} details, ${model.label}, ${model.summary}`;
   if (model.accessKind === "source") return `Data by ${model.label}, ${model.summary}`;
   const label = [
     "Desk API",

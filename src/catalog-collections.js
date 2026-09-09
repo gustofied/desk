@@ -7,8 +7,8 @@ import { EQUITY_LAYERS, paletteIds, THEMES } from "./card-registry.js";
 import { createSharedDesk } from "./shared-desk.js";
 
 const STORAGE_KEY = "desk.catalog-collections.v1";
-const STORAGE_VERSION = 16;
-const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+const STORAGE_VERSION = 17;
+const LEGACY_STORAGE_VERSIONS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
 const ALL_CARDS_ID = "all";
 const OVERVIEW_CATALOG_ID = "overview";
 const HEDGE_CATALOG_ID = "hedge";
@@ -59,6 +59,7 @@ const STARTER_CATALOGS = Object.freeze([
     name: "Hedge",
     keys: Object.freeze([
       "preset-gpu-hedge-buyer",
+      "preset-gpu-hedge-seller",
       "preset-gpu-hedge-coverage",
       "preset-gpu-index-h100-b200-spread",
       "preset-gpu-index-h200-b300-spread",
@@ -722,8 +723,10 @@ function migrateLegacyState(value) {
     version: STORAGE_VERSION,
   });
   const now = new Date().toISOString();
+  // Add Revenue hedge only to an untouched prior Hedge; never restore Lease.
+  if (sourceVersion >= 16) return upgradeHedgeStarter(legacyState, now, sourceVersion);
   // Introduce Lease once, without restoring removed older starters or views.
-  if (sourceVersion >= 15) return addLeaseStarter(legacyState, now);
+  if (sourceVersion >= 15) return addLeaseStarter(upgradeHedgeStarter(legacyState, now, sourceVersion), now);
   if (sourceVersion >= 13) return addLeaseStarter(upgradeHedgeStarter(legacyState, now, sourceVersion), now);
   let collections = [...legacyState.collections];
   const forward = STARTER_CATALOGS.find(starter => starter.id === "forward");
@@ -789,7 +792,8 @@ function addLeaseStarter(state, now) {
 function upgradeHedgeStarter(state, now, sourceVersion) {
   const next = STARTER_CATALOGS.find(starter => starter.id === HEDGE_CATALOG_ID);
   const previous = { ...next, keys: next.keys.filter(key =>
-    key !== "preset-gpu-hedge-coverage" &&
+    key !== "preset-gpu-hedge-seller" &&
+    (sourceVersion >= 15 || key !== "preset-gpu-hedge-coverage") &&
     (sourceVersion >= 14 || key !== "preset-gpu-hedge-buyer")) };
   return {
     ...state,

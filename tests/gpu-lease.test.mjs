@@ -104,7 +104,7 @@ test('custom lease inputs survive URL, save and share; the starter migrates only
   const oldCollections = fresh.collections.filter(collection => collection.id !== 'lease');
   localStorage.setItem(CATALOG_COLLECTIONS_STORAGE_KEY, JSON.stringify({ version: 15, activeId: 'overview', collections: oldCollections }));
   const upgraded = loadCatalogCollections();
-  assert.equal(upgraded.version, 16);
+  assert.equal(upgraded.version, 17);
   assert.deepEqual(upgraded.collections.filter(collection => collection.id !== 'lease'), oldCollections);
   assert.equal(upgraded.collections.filter(collection => collection.id === 'lease').length, 1);
   assert.deepEqual(loadCatalogCollections(), upgraded);

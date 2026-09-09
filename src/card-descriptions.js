@@ -17,8 +17,10 @@ export function cardDetailDescription(card, state = {}) {
       return "Lease payments and resale value at the end of the term.";
     case "gpu-hedge":
       return scale === "coverage"
-        ? "GPU-hours covered by the hedge versus hours exposed to settlement prices. Capacity is purchased separately."
-        : "Profit across settlement prices, with and without a cash-settled GPU hedge. Capacity is purchased separately.";
+        ? "The share of your GPU-hours hedged against price changes."
+        : state.side === "seller"
+          ? `Revenue${Number(state.costs) > 0 ? " after costs" : ""} from selling GPU-hours at different rental prices, with and without a hedge.`
+          : "How changing GPU rental prices affects your profit, with and without a hedge.";
     case "forward-prices":
       return range === "now"
         ? "GPU rental quotes by delivery month. US East, 256 GPUs, 30-day InfiniBand rentals."

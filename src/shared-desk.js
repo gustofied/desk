@@ -135,8 +135,9 @@ function normalizeState(card, value, strict) {
   const extraKeys = card.stateKind === "deal"
     ? ["layers", "scale", "range"]
     : card.primaryParam && card.primaryParam !== "gpu" ? ["gpu"] : [];
-  // Equity links created before the optional chart style used lines implicitly.
-  const requiredKeys = card.id === "equities" ? canonicalKeys.filter(key => key !== "style") : canonicalKeys;
+  // Legacy equity style and hedge side had implicit defaults before publication.
+  const optionalLegacyKeys = card.id === "equities" ? ["style"] : card.id === "gpu-hedge" ? ["side"] : [];
+  const requiredKeys = canonicalKeys.filter(key => !optionalLegacyKeys.includes(key));
   requireKeys(value, strict ? canonicalKeys : [...canonicalKeys, ...extraKeys], strict ? requiredKeys : []);
   const compatible = migrateCardVisualizationState(card.id, value);
   const input = {};

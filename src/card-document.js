@@ -52,12 +52,13 @@ export function normalizeCardDocument(value) {
   const id = normalizeDocumentId(value.id);
   const name = normalizeCardDocumentName(value.name);
   if (!name) throw new TypeError("Enter a name");
-  const visualization = normalizeCardVisualization(card.id, value.visualization);
+  const compatible = migrateCardVisualizationState(card.id, value.visualization);
+  const visualization = normalizeCardVisualization(card.id, compatible);
   if (card.stateKind === "calculator") {
     const keys = cardStateParamIds(card);
-    if (!isRecord(value.visualization) || Object.keys(value.visualization).length !== keys.length ||
-      keys.some(key => !Object.hasOwn(value.visualization, key) ||
-        JSON.stringify(value.visualization[key]) !== JSON.stringify(visualization[key]))) {
+    if (!isRecord(compatible) || Object.keys(compatible).length !== keys.length ||
+      keys.some(key => !Object.hasOwn(compatible, key) ||
+        JSON.stringify(compatible[key]) !== JSON.stringify(visualization[key]))) {
       throw new TypeError("Saved calculator state must be a complete canonical snapshot");
     }
   }
@@ -102,9 +103,13 @@ export function normalizeCardVisualization(cardId, state = {}) {
   return visualization;
 }
 
-// Only known legacy equity fields are repaired before strict snapshot checks.
+// Only known legacy omissions and values are repaired before strict checks.
 export function migrateCardVisualizationState(cardId, state) {
-  if (cardId !== "equities" || !isRecord(state)) return state;
+  if (!isRecord(state)) return state;
+  if (cardId === "gpu-hedge" && !Object.hasOwn(state, "side")) {
+    return { ...state, side: "buyer" };
+  }
+  if (cardId !== "equities") return state;
   const changes = {};
   if (state.range === "all") changes.range = "1y";
   if (!Object.hasOwn(state, "style")) changes.style = "lines";

@@ -824,6 +824,7 @@ test('Data controls and source disclosures keep the chart in place', async t => 
       if (card === 'gpu-hedge') {
         const more = panel.locator('.gpu-benchmark__calculator-more');
         const summary = more.locator('summary');
+        assert.equal(await summary.textContent(), 'Costs & pricing');
         const collapsed = await panel.boundingBox();
         await summary.click();
         const fields = more.locator('[data-option-field]');
@@ -835,16 +836,16 @@ test('Data controls and source disclosures keep the chart in place', async t => 
         }));
         for (const field of fieldBounds) {
           assert.ok(field.left >= summaryBounds.x + summaryBounds.width - 1,
-            `Costs & basis fields open to the right of the summary for ${label}`);
+            `Costs & pricing fields open to the right of the summary for ${label}`);
         }
         assert.ok(fieldBounds[0].top < summaryBounds.y + summaryBounds.height &&
-          fieldBounds[0].bottom > summaryBounds.y, `Costs & basis starts beside the summary for ${label}`);
+          fieldBounds[0].bottom > summaryBounds.y, `Costs & pricing starts beside the summary for ${label}`);
         if (width >= 900) {
           assert.ok(Math.abs((await panel.boundingBox()).height - collapsed.height) <= 1,
-            `opening Costs & basis keeps Data height unchanged for ${label}`);
+            `opening Costs & pricing keeps Data height unchanged for ${label}`);
         }
-        await assertDataFits(`${label} with Costs & basis expanded`);
-        assertCraftGeometry(await craftGeometry(), closed, `expanding Costs & basis keeps ${label} in place`);
+        await assertDataFits(`${label} with Costs & pricing expanded`);
+        assertCraftGeometry(await craftGeometry(), closed, `expanding Costs & pricing keeps ${label} in place`);
 
         const profit = page.locator('[data-gpu-chart-svg] [data-gpu-hedge-hedged]');
         for (const [option, value] of [['costs', '125000'], ['basis', '0.25']]) {
@@ -855,20 +856,51 @@ test('Data controls and source disclosures keep the chart in place', async t => 
           await page.waitForURL(url => url.searchParams.get(option) === value);
           assert.notEqual(await profit.textContent(), priorProfit, `editing ${option} updates Hedge profit for ${label}`);
           assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `editing ${option} keeps Data open for ${label}`);
-          assert.equal(await more.evaluate(node => node.open), true, `editing ${option} keeps Costs & basis open for ${label}`);
+          assert.equal(await more.evaluate(node => node.open), true, `editing ${option} keeps Costs & pricing open for ${label}`);
         }
-        await assertDataFits(`${label} after editing Costs & basis`);
-        assertCraftGeometry(await craftGeometry(), closed, `editing Costs & basis keeps ${label} in place`);
+        await assertDataFits(`${label} after editing Costs & pricing`);
+        assertCraftGeometry(await craftGeometry(), closed, `editing Costs & pricing keeps ${label} in place`);
+
+        const side = value => panel.locator(`[data-card-option="side"][data-card-option-value="${value}"]`);
+        assert.equal(await side('buyer').textContent(), 'Buying');
+        assert.equal(await side('seller').textContent(), 'Selling');
+        const revenue = panel.locator('[data-card-option-input="revenue"]');
+        await revenue.fill('1875000');
+        await revenue.press('Tab');
+        await page.waitForURL(url => url.searchParams.get('revenue') === '1875000');
+        const assumptions = () => panel.locator('[data-card-option-input]').evaluateAll(nodes =>
+          Object.fromEntries(nodes.map(node => [node.dataset.cardOptionInput, node.value])));
+        const buyerInputs = await assumptions();
+        await side('seller').click();
+        await page.waitForURL(url => url.searchParams.get('side') === 'seller');
+        assert.equal(await revenue.isVisible(), false, `seller has no fixed-revenue field for ${label}`);
+        assert.equal(await revenue.isDisabled(), true, `seller excludes the unused input from validation for ${label}`);
+        assert.deepEqual(await assumptions(), buyerInputs, `switching side preserves every entered assumption for ${label}`);
+        const slope = () => page.locator('[data-gpu-chart-svg] [data-gpu-hedge-line="hedged"]').evaluate(node =>
+          node.getPointAtLength(node.getTotalLength()).y - node.getPointAtLength(0).y);
+        assert.ok(Math.abs(await slope()) < 0.1, `fully hedged seller revenue is flat for ${label}`);
+        const coverage = panel.locator('[data-card-option-input="coverage"]');
+        await coverage.fill('50');
+        await coverage.press('Tab');
+        await page.waitForURL(url => url.searchParams.get('coverage') === '50');
+        assert.ok(await slope() < -1, `partially hedged seller revenue increases with settlement price for ${label}`);
+        await assertDataFits(`${label} Selling`);
+        assertCraftGeometry(await craftGeometry(), closed, `switching to Selling keeps ${label} in place`);
+        await side('buyer').click();
+        await page.waitForURL(url => url.searchParams.get('side') !== 'seller');
+        assert.equal(await revenue.isVisible(), true, `Buying restores Revenue for ${label}`);
+        assert.equal(await revenue.isEnabled(), true);
+        assert.deepEqual(await assumptions(), { ...buyerInputs, coverage: '50' }, `Buying restores retained assumptions for ${label}`);
 
         await summary.focus();
         await summary.press('Enter');
         await fields.first().waitFor({ state: 'hidden' });
-        assert.equal(await more.evaluate(node => node.open), false, `Enter closes Costs & basis for ${label}`);
+        assert.equal(await more.evaluate(node => node.open), false, `Enter closes Costs & pricing for ${label}`);
         assert.equal(await summary.evaluate(node => node === document.activeElement), true,
-          `closing Costs & basis keeps summary focus for ${label}`);
+          `closing Costs & pricing keeps summary focus for ${label}`);
         await summary.press('Space');
         await fields.first().waitFor({ state: 'visible' });
-        assert.equal(await more.evaluate(node => node.open), true, `Space opens Costs & basis for ${label}`);
+        assert.equal(await more.evaluate(node => node.open), true, `Space opens Costs & pricing for ${label}`);
       }
 
       if (card === 'gpu-hedge' && width <= 390) {
@@ -921,6 +953,37 @@ test('Data controls and source disclosures keep the chart in place', async t => 
         assert.equal(await panel.isVisible(), false, `Views closes Data and returns to the chooser for ${label}`);
       }
     }
+  }
+
+  for (const [width, palette, theme] of [[1440, 'sage', 'dark'], [390, 'linen', 'light']]) {
+    const savedPage = await pageFor(t, { viewport: { width, height: 844 }, hasTouch: width === 390, isMobile: width === 390 });
+    await open(savedPage, `/?card=gpu-hedge&view=craft&gpu=H200&side=seller&hours=1120000&revenue=1875000&rate=4.4&coverage=75&costs=125000&basis=-0.2&delivery=2027-02&palette=${palette}&theme=${theme}`);
+    assert.deepEqual(await savedPage.evaluate(() => [document.documentElement.dataset.palette, document.documentElement.dataset.theme]), [palette, theme]);
+    const activate = locator => width === 390 ? locator.tap() : locator.click();
+    const plotted = await savedPage.locator('[data-gpu-chart-svg] [data-gpu-hedge-line="hedged"]').getAttribute('d');
+    await activate(savedPage.locator('[data-card-save]'));
+    await savedPage.locator('[data-save-name]').fill(`Seller ${width}`);
+    await activate(savedPage.locator('[data-save-submit]'));
+    await savedPage.locator('[data-save-dialog]').waitFor({ state: 'hidden' });
+    const saved = await savedPage.evaluate(name => JSON.parse(localStorage.getItem('desk.catalog.v2')).items.find(item => item.name === name), `Seller ${width}`);
+    assert.equal(saved.visualization.side, 'seller', 'saved seller keeps its side');
+    await activate(savedPage.locator(`button[data-catalog-id="saved-gpu-hedge-${saved.id}"]`));
+    await savedPage.waitForURL(url => url.searchParams.get('item') === saved.id && url.searchParams.get('view') === 'monitor');
+    const editUrl = new URL(savedPage.url());
+    editUrl.searchParams.set('view', 'craft');
+    await savedPage.goto(editUrl.href, { waitUntil: 'networkidle' });
+    await savedPage.reload({ waitUntil: 'networkidle' });
+    await savedPage.waitForFunction(() => document.querySelector('[data-card-ready="true"]'));
+    await activate(savedPage.locator('[data-card-compare-toggle]'));
+    assert.equal(await savedPage.locator('[data-card-option="side"][data-card-option-value="seller"]').getAttribute('aria-checked'), 'true');
+    assert.equal(await savedPage.locator('[data-card-option-input="revenue"]').isVisible(), false);
+    assert.equal(await savedPage.locator('[data-card-option-input="revenue"]').isDisabled(), true);
+    for (const [key, value] of Object.entries({ hours: '1120000', revenue: '1875000', rate: '4.4', coverage: '75', costs: '125000', basis: '-0.2', delivery: '2027-02' })) {
+      assert.equal(await savedPage.locator(`[data-card-option-input="${key}"]`).inputValue(), value, `${key} survives saved seller reload`);
+    }
+    assert.equal(await savedPage.locator('[data-gpu-chart-svg] [data-gpu-hedge-line="hedged"]').getAttribute('d'), plotted, 'saved seller reload preserves plotted economics');
+    assert.deepEqual(await savedPage.evaluate(() => [document.documentElement.dataset.palette, document.documentElement.dataset.theme]), [palette, theme]);
+    assert.equal(await savedPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, 'saved seller Data has no page overflow');
   }
 
   const geometry = () => page.evaluate(() => ({
