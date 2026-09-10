@@ -1,5 +1,5 @@
 import { cp, mkdir, readFile, rm } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CARD_REGISTRY } from "../src/card-registry.js";
 import { assertEquitiesPublicDisplay } from "./equities-runtime.mjs";
@@ -27,6 +27,12 @@ const dataEntries = [...new Set([
 
 export async function buildSite({ projectRoot = defaultRoot } = {}) {
   const output = join(projectRoot, "_site");
+  // The standalone concept is kept in the repo for local use, not deployed.
+  // Filter nested assets too: assets/ and styles/ are otherwise copied whole.
+  const localOnlyPaths = ["walkthrough", "assets/walkthrough", "styles/walkthrough.css"]
+    .map(entry => resolve(projectRoot, entry));
+  const publishable = source => !localOnlyPaths.some(path =>
+    resolve(source) === path || resolve(source).startsWith(path + sep));
   // Validate before replacing an existing deployment. Only explicit demo equity
   // history is publishable; a stale local provider runtime must fail closed.
   const equities = JSON.parse(await readFile(join(projectRoot, "data/equities.json"), "utf8"));
@@ -36,7 +42,9 @@ export async function buildSite({ projectRoot = defaultRoot } = {}) {
   await Promise.all([...siteEntries, ...dataEntries].map(async entry => {
     const destination = join(output, entry);
     await mkdir(dirname(destination), { recursive: true });
-    await cp(join(projectRoot, entry), destination, { recursive: true, dereference: true });
+    await cp(join(projectRoot, entry), destination, {
+      recursive: true, dereference: true, filter: publishable,
+    });
   }));
   return output;
 }

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#181818">
+    <meta name="description" content="Find your compute. An animated concept showing a request become a quote, then a desk built around it.">
+    <meta name="robots" content="noindex">
+    <title>Find your compute | Desk</title>
+    <link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="../assets/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="../assets/fonts/GeistMono-Variable.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="../styles/deal-view.css">
+    <link rel="stylesheet" href="../styles/walkthrough.css?v=5">
+    <script type="module" src="../assets/walkthrough/player.js?v=5"></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#walkthrough-controls">Skip to playback controls</a>
+    <header class="page-header"><a class="open-desk" href="../" aria-label="Back to Desk">DESK <span aria-hidden="true">↗</span></a></header>
+    <main class="walkthrough">
+      <div class="introduction"><h1>Find your compute</h1><details class="demo-note"><summary>Demo</summary><div><p>Sample availability and prices. Playing this flow does not book or save anything.</p><p>The hedge tiles show a separate floating-cost example: 50% of 86,016 hours at $2.60. Full use and a matching index are assumed; fees, basis and collateral are excluded.</p><p>Open in Desk carries the three market and hedge views into a temporary catalog using Desk’s current data. The sample quote stays here. Use Save a copy in Desk to keep the catalog.</p></div></details></div>
+      <nav class="chapters" aria-label="Walkthrough chapters"></nav>
+      <section class="player" aria-label="Find your compute animated concept" aria-describedby="story-caption">
+        <div class="stage" aria-hidden="true" inert>
+          <header class="demo-chrome"><div class="scene-titles"><span data-step="request">Compute request</span><span data-step="window">Delivery window</span><span data-step="offers">Matching offers</span><span data-step="quote">Your quote</span><span data-step="desk">H100 desk</span></div></header>
+          <section class="request-panel">
+            <div class="request-heading"><span>What do you need?</span><span class="request-reference">REQUEST 024</span></div>
+            <div class="request-fields">
+              <div class="request-field" data-field="gpu"><span>Hardware</span><strong>H100 <small>SXM</small></strong><i></i></div>
+              <div class="request-field" data-field="count"><span>GPUs</span><strong><b class="gpu-count">256</b> <small>32 nodes</small></strong><i></i></div>
+              <div class="request-field" data-field="region"><span>Region</span><strong>US East</strong><i></i></div>
+              <div class="request-field" data-field="network"><span>Network</span><strong>InfiniBand</strong><i></i></div>
+            </div>
+          </section>
+          <section class="capacity-intro"><div class="node-grid"></div><div class="capacity-caption"><span>32 nodes</span><span>8 GPUs per node</span></div><div class="find-action">Find availability <span>↗</span></div></section>
+          <section class="date-panel">
+            <header><span>October <b>2026</b></span><span class="date-duration">14 days <span>/</span> 86,016 GPU hours</span></header>
+            <div class="calendar"><div class="calendar-days"></div><div class="calendar-window"><i></i><span>14 days</span><i></i></div></div>
+            <footer><span class="date-range"><span class="date-original">5 to 19 October</span><span class="date-shifted">8 to 22 October</span></span><span class="date-caption">00:00 UTC <span>to 00:00 UTC</span></span></footer>
+          </section>
+          <section class="offers-panel"><header class="offers-heading"><span>Matching offers <b>03</b></span><span><span class="offer-sort">Lowest total first</span><span class="mobile-units">USD / GPU-h</span></span></header><div class="offer-list"></div></section>
+          <div class="shift-note"><strong><b class="saving-amount"></b> less <span>for the same two weeks</span></strong></div>
+          <div class="quote-destination"></div>
+          <section class="tailored-desk">
+            <div class="desk-grid"></div>
+          </section>
+          <div class="story-pointer"><svg viewBox="0 0 24 28"><path d="m3 2 17 14-8 1-4 8Z"/></svg><i></i></div>
+        </div>
+        <div class="player-footer">
+        <div class="story-caption" id="story-caption"><div><h2>Start with what you need.</h2><p class="accessible-summary sr-only"></p></div></div>
+        <div class="playback" id="walkthrough-controls">
+          <button class="play-button" type="button" aria-label="Play walkthrough" disabled><svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7Z"/></svg><svg class="pause-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14"/></svg><span>Play flow</span></button>
+          <label class="scrubber"><span class="sr-only">Walkthrough position</span><input id="story-position" type="range" min="0" max="40" step="0.05" value="0" disabled></label><span class="timecode" aria-hidden="true">00:00 / 00:40</span>
+          <button class="replay-button" type="button" aria-label="Replay walkthrough" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 8M4 4v6h6"/></svg></button>
+        </div>
+        </div>
+        <p class="playback-status sr-only" role="status"></p>
+        <noscript><p class="fallback">This animated concept needs JavaScript. <a href="../">Open Desk instead.</a></p></noscript>
+      </section>
+      <footer class="desk-handoff"><a class="open-request-desk" aria-label="Open H100 market and hedge views in Desk" hidden>Open in Desk <span aria-hidden="true">↗</span></a></footer>
+    </main>
+  </body>
+</html>
