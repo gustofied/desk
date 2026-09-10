@@ -236,7 +236,7 @@
   .desk-command-menu__surface { max-height: inherit; }
 
   .desk-command-menu__stage {
-    height: min(584px, calc(var(--desk-command-viewport-height, 100dvh) - var(--desk-mobile-top) - 64px - env(safe-area-inset-bottom, 0px)));
+    height: min(var(--desk-command-stage-height, 584px), calc(var(--desk-command-viewport-height, 100dvh) - var(--desk-mobile-top) - 64px - env(safe-area-inset-bottom, 0px)));
   }
 
   .desk-command-menu__close,

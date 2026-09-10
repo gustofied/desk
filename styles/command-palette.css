@@ -33,7 +33,7 @@
 
 .desk-command-menu__stage {
   display: grid;
-  height: min(584px, calc(100dvh - 128px));
+  height: min(var(--desk-command-stage-height, 584px), calc(100dvh - 128px));
   isolation: isolate;
 }
 
@@ -280,6 +280,64 @@
   opacity: 0.42;
 }
 
+/* Appearance lives in the same command surface and keeps its keyboard model. */
+.desk-command-menu[data-command-section="appearance"] .desk-command-menu__search {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+}
+
+.desk-command-menu__back[hidden] {
+  display: none;
+}
+
+.desk-command-menu__option[data-choice] {
+  min-height: 40px;
+  grid-template-columns: minmax(96px, 1fr) minmax(0, 2fr) 16px;
+  gap: 16px;
+}
+
+.desk-command-menu__swatch {
+  display: block;
+  height: 12px;
+  min-width: 0;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px var(--desk-chrome-rule);
+}
+
+.desk-command-menu__check {
+  display: block;
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+}
+
+.desk-command-menu__check svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.desk-command-menu__option[data-current="true"] .desk-command-menu__check {
+  opacity: 1;
+}
+
+.desk-command-menu__option[data-choice="theme"] {
+  grid-template-columns: minmax(0, 1fr) 16px;
+}
+
+.desk-command-menu[data-command-section="appearance"] .desk-command-menu__option[data-choice="theme"] {
+  display: inline-grid;
+  width: 50%;
+}
+
+.desk-command-menu[data-command-section="appearance"] .desk-command-menu__option[data-choice="theme"][data-current="true"] {
+  background: var(--desk-chrome-selected);
+}
+
 .desk-command-menu__copy {
   display: grid;
   gap: 2px;
@@ -354,12 +412,21 @@
 
 @media (hover: hover) and (pointer: fine) {
   .desk-command-menu__close:hover,
-  .desk-command-menu__option:not([aria-selected="true"]):hover {
+  .desk-command-menu__option:not([data-choice]):not([aria-selected="true"]):hover {
     background: var(--desk-chrome-hover);
   }
 }
 
 @media (max-width: 640px) {
+  .desk-command-menu[data-command-section="appearance"] {
+    --desk-command-stage-height: 640px;
+  }
+
+  .desk-command-menu__option[data-choice] {
+    min-height: 48px;
+    gap: 12px;
+  }
+
   .desk-command-menu {
     width: calc(100vw - 24px);
     max-height: calc(100dvh - 64px - env(safe-area-inset-bottom));
@@ -371,7 +438,7 @@
   }
 
   .desk-command-menu__stage {
-    height: min(584px, calc(100dvh - 96px - env(safe-area-inset-bottom)));
+    height: min(var(--desk-command-stage-height, 584px), calc(100dvh - 96px - env(safe-area-inset-bottom)));
   }
 
   .desk-command-menu::backdrop {

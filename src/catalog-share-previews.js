@@ -5,6 +5,7 @@ import {
   publishedCardSharePath,
   THEMES,
 } from "./card-registry.js";
+import { CHART_COLORMAPS } from "./chart-colors.js";
 
 export const CATALOG_SHARE_CARD_IDS = Object.freeze([
   "equities", "sandbox-cost", "quote-view", "deal-view", "forward-prices", "gpu-hedge", "gpu-lease",
@@ -78,6 +79,17 @@ function catalog(cardId) {
           }
         }
       }
+    }
+  }
+
+  // Keep the original inventory first, then add the same finite compositions
+  // in each chart color. Older share paths and their build order stay intact.
+  const currentStates = [...statesByPath.values()];
+  for (const { id: colormap } of CHART_COLORMAPS) {
+    if (colormap === "current") continue;
+    for (const state of currentStates) {
+      const variant = Object.freeze({ ...state, colormap });
+      statesByPath.set(publishedCardSharePath(cardId, variant), variant);
     }
   }
 

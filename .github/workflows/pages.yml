@@ -50,6 +50,9 @@ jobs:
       - name: Build Desk
         run: npm run build
 
+      - name: Check share preview images and links
+        run: npm run check:previews
+
       # Validate the generated runtimes after building from bundled source data.
       - name: Validate market snapshots
         run: npm run check:data

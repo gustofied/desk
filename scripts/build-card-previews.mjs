@@ -27,6 +27,7 @@ import {
   THEMES,
 } from "../src/card-registry.js";
 import { shareRangeLabel } from "../src/share-range-label.js";
+import { CHART_COLORMAPS, withChartColormap } from "../src/chart-colors.js";
 import { CATALOG_SHARE_CARD_IDS, catalogShareStates } from "../src/catalog-share-previews.js";
 import { renderCatalogShareArtifact } from "./catalog-share-artifacts.mjs";
 import { renderCatalogSharePage } from "./catalog-share-page.mjs";
@@ -367,7 +368,7 @@ async function generatePublishedDepthPreviews() {
 
     await mkdir(dirname(imagePath), { recursive: true });
     await mkdir(dirname(pagePath), { recursive: true });
-    const legacyPagePaths = model.scale === "history"
+    const legacyPagePaths = model.scale === "history" && model.colormap === "current"
       ? ["1d", "7d"].map((range) =>
           join(root, legacyPublishedDepthSharePath(model, range), "index.html"),
         )
@@ -491,7 +492,7 @@ function publishedStates() {
       }
     }
   }
-  return Array.from(statesByPath.values());
+  return publishedColorVariants(cardDefinition.id, statesByPath.values());
 }
 
 function addPublishedLineStates(
@@ -554,7 +555,7 @@ function publishedBarStates() {
       }
     }
   }
-  return Array.from(statesByPath.values());
+  return publishedColorVariants(barCardDefinition.id, statesByPath.values());
 }
 
 function publishedDepthStates() {
@@ -586,7 +587,7 @@ function publishedDepthStates() {
     }
   }
 
-  return Array.from(statesByPath.values());
+  return publishedColorVariants(depthCardDefinition.id, statesByPath.values());
 }
 
 function publishedPowerStates() {
@@ -631,7 +632,18 @@ function publishedPowerStates() {
     );
   }
 
-  return Array.from(statesByPath.values());
+  return publishedColorVariants(powerCardDefinition.id, statesByPath.values());
+}
+
+function publishedColorVariants(cardId, states) {
+  const originals = Array.from(states);
+  return CHART_COLORMAPS.flatMap(({ id: colormap }) => originals.map(state =>
+    colormap === "current" ? state : normalizeCardState(cardId, { ...state, colormap }),
+  ));
+}
+
+function previewColors(state) {
+  return withChartColormap(themeColors(palettes[state.palette], state.theme), state.colormap);
 }
 
 function previewModel(state) {
@@ -676,7 +688,7 @@ function previewModel(state) {
 
   return {
     ...normalized,
-    colors: themeColors(palettes[normalized.palette], normalized.theme),
+    colors: previewColors(normalized),
     series,
     primary,
     headline:
@@ -719,7 +731,7 @@ function spreadPreviewModel(normalized, memberSeries) {
     comparisonMember.layer.shortLabel || comparisonMember.layer.label;
   return {
     ...normalized,
-    colors: themeColors(palettes[normalized.palette], normalized.theme),
+    colors: previewColors(normalized),
     series: [spread],
     primary: spread,
     members: spread.members,
@@ -738,19 +750,13 @@ function barPreviewModel(state) {
   return {
     ...model,
     ...normalized,
-    colors: themeColors(
-      palettes[normalized.palette],
-      normalized.theme,
-    ),
+    colors: previewColors(normalized),
   };
 }
 
 function depthPreviewModel(state) {
   const normalized = normalizeCardState(depthCardDefinition.id, state);
-  const colors = themeColors(
-    palettes[normalized.palette],
-    normalized.theme,
-  );
+  const colors = previewColors(normalized);
   const model = createGpuMarketDepthModel(
     depthRuntimeData,
     depthCardDefinition,
@@ -775,10 +781,7 @@ function powerPreviewModel(state) {
   return {
     ...normalized,
     ...model,
-    colors: themeColors(
-      palettes[normalized.palette],
-      normalized.theme,
-    ),
+    colors: previewColors(normalized),
   };
 }
 
@@ -908,6 +911,7 @@ function renderPublishedSharePage(
     palette: model.palette,
     theme: model.theme,
   });
+  if (model.colormap !== "current") destinationParams.set("colormap", model.colormap);
   const destination = `/?${destinationParams.toString()}#${cardDefinition.hash}`;
   const destinationHref = escapeHtml(destination);
   const redirectScript = JSON.stringify(destination).replaceAll("<", "\\u003c");
@@ -982,6 +986,7 @@ function renderPublishedBarSharePage(
     palette: model.palette,
     theme: model.theme,
   });
+  if (model.colormap !== "current") destinationParams.set("colormap", model.colormap);
   const destination = `/?${destinationParams.toString()}#${barCardDefinition.hash}`;
   const destinationHref = escapeHtml(destination);
   const redirectScript = JSON.stringify(destination).replaceAll("<", "\\u003c");
@@ -1087,6 +1092,7 @@ function renderPublishedDepthSharePage(
     palette: model.palette,
     theme: model.theme,
   });
+  if (model.colormap !== "current") destinationParams.set("colormap", model.colormap);
   const destination =
     `/?${destinationParams.toString()}#${depthCardDefinition.hash}`;
   const destinationHref = escapeHtml(destination);
@@ -1168,6 +1174,7 @@ function renderPublishedPowerSharePage(
     palette: model.palette,
     theme: model.theme,
   });
+  if (model.colormap !== "current") destinationParams.set("colormap", model.colormap);
   const destination =
     `/?${destinationParams.toString()}#${powerCardDefinition.hash}`;
   const destinationHref = escapeHtml(destination);

@@ -284,6 +284,15 @@ const EQUITY_COMPARISON_LAYERS = Object.freeze(
   ),
 );
 
+const CHART_COLORMAP_OPTION = Object.freeze({
+  id: "colormap",
+  label: "Chart colors",
+  values: Object.freeze(["current", "cividis", "viridis", "magma"]),
+  default: "current",
+  skipDefaultPath: true,
+  menuOnly: true,
+});
+
 export const CARD_REGISTRY = Object.freeze([
   Object.freeze({
     id: GPU_INDEX_ID,
@@ -871,7 +880,11 @@ export const CARD_REGISTRY = Object.freeze([
       Object.freeze({ id: "price", label: "Cost", unit: "usd-job" }),
     ]),
   }),
-]);
+].map(card => Object.freeze({
+  ...card,
+  defaults: Object.freeze({ ...card.defaults, colormap: CHART_COLORMAP_OPTION.default }),
+  stateOptions: Object.freeze([...(card.stateOptions || []), CHART_COLORMAP_OPTION]),
+})));
 
 const cardsById = new Map(CARD_REGISTRY.map((card) => [card.id, card]));
 

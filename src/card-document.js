@@ -106,13 +106,15 @@ export function normalizeCardVisualization(cardId, state = {}) {
 // Only known legacy omissions and values are repaired before strict checks.
 export function migrateCardVisualizationState(cardId, state) {
   if (!isRecord(state)) return state;
-  if (cardId === "gpu-hedge" && !Object.hasOwn(state, "side")) {
-    return { ...state, side: "buyer" };
-  }
-  if (cardId !== "equities") return state;
   const changes = {};
-  if (state.range === "all") changes.range = "1y";
-  if (!Object.hasOwn(state, "style")) changes.style = "lines";
+  if (!Object.hasOwn(state, "colormap")) changes.colormap = "current";
+  if (cardId === "gpu-hedge" && !Object.hasOwn(state, "side")) {
+    changes.side = "buyer";
+  }
+  if (cardId === "equities") {
+    if (state.range === "all") changes.range = "1y";
+    if (!Object.hasOwn(state, "style")) changes.style = "lines";
+  }
   return Object.keys(changes).length ? { ...state, ...changes } : state;
 }
 

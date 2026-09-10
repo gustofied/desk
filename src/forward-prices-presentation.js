@@ -1,7 +1,8 @@
 import { area, interpolateRgb, line, curveMonotoneX, scaleLinear, ticks, utcFormat } from 'd3';
 import { forwardContours, nearestContour } from './forward-contours.js';
 import { animateChartDraw, animateChartSupport, cancelChartMotion } from './chart-motion.js';
-import { viewArtifactHeaderMarkup } from './view-artifact-header.js';
+import { viewArtifactHeaderLayout, viewArtifactHeaderMarkup } from './view-artifact-header.js';
+import { forwardColormapColor, forwardColormapInk, normalizeForwardColormap } from './forward-colormaps.js';
 
 const WIDTH = 1200;
 const money = value => `$${value.toFixed(2)}`;
@@ -223,9 +224,10 @@ export function paintForwardPricesChart(svg, model, options = {}) {
   }
 }
 
-function markup(model, { colors, compact = false, gallery = false, title, height = 675, mobile = false } = {}) {
+function markup(model, { colors, compact = false, gallery = false, title, height = 675, mobile = false, colormap = model.colormap } = {}) {
   const history = model.range !== 'now';
   const palette = colors;
+  const mapped = history && normalizeForwardColormap(colormap) !== 'current';
   const font = mobile ? 36 : 24;
   const left = 0;
   const right = WIDTH;
@@ -238,10 +240,29 @@ function markup(model, { colors, compact = false, gallery = false, title, height
   const curveLow = Math.min(...curveValues), curveHigh = Math.max(...curveValues);
   const y = scaleLinear().domain(history ? [model.observations[0], model.observations.at(-1)] : [curveLow - 0.12, curveHigh + 0.12]).range([bottom, history ? top : gallery ? 224 : 160]).clamp(true);
   const fraction = value => (value - model.low) / Math.max(0.01, model.high - model.low);
-  const shade = value => palette.theme === 'dark'
+  const shade = value => mapped ? forwardColormapColor(colormap, fraction(value)) : palette.theme === 'dark'
     ? interpolateRgb(palette.paper, palette.line)(0.08 + 0.24 * fraction(value))
     : interpolateRgb(palette.paper, palette.line)(0.04 + 0.24 * fraction(value));
+  const ink = value => mapped ? forwardColormapInk(shade(value)) : palette.line;
   const levels = ticks(model.low, model.high, 6).filter(v => v > model.low && v < model.high);
+  const bandAt = (px, py) => {
+    const interval = (values, value) => {
+      const found = values.findIndex(candidate => candidate >= value);
+      const high = found < 0 ? values.length - 1 : Math.max(1, found);
+      const low = high - 1;
+      return [low, high, Math.max(0, Math.min(1, (value - values[low]) / (values[high] - values[low])))];
+    };
+    const [left, right, tx] = interval(model.deliveries, x.invert(px));
+    const [low, high, ty] = interval(model.observations, y.invert(py));
+    const lower = model.values[low][left] * (1 - tx) + model.values[low][right] * tx;
+    const upper = model.values[high][left] * (1 - tx) + model.values[high][right] * tx;
+    const value = lower * (1 - ty) + upper * ty;
+    return levels.filter(level => level <= value).at(-1) ?? model.low;
+  };
+  const paintAt = (px, py) => {
+    const band = bandAt(px, py);
+    return `fill="${ink(band)}" stroke="${shade(band)}" stroke-width="2" stroke-linejoin="round" style="paint-order:stroke fill;font-variant-numeric:tabular-nums"`;
+  };
   const path = line().x(p => p[0]).y(p => p[1]);
   const curveArea = area().x((v, i) => x(model.deliveries[i])).y0(bottom).y1(v => y(v)).curve(curveMonotoneX);
   const label = `${model.gpu} forward prices. ${history ? 'Quote date by delivery month; contour labels in USD per GPU-hour.' : 'Latest curve by delivery month, in USD per GPU-hour.'} ${model.contract.region}, ${model.contract.term}, ${model.contract.quantity} GPUs. Example quotes.`;
@@ -276,7 +297,7 @@ function markup(model, { colors, compact = false, gallery = false, title, height
       const level = contour.value;
       for (const { points, d } of contour.paths) {
         pickLines.push({ key: level, points });
-        geometry.push(`<path data-forward-series="${level}" data-forward-line="" d="${d}" fill="none" stroke="${palette.line}" stroke-width="${gallery ? 4 : 3}" stroke-linejoin="round"/>`);
+        geometry.push(`<path data-forward-series="${level}" data-forward-line="" d="${d}" fill="none" stroke="${ink(level)}" stroke-width="${gallery ? 4 : 3}" stroke-linejoin="round"/>`);
       }
       // Label an actual contour segment, outside the heading and date labels.
       const candidates = contour.paths.flatMap(({ points }) => mobileLabels
@@ -297,7 +318,7 @@ function markup(model, { colors, compact = false, gallery = false, title, height
       if (mobileLabels) labelBounds.push(candidates[0].bounds);
       if (angle > 90) angle -= 180;
       if (angle < -90) angle += 180;
-      geometry.push(`<text data-forward-series="${level}" data-forward-label="" transform="translate(${p[0]} ${p[1]}) rotate(${angle})" dy=".35em" text-anchor="middle" font-size="${gallery ? 32 : font}" fill="${palette.line}" stroke="${shade(level)}" stroke-width="8" stroke-linejoin="round" style="paint-order:stroke fill">${money(level)}</text>`);
+      geometry.push(`<text data-forward-series="${level}" data-forward-label="" transform="translate(${p[0]} ${p[1]}) rotate(${angle})" dy=".35em" text-anchor="middle" font-size="${gallery ? 32 : font}" fill="${ink(level)}" stroke="${shade(level)}" stroke-width="8" stroke-linejoin="round" style="paint-order:stroke fill">${money(level)}</text>`);
     }
   } else {
     const points = model.latest.map((v, i) => [x(model.deliveries[i]), y(v)]);
@@ -310,19 +331,28 @@ function markup(model, { colors, compact = false, gallery = false, title, height
   }
   const axes = [];
   if (!gallery) {
-    if (history) axes.push(`<text x="${inset}" y="${mobile ? 176 : 144}" fill="${palette.text}">Quoted</text>`);
+    if (history) axes.push(`<text x="${inset}" y="${mobile ? 176 : 144}" ${mapped ? paintAt(inset, (mobile ? 176 : 144) - font / 3) : `fill="${palette.text}"`}>Quoted</text>`);
     if (history) [0, Math.floor(model.observations.length/2), model.observations.length-1].forEach(i => {
       const band = levels.filter(level => level <= model.values[i][0]).at(-1) ?? model.low;
-      axes.push(`<text x="${inset}" y="${Math.max(mobile ? 240 : 176, Math.min(bottom-64, y(model.observations[i])+8))}" fill="${palette.line}" stroke="${shade(band)}" stroke-width="8" stroke-linejoin="round" style="paint-order:stroke fill">${day(model.observations[i])}</text>`);
+      axes.push(`<text x="${inset}" y="${Math.max(mobile ? 240 : 176, Math.min(bottom-64, y(model.observations[i])+8))}" fill="${ink(band)}" stroke="${shade(band)}" stroke-width="${mapped ? 2 : 8}" stroke-linejoin="round" style="paint-order:stroke fill">${day(model.observations[i])}</text>`);
     });
     const step = mobile || compact ? 6 : 3;
     model.deliveries.forEach((date, i) => {
       if (i % step && i !== model.deliveries.length-1) return;
-      axes.push(`<text data-forward-delivery="${date}" x="${Math.max(inset, Math.min(right-inset, x(date)))}" y="${bottom-16}" text-anchor="${i === 0 ? 'start' : i === model.deliveries.length-1 ? 'end' : 'middle'}" fill="${palette.text}" stroke="${palette.paper}" stroke-width="4" stroke-opacity=".78" style="paint-order:stroke fill">${utcFormat('%b %Y')(new Date(date*1000))}</text>`);
+      const px = Math.max(inset, Math.min(right-inset, x(date)));
+      axes.push(`<text data-forward-delivery="${date}" x="${px}" y="${bottom-16}" text-anchor="${i === 0 ? 'start' : i === model.deliveries.length-1 ? 'end' : 'middle'}" ${mapped ? paintAt(px, bottom - 16 - font / 3) : `fill="${palette.text}" stroke="${palette.paper}" stroke-width="4" stroke-opacity=".78" style="paint-order:stroke fill"`}>${utcFormat('%b %Y')(new Date(date*1000))}</text>`);
     });
   }
-  const header = gallery ? viewArtifactHeaderMarkup({ title: title || `${model.gpu} forwards`, context: history ? 'HISTORY' : 'CURVE', headline: money(model.latest[0]), colors: palette, compact: true })
-    : `<text x="${inset}" y="${mobile ? 64 : 48}" font-family="Geist, sans-serif" font-weight="600" font-size="${mobile ? 48 : 36}" fill="${palette.line}">${esc(title || `${model.gpu} forwards`)}</text><text x="${right-inset}" y="${mobile ? 64 : 48}" text-anchor="end" font-size="${font}" fill="${palette.text}">USD / GPU-h</text><text data-forward-readout="" x="${inset}" y="${mobile ? 112 : 96}" font-size="${font}" fill="${palette.text}">${esc(readout)}</text>`;
+  let header = gallery ? viewArtifactHeaderMarkup({ title: title || `${model.gpu} forwards`, context: history ? 'HISTORY' : 'CURVE', headline: money(model.latest[0]), colors: palette, compact: true })
+    : `<text x="${inset}" y="${mobile ? 64 : 48}" font-family="Geist, sans-serif" font-weight="600" font-size="${mobile ? 48 : 36}" ${mapped ? paintAt(inset, mobile ? 48 : 36) : `fill="${palette.line}"`}>${esc(title || `${model.gpu} forwards`)}</text><text x="${right-inset}" y="${mobile ? 64 : 48}" text-anchor="end" font-size="${font}" ${mapped ? paintAt(right-inset, (mobile ? 64 : 48) - font / 3) : `fill="${palette.text}"`}>USD / GPU-h</text><text data-forward-readout="" x="${inset}" y="${mobile ? 112 : 96}" font-size="${font}" ${mapped ? paintAt(inset, (mobile ? 112 : 96) - font / 3) : `fill="${palette.text}"`}>${esc(readout)}</text>`;
+  if (mapped && gallery) {
+    const layout = viewArtifactHeaderLayout(title || `${model.gpu} forwards`, { compact: true });
+    header = `<g data-view-artifact-header="" pointer-events="none">
+      <text x="${layout.titleX}" y="${layout.titleY}" ${paintAt(layout.titleX, layout.titleY - layout.titleSize / 3)} font-family="Geist, Avenir Next, sans-serif" font-size="${layout.titleSize}" font-weight="600" letter-spacing="0.25">${esc(layout.title)}</text>
+      <text x="${layout.contextX}" y="${layout.contextY}" ${paintAt(layout.contextX, layout.contextY - layout.contextSize / 3)} font-family="Geist Mono, monospace" font-size="${layout.contextSize}" font-weight="600" text-anchor="end" letter-spacing="1">HISTORY</text>
+      <text x="${layout.headlineX}" y="${layout.headlineY}" ${paintAt(layout.headlineX, layout.headlineY - layout.headlineSize / 3)} font-family="Geist, Avenir Next, sans-serif" font-size="${layout.headlineSize}" font-weight="500" letter-spacing="-2">${money(model.latest[0])}</text>
+    </g>`;
+  }
   const dates = !history && !gallery ? rows.map((row, i) => `<text data-forward-date="${row}" aria-pressed="${i === 0}" x="${right-inset-i*(mobile ? 192 : 128)}" y="${mobile ? 152 : 96}" text-anchor="end" font-size="${font}" fill="${palette.line}" text-decoration="${i === 0 ? 'underline' : 'none'}" style="cursor:pointer">${day(model.observations[row])}</text>`).join('') : '';
   return { height, history, x, y, readout, label, pickLines, curveArea, inner: `<g data-forward-chart="" font-family="Geist Mono, monospace" font-weight="500"><rect width="1200" height="${height}" fill="${palette.paper}"/>${geometry.join('')}<g fill="${palette.text}" font-size="${font}">${axes.join('')}</g>${header}${dates}${gallery ? '' : `<g data-forward-cursor="" visibility="hidden" pointer-events="none"><circle r="6" fill="${palette.paper}" stroke="${palette.line}" stroke-width="3"/></g>`}</g>` };
 }

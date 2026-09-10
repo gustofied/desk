@@ -15,6 +15,9 @@ const defaultGroups = [
   "Range",
   "Compare",
   "Desk appearance",
+  "Theme",
+  "Palette",
+  "Chart colors",
 ];
 const maxRenderedCommands = 64;
 
@@ -24,6 +27,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   const input = root.querySelector("[data-command-input]");
   const results = root.querySelector("[data-command-results]");
   const status = root.querySelector("[data-command-status]");
+  const backButton = root.querySelector("[data-command-back]");
   const closeButtons = [...root.querySelectorAll("[data-command-close]")];
   const loginButton = root.querySelector("[data-desk-login]");
   const sidebarRoot = document.querySelector("[data-desk-sidecar]");
@@ -34,6 +38,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   let commandSnapshot = [];
   let visibleCommands = [];
   let activeIndex = -1;
+  let section = null;
   let renderedQuery = null;
   let previousFocus = null;
   let renderFrame = null;
@@ -78,6 +83,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
   document.addEventListener("keydown", handleGlobalShortcut);
   input?.addEventListener("input", scheduleRender);
   input?.addEventListener("keydown", handleCommandKeydown);
+  backButton?.addEventListener("click", handleBack);
   closeButtons.forEach(button => button.addEventListener("click", handleCloseClick));
   results?.addEventListener("pointerdown", handleResultsPointerDown);
   results?.addEventListener("pointermove", handleResultsPointerMove);
@@ -110,6 +116,24 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
 
   function handleCloseClick() {
     close();
+  }
+
+  function handleBack() {
+    showSection(null);
+  }
+
+  function showSection(next) {
+    section = next;
+    root.dataset.commandSection = section || "commands";
+    if (backButton) backButton.hidden = !section;
+    if (input) {
+      input.value = "";
+      input.placeholder = section ? "Appearance" : "Search views and commands";
+      input.setAttribute("aria-label", section ? "Search appearance" : "Search views and commands");
+    }
+    renderedQuery = null;
+    refresh();
+    input?.focus({ preventScroll: true });
   }
 
   function handleCancel(event) {
@@ -250,7 +274,14 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     if (otherModalOpen()) return;
     root.removeAttribute("data-closing");
     if (returnFocus || !root.contains(document.activeElement)) previousFocus = returnFocus || document.activeElement;
-    if (input) input.value = query;
+    section = null;
+    root.dataset.commandSection = "commands";
+    if (backButton) backButton.hidden = true;
+    if (input) {
+      input.value = query;
+      input.placeholder = "Search views and commands";
+      input.setAttribute("aria-label", "Search views and commands");
+    }
     commandSnapshot = createCommandSnapshot(registry);
     visibleCommands = [];
     activeIndex = -1;
@@ -339,6 +370,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     const previousId = queryChanged ? null : visibleCommands[activeIndex]?.id;
     renderedQuery = query.value;
     const matches = commandSnapshot
+      .filter(command => section ? command.section === section : query.value || !command.section)
       .map((command) => ({
         ...command,
         score: scoreCommand(command, query),
@@ -352,7 +384,8 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
       (command) => command.id === previousId && !command.disabled,
     );
     if (activeIndex < 0) {
-      activeIndex = visibleCommands.findIndex((command) => !command.disabled);
+      activeIndex = section ? visibleCommands.findIndex(command => command.active && !command.disabled) : -1;
+      if (activeIndex < 0) activeIndex = visibleCommands.findIndex((command) => !command.disabled);
     }
 
     const fragment = document.createDocumentFragment();
@@ -369,7 +402,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
 
     let currentGroup = null;
     visibleCommands.forEach((command, index) => {
-      if (!query.value && command.group !== currentGroup) {
+      if ((!query.value || section) && command.group !== currentGroup) {
         currentGroup = command.group;
         const label = document.createElement("p");
         label.className = "desk-command-menu__group";
@@ -401,6 +434,11 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     row.setAttribute("aria-selected", String(index === activeIndex));
     row.setAttribute("aria-disabled", String(command.disabled));
     row.dataset.commandIndex = String(index);
+    if (command.choice) {
+      row.dataset.choice = command.choice;
+      row.dataset.current = String(command.active);
+      row.setAttribute("aria-label", `${command.title}${command.active ? ", selected" : ""}`);
+    }
     if (command.disabled) row.disabled = true;
 
     const copy = document.createElement("span");
@@ -415,13 +453,33 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     }
     row.append(copy);
 
+    if (command.preview) {
+      const preview = document.createElement("span");
+      preview.className = "desk-command-menu__swatch";
+      preview.setAttribute("aria-hidden", "true");
+      preview.style.backgroundImage = command.preview;
+      row.append(preview);
+    }
+
     const meta = document.createElement("span");
     meta.className = "desk-command-menu__meta";
     const hint = normalize(command.hint).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     const titleText = normalize(command.title).replace(/[^\p{L}\p{N}]+/gu, " ").trim();
     const hintRepeatsTitle = hint && ` ${titleText} `.includes(` ${hint} `);
-    meta.textContent = command.active ? "Active" : hintRepeatsTitle ? "" : command.hint;
-    if (meta.textContent) row.append(meta);
+    if (command.choice) {
+      meta.classList.add("desk-command-menu__check");
+      meta.setAttribute("aria-hidden", "true");
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", "0 0 16 16");
+      const path = document.createElementNS(svg.namespaceURI, "path");
+      path.setAttribute("d", "M3 8l3 3 7-7");
+      svg.append(path);
+      meta.append(svg);
+      row.append(meta);
+    } else {
+      meta.textContent = command.active ? "Active" : hintRepeatsTitle ? "" : command.hint;
+      if (meta.textContent) row.append(meta);
+    }
 
     return row;
   }
@@ -549,6 +607,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     document.removeEventListener("keydown", handleGlobalShortcut);
     input?.removeEventListener("input", scheduleRender);
     input?.removeEventListener("keydown", handleCommandKeydown);
+    backButton?.removeEventListener("click", handleBack);
     closeButtons.forEach(button => button.removeEventListener("click", handleCloseClick));
     results?.removeEventListener("pointerdown", handleResultsPointerDown);
     results?.removeEventListener("pointermove", handleResultsPointerMove);
@@ -565,7 +624,7 @@ export function createCommandPalette({ root, reducedMotion = false } = {}) {
     visibleCommands = [];
   }
 
-  return { close, destroy, open, toggle, showSidebar, hideSidebar, centerMenu, refresh, register, initializeSidecar: () => {
+  return { close, destroy, open, toggle, showSection, showSidebar, hideSidebar, centerMenu, refresh, register, initializeSidecar: () => {
     sidecar?.initialize();
     trigger?.setAttribute("aria-expanded", String(root.open));
   } };
@@ -613,6 +672,7 @@ function resolveCommand(command) {
     subtitle: resolveValue(command.subtitle, ""),
     group: resolveValue(command.group, "Actions"),
     hint: resolveValue(command.hint, ""),
+    preview: resolveValue(command.preview, ""),
     keywords: resolveValue(command.keywords, []),
     active: Boolean(resolveValue(command.active, false)),
     disabled: Boolean(resolveValue(command.disabled, false)),
@@ -696,6 +756,7 @@ function createNoopPalette() {
     destroy() {},
     open() {},
     toggle() {},
+    showSection() {},
     showSidebar() {},
     hideSidebar() {},
     centerMenu() {},

@@ -1,6 +1,8 @@
 # Tests
 
-`npm test` runs nine core checks. CI runs these too.
+`npm test` runs the focused state, chart and calculation checks.
+
+After `npm run build`, run `npm run check:previews` to check colored share images, their links and older depth routes. CI runs both checks before deployment.
 
 For browser smoke checks, serve the built site with `npm run dev`, then run `npm run test:browser`. The three checks cover rendering, range switching and shared desks.
 

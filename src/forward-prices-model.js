@@ -1,3 +1,5 @@
+import { normalizeForwardColormap } from './forward-colormaps.js';
+
 export function createForwardPricesModel(payload, state = {}) {
   const gpu = state.gpu || 'H100';
   const deliveries = payload?.deliveries;
@@ -11,6 +13,7 @@ export function createForwardPricesModel(payload, state = {}) {
   const latest = values.at(-1);
   const premium = latest.at(-1) - latest[0];
   return { gpu, deliveries, observations, values, latest, premium, range: state.range || 'all',
+    colormap: normalizeForwardColormap(state.colormap),
     asOf: observations.at(-1), low: Math.min(...values.flat()), high: Math.max(...values.flat()),
     structure: latest.every((v, i) => !i || v >= latest[i - 1]) ? 'Contango' : latest.every((v, i) => !i || v <= latest[i - 1]) ? 'Backwardation' : 'Mixed',
     contract: payload.dataset,

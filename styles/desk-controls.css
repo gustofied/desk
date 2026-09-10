@@ -562,11 +562,11 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .desk-card-focus[data-card-theme="dark"] .gpu-benchmark__line.is-selected {
-  stroke: var(--desk-accent-deep) !important;
+  stroke: var(--chart-line, var(--desk-accent-deep)) !important;
 }
 
 .desk-card-focus[data-card-theme="dark"] .gpu-benchmark__band {
-  fill: var(--desk-accent);
+  fill: var(--chart-area, var(--desk-accent));
 }
 
 .desk-card-focus[data-card-theme="dark"] .gpu-benchmark__point {
@@ -627,18 +627,18 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__line.is-selected {
-  stroke: var(--desk-accent-deep) !important;
+  stroke: var(--chart-line, var(--desk-accent-deep)) !important;
 }
 
 .gpu-benchmark__point {
   fill: var(--desk-canvas);
-  stroke: var(--desk-accent-deep);
+  stroke: var(--chart-line, var(--desk-accent-deep));
   stroke-width: 2px;
   vector-effect: non-scaling-stroke;
 }
 
 .gpu-benchmark__value-area {
-  fill: var(--desk-comparison-line);
+  fill: var(--chart-area, var(--desk-comparison-line));
   opacity: 0.1;
   pointer-events: none;
 }
@@ -703,7 +703,7 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-index .gpu-benchmark__crosshair {
-  stroke: var(--desk-accent-deep);
+  stroke: var(--chart-line, var(--desk-accent-deep));
 }
 
 .gpu-benchmark__tooltip-row {
@@ -736,7 +736,7 @@ button.compute-share-card-frame:focus-visible {
 }
 
 .gpu-benchmark__band {
-  fill: var(--desk-comparison-line);
+  fill: var(--chart-area, var(--desk-comparison-line));
   opacity: 0.075;
   pointer-events: none;
 }

@@ -34,7 +34,7 @@ export function watchlistKey(cardId, state = {}) {
   return JSON.stringify([
     card.id,
     ...cardStateParamIds(card)
-      .filter((key) => key !== "palette" && key !== "theme")
+      .filter((key) => key !== "palette" && key !== "theme" && key !== "colormap")
       .map((key) => [key, normalized[key]]),
   ]);
 }

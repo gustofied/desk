@@ -95,16 +95,16 @@
       })();
     </script>
     <link rel="stylesheet" href="./styles/compute-card.css?v=1">
-    <link rel="stylesheet" href="./styles/desk-controls.css?v=124">
+    <link rel="stylesheet" href="./styles/desk-controls.css?v=125">
     <link rel="stylesheet" href="./styles/desk-workspace.css?v=71">
     <link rel="stylesheet" href="./styles/monitor-data.css?v=23">
     <link rel="stylesheet" href="./styles/power-basis.css?v=1">
     <link rel="stylesheet" href="./styles/deal-view.css?v=45">
-    <link rel="stylesheet" href="./styles/command-palette.css?v=21">
+    <link rel="stylesheet" href="./styles/command-palette.css?v=23">
     <link rel="stylesheet" href="./styles/demo.css?v=33">
     <link rel="stylesheet" href="./styles/desk-shell.css?v=11">
     <link rel="stylesheet" href="./styles/market-strip.css?v=13">
-    <link rel="stylesheet" href="./styles/mobile.css?v=2">
+    <link rel="stylesheet" href="./styles/mobile.css?v=3">
     <link rel="stylesheet" href="./styles/mobile-data.css?v=1">
   </head>
   <body>
@@ -512,6 +512,7 @@
       </section>
       <section class="desk-command-menu__surface" data-command-content hidden inert>
         <header class="desk-command-menu__search">
+          <button class="desk-command-menu__close desk-command-menu__back" type="button" aria-label="Back to commands" data-command-back hidden>Back</button>
           <label class="desk-command-menu__title" for="desk-command-input">Search views and commands</label>
           <input
             id="desk-command-input"
@@ -628,6 +629,6 @@
         </footer>
       </form>
     </dialog>
-    <script type="module" src="./desk.js?v=289"></script>
+    <script type="module" src="./desk.js?v=292"></script>
   </body>
 </html>

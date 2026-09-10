@@ -109,7 +109,7 @@ function createDealDataModel(card, state, model) {
   const detailFields = [
     ["Capacity", `${model.quantityFormatted} ${model.asset} GPUs`],
     ["Rate", model.rateLabel],
-    ["Location", [model.region, model.fabric].filter(Boolean).join(" · ")],
+    ["Location", [model.region, model.fabric].filter(Boolean).join(" ")],
     ["Service", model.service],
     ["Term", model.termLabel],
     ["Ready for service", model.rfsLabel],
@@ -121,7 +121,7 @@ function createDealDataModel(card, state, model) {
     id: `${card.id}-details`,
     railLabel: "Details",
     label: model.label,
-    summary: [model.asset, status].filter(Boolean).join(" · "),
+    summary: [model.asset, status].filter(Boolean).join(" "),
     detailDescription: cardDetailDescription(card, state),
     detailFields,
     breadcrumbs: [],

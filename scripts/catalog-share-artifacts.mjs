@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { area, curveMonotoneX, extent, interpolateRgb, line, scaleLinear, scaleUtc } from "d3";
 import { CARD_REGISTRY, PALETTES, RANGES, SITE_ORIGIN, cardStateParamIds, getCardDefinition, normalizeCardState } from "../src/card-registry.js";
 import { normalizeCardVisualization } from "../src/card-document.js";
+import { withChartColormap } from "../src/chart-colors.js";
 import { cardDetailDescription } from "../src/card-descriptions.js";
 import { chartYDomain, comparisonStrokeOpacity, INDEX_BASELINE, spreadLineLabels } from "../src/chart-domain.js";
 import { alignIndexedPriceSeries, createPriceSeriesIndex, priceRowsForRange } from "../src/price-series.js";
@@ -30,7 +31,7 @@ export function renderCatalogShareArtifact(cardId, stateParams = {}, payloads = 
   const normalized = normalizeCardState(cardId, stateParams);
   const state = normalizeCardVisualization(cardId, normalized);
   const sources = payloads instanceof Map ? payloads : new Map(Object.entries(payloads || {}));
-  const colors = themeColors(normalized.palette, normalized.theme);
+  const colors = withChartColormap(themeColors(normalized.palette, normalized.theme), normalized.colormap);
   const used = [];
   const requirePayload = sourceId => {
     const payload = sources.get(sourceId);
@@ -132,7 +133,10 @@ export function renderCatalogShareArtifact(cardId, stateParams = {}, payloads = 
     if (value !== null && value !== undefined && value !== "") destination.searchParams.set(key, Array.isArray(value) ? value.join(",") : String(value));
   }
   destination.hash = card.hash;
-  const revision = createHash("sha256").update(JSON.stringify({ renderer: RENDERER_VERSION, cardId, state, sources: used, svg })).digest("hex").slice(0, 16);
+  // The implicit Current ramp keeps the same content address as older shares.
+  const revisionState = { ...state };
+  if (revisionState.colormap === "current") delete revisionState.colormap;
+  const revision = createHash("sha256").update(JSON.stringify({ renderer: RENDERER_VERSION, cardId, state: revisionState, sources: used, svg })).digest("hex").slice(0, 16);
   return { svg, title, description, imageAlt, revision, state, destination: destination.href };
 }
 

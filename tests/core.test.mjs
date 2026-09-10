@@ -119,7 +119,8 @@ test('private card details update current terms without exposing activity or dat
     assert.ok(original.detailDescription);
     assert.equal(fields.Capacity, '256 B200 GPUs');
     assert.equal(fields.Rate, '$3.65 / GPU hour');
-    assert.equal(fields.Location, 'US East · InfiniBand');
+    assert.equal(fields.Location, 'US East InfiniBand');
+    assert.doesNotMatch(original.summary, /[·•]/);
     assert.equal(fields['Ready for service'], 'OCT 2026');
     assert.equal(fields.Prepayment, '20%');
     assert.equal(fields.Contract, cardId === 'deal-view' ? dealModel.contractStatusLabel : undefined);

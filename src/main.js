@@ -39,6 +39,7 @@ import { paintPowerBasisChart } from "./power-basis-presentation.js";
 import { createSandboxCostModel } from "./sandbox-cost-model.js";
 import { createForwardPricesModel } from "./forward-prices-model.js";
 import { paintForwardPricesChart } from "./forward-prices-presentation.js";
+import { CHART_COLORMAPS, colormapGradient, withChartColormap } from "./chart-colors.js";
 import { createGpuHedgeModel } from "./gpu-hedge-model.js";
 import { paintGpuHedgeChart, cancelGpuHedgeMotion } from "./gpu-hedge-presentation.js";
 import { paintGpuCoverageChart, cancelGpuCoverageMotion } from "./gpu-coverage-presentation.js";
@@ -1040,7 +1041,7 @@ if (root) {
 
     if (nodes.optionGroup && !isDepthCard && !isDealCard) {
       nodes.optionGroup.classList.toggle("gpu-benchmark__calculator-inputs", cardDefinition.stateKind === "calculator");
-      const optionControls = (cardDefinition.stateOptions || []).map((option) => {
+      const optionControls = (cardDefinition.stateOptions || []).filter(option => !option.menuOnly).map((option) => {
         if (!option.values) return createNumericCraftField(option);
         const label = document.createElement("span");
         const buttons = document.createElement("div");
@@ -2956,42 +2957,76 @@ if (root) {
         run: () => selectRange(range),
       })),
       {
+        id: "workspace.appearance",
+        group: "Workspace",
+        order: 4,
+        title: "Appearance",
+        hint: "Colors",
+        keywords: ["theme", "palette", "color", "colour", "colormap", "display"],
+        keepOpen: true,
+        run: () => commandPalette.showSection("appearance"),
+      },
+      {
         id: "appearance.theme.light",
-        group: "Desk appearance",
+        group: "Theme",
+        section: "appearance",
+        choice: "theme",
+        keepOpen: true,
         order: 0,
-        title: "Make Desk light",
-        subtitle: "Workspace appearance",
-        hint: "Desk",
+        title: "Light",
         keywords: ["white", "bright", "display", "workspace", "desk"],
         active: () => currentTheme() === "light",
         run: () => setTheme("light"),
       },
       {
         id: "appearance.theme.dark",
-        group: "Desk appearance",
+        group: "Theme",
+        section: "appearance",
+        choice: "theme",
+        keepOpen: true,
         order: 1,
-        title: "Make Desk dark",
-        subtitle: "Workspace appearance",
-        hint: "Desk",
+        title: "Dark",
         keywords: ["black", "night", "display", "workspace", "desk"],
         active: () => currentTheme() === "dark",
         run: () => setTheme("dark"),
       },
-      ...[
-        ["azure", "Soft Azure"],
-        ["linen", "Soft Linen"],
-        ["sage", "Sage Green"],
-        ["sand", "Warm Sand"],
-      ].map(([palette, title], index) => ({
+      ...PALETTES.map(({ id: palette, label: title }, index) => ({
         id: `appearance.palette.${palette}`,
-        group: "Desk appearance",
+        group: "Palette",
+        section: "appearance",
+        choice: "palette",
+        keepOpen: true,
         order: index + 2,
-        title: `Use ${title} for Desk`,
-        subtitle: "Workspace color",
-        hint: "Desk",
-        keywords: ["color", "colour", "display", "workspace", "desk", title],
+        title,
+        preview: () => {
+          const colors = cardPalette({ palette, theme: currentTheme() });
+          return `linear-gradient(to right, ${colors.paper}, ${colors.area}, ${colors.line})`;
+        },
+        keywords: ["palette", "color", "colour", "display", "workspace", "desk", title],
         active: () => currentPalette() === palette,
         run: () => setPalette(palette),
+      })),
+      ...CHART_COLORMAPS.map(({ id, label }, index) => ({
+        id: `appearance.colormap.${id}`,
+        group: "Chart colors",
+        section: "appearance",
+        choice: "colormap",
+        keepOpen: true,
+        order: index,
+        title: label,
+        preview: () => colormapGradient(id, cardPalette({ ...currentCardState(), colormap: "current" })),
+        keywords: ["color", "colour", "colormap", "map", "contour", "chart", "appearance", ...(id === "current" ? ["current", "default"] : [])],
+        active: () => (state.options.colormap || "current") === id,
+        disabled: () => state.craftEmpty || state.layout === "all",
+        run: () => {
+          if (state.options.colormap === id) return;
+          applyCompositionFields({ ...currentCardState(), colormap: id });
+          syncCraftDirtyState();
+          syncControls();
+          updateLocation();
+          state.catalogDirty = true;
+          render(false);
+        },
       })),
     ]);
   }
@@ -3262,6 +3297,14 @@ if (root) {
     if (!nodes.focusPanel) return;
     nodes.focusPanel.dataset.cardTheme = currentCardTheme();
     nodes.focusPanel.dataset.cardPalette = currentCardPalette();
+    const colors = cardPalette(currentCardState());
+    for (const role of ["line", "secondary", "area"]) {
+      if (state.options.colormap && state.options.colormap !== "current") {
+        nodes.focusPanel.style.setProperty(`--chart-${role}`, colors[role]);
+      } else {
+        nodes.focusPanel.style.removeProperty(`--chart-${role}`);
+      }
+    }
   }
 
   function currentLineColor() {
@@ -7268,7 +7311,7 @@ if (root) {
       PALETTES.find((palette) => palette.id === cardState.palette)?.accent ||
       PALETTES[0].accent;
     const dark = cardState.theme === "dark";
-    return {
+    return withChartColormap({
       theme: dark ? "dark" : "light",
       accent,
       paper: mixHex(accent, dark ? "#171717" : "#ffffff", dark ? 0.03 : 0.05),
@@ -7280,7 +7323,7 @@ if (root) {
       ),
       secondary: mixHex(accent, dark ? "#ffffff" : "#102635", 0.28),
       area: mixHex(accent, dark ? "#ffffff" : "#102635", 0.28),
-    };
+    }, cardState.colormap);
   }
 
   function mixHex(foreground, background, foregroundWeight) {
