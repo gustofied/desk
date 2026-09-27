@@ -1,0 +1,10 @@
+pandas>=3.0,<4
+numpy>=2,<3
+scipy>=1.13
+pyarrow>=18
+matplotlib>=3.9
+nbformat>=5.10
+nbclient>=0.10
+nbconvert>=7.16
+ipykernel>=6.29
+beautifulsoup4>=4.12
