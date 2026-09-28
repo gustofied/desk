@@ -1,8 +1,6 @@
 node_modules/
-# Local source material for modeling studies.
+# Local source material for modelling studies.
 /references/
-# Local compatibility alias; the research source lives in modelling/.
-/modeling
 .DS_Store
 .cache/
 .env

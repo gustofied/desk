@@ -28,7 +28,7 @@ modules are still placeholders. The price study is not connected to that API.
 When a calculation is ready for Desk, its reusable implementation can move into
 the backend while the notebook remains here to explain and evaluate it.
 
-`../modeling` remains a compatibility symlink. The canonical spelling is `modelling`.
+Use `modelling/` for all research paths.
 
 ## Files kept in Git
 
