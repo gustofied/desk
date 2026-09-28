@@ -1,16 +1,12 @@
 # Vast RTX 3090 market visibility
 
-- `market_report.html`: compact graph report with the main interpretation.
-- `market_segments.html`: readable executed segmentation notebook, charts and tables.
-- `market_segments.ipynb`: executed Jupyter notebook.
-- `SEGMENT_FINDINGS.md`: interpretation and main quantitative results.
-- `FINDINGS.md`: earlier price-composition example linked to The Compute Bazaar article.
-- `segment_study.py`: editable percent-format notebook source.
-- `segments/`: nine figures and aggregate CSV/JSON results.
+Listing turnover and price differences across RTX 3090 market segments.
+
+[Notebook](market_segments.ipynb) · [Segment findings](SEGMENT_FINDINGS.md) · [Listing turnover](FINDINGS.md) · [Source](segment_study.py)
 
 ## Run
 
-The existing shared analysis environment is `../marconi100/.venv/bin/python`. Alternatively create a Python 3.12 environment and install `requirements.lock.txt`.
+Run from this folder with Python 3.12:
 
 ```sh
 python3.12 -m venv .venv
@@ -19,9 +15,9 @@ python3.12 -m venv .venv
 .venv/bin/python run_segments.py
 ```
 
-Run from this folder. The runner executes all notebook cells and exports a self-contained HTML copy. Its kernel needs local socket access. Edit `segment_study.py` rather than the generated notebook to preserve changes on regeneration. In a notebook editor, select the analysis environment's Python interpreter.
+Edit `segment_study.py`; the runner builds and executes the notebook, exports an HTML report and writes figures and tables to `segments/`.
 
-Downloads use the revision recorded in `source-manifest.json`. The original first inspection downloaded `main`; `input_hashes.json` identifies the exact local inputs used here. Raw input data, detailed event data, environments and caches are gitignored.
+Downloads use the revision in `source-manifest.json`. `input_hashes.json` identifies the analysed files.
 
 ## Definitions
 

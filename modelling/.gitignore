@@ -1,4 +1,4 @@
-# Previous research versions stay available locally.
+# Local archives.
 /archive/
 
 # Python and notebook working files.
@@ -9,7 +9,7 @@ __pycache__/
 .cache/
 *.log
 
-# Generated reports, figures and calculation exports can be rebuilt.
+# Generated reports and results.
 *.html
 /rtx3090/outputs/
 /marconi100/results/
@@ -17,7 +17,7 @@ __pycache__/
 /vast-market/segments/
 /building-energy/fit-summary.json
 
-# Internal reviews discuss private reference code and reports.
+# Local review notes.
 /rtx3090/*review*.md
 /rtx3090/research_quantile_*.md
 /rtx3090/quantile_research.md

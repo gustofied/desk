@@ -1,4 +1,4 @@
-# GPU market segments: executed findings
+# GPU market segments
 
 ## What the segment comparison shows
 
@@ -10,10 +10,6 @@ The pooled price-only ranking is less robust: $0.15–$0.20/hour leads for the b
 
 **We cannot identify which segment was actually rented.** 88.1% of scans hit the listing cap; 47.4% of clean observed returns occur within roughly 30 minutes; 35.7% of machines visible in consecutive clean scans switch ask ID. These observations make both listing selection and offer identity important. A different ask ID may represent a different offer/configuration on the same machine, not necessarily a completed rental.
 
-
-## What was built
-
-Nine figures cover price distributions, scan caps, segment exit rates, geography, monthly changes, absence-duration sensitivity, host concentration, machine visibility, price-by-verification heatmaps and individual return examples. The notebook includes all code and detailed denominators. The downloadable CSVs retain the aggregate data underlying the charts.
 
 ## Main denominator
 
@@ -30,7 +26,7 @@ A rate of 1.98 means 1.98 observed six-hour absence starts per 100 qualifying vi
 - The US has the highest six-hour absence rate among the eight individually displayed countries (3.03%); the pooled Other category is higher. This is not a ranking of countries by rental demand.
 - Every ask ID maps to a single machine and host. However, 88 machines have more than one country label and 690 have both verification states across the capture. Segment membership is time-varying.
 
-## Interpretation for the article
+## Interpretation
 
 A single visible price distribution mixes multiple classes of offers with different persistence. Qualification criteria and listing selection can change both the apparent price and turnover signal. The empirical story is about **which offers remain visible and how the mix changes**, with actual rental demand still unobserved. The next useful data acquisition is uncapped inventory plus explicit rented-state or lease/transaction records, with the same qualifying attributes retained.
 

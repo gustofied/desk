@@ -622,10 +622,9 @@ details_table('Rental inference retained as separate context',rental_periods[
 # observations per machine-day and omit each whole host in turn. P90 is retained
 # as a separately labeled sensitivity, not substituted for P95. Differences
 # between full and matched quantile changes are descriptive, not a causal
-# allocation to selection. The earlier May 6–7 and May 26–27 checks remain
-# available for comparison. A separate panel keeps
+# allocation to selection. A separate panel keeps
 # configurations present on May 7, 27 and 30; it is a case study with selection
-# on those dates, not an independently chosen market sample. Both use unchanged
+# on those dates, not an independently chosen market sample. The panel uses
 # April reference prices.
 #
 # Quote-count checks retain the April cohort and reference prices, then require
@@ -660,8 +659,7 @@ details_table('Rental inference retained as separate context',rental_periods[
 # filling or imputation is used. Duration sensitivity repeats identification at
 # 3, 6 and 12 hours. Available inventory is the daily mean listing count across
 # valid snapshots, conditional on the capped search. It is not total marketplace
-# inventory. Budget columns remain in the shared data export for compatibility
-# but are not used in the current model or charts.
+# inventory.
 #
 # **Reproduction.** Run `python run_price_model.py`. Calculation modules are
 # `indices.py`, `daily_baseline.py`, `market_checks.py`, `rentals.py`,

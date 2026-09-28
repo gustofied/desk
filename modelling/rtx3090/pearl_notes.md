@@ -1,8 +1,6 @@
 # Pearl and GPU rental demand
 
-Research note, 28 September 2026. Supports the
-[GPU rental price article](https://www.adamsioud.com/exemplars/gpu-prices/);
-does not change the index or baseline calculation.
+Evidence behind the [GPU rental price study](https://www.adamsioud.com/exemplars/gpu-prices/).
 
 ## What the price study establishes
 
@@ -40,13 +38,6 @@ to the wider price movement.
 Hashrate measures mining work recognised by the protocol. It is not a count of
 GPUs, rented machines or rental starts. Software improvements and changes to
 the proof rules can alter it without a proportional change in physical capacity.
-
-The earlier local research recovered daily network history from PRLScan block
-metrics and compared overlapping dates with 2Miners. Its source manifest and
-exports remain in `../archive/2026-09-24-before-two-charts/rtx3090/outputs/`.
-That archive is local and ignored. The earlier comparison of rising hashrate and
-falling available asking prices uses a different price measure from the current
-index; those results should not be substituted for one another.
 
 ## The later breach reports
 

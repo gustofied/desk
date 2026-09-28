@@ -1,6 +1,6 @@
 # Marconi100: thermal behavior study
 
-Open `marconi100_analysis.ipynb` for the executed Jupyter notebook, or `marconi100_analysis.html` for a standalone rendered copy. `FINDINGS.md` contains the interpretation of the actual run.
+[Notebook](marconi100_analysis.ipynb) · [Findings](FINDINGS.md) · [Source](study.py)
 
 The study audits two small rack archives and analyzes eight available nodes selected evenly by ID among nodes with enough pre-test coverage, using January 2021–September 2022 sensor data. It compares an additive spline thermal model, PCA and a small autoencoder; inspects sustained episodes, shared changes and retrospective segmentation; and reports data coverage and chronological holdout performance.
 
@@ -15,9 +15,9 @@ python3.12 -m venv .venv
 .venv/bin/python run_notebook.py
 ```
 
-Run from this directory. The downloader fetches racks 0 and 5 (about 567 MB combined), verifies publisher MD5 checksums, and extracts regular Parquet members. The notebook creates results, images and an HTML export. Internet is only required for setup/download. The Jupyter kernel needs local socket access. `run_notebook.py` creates its own local kernel specification, so it does not alter your global Jupyter installation. In an editor, select `.venv/bin/python` as the notebook kernel.
+Run from this directory. The downloader fetches racks 0 and 5 (about 567 MB), verifies publisher checksums and extracts the Parquet files. The runner produces results, figures and an HTML report. Use `.venv/bin/python` as the notebook kernel.
 
-`study.py` is the editable percent-format source; `run_notebook.py` rebuilds the notebook from it. Edit the source if you want changes to survive regeneration. Source metadata, code and the executed notebook are kept in Git. Data, environments, Jupyter caches, generated HTML and result files remain local and are gitignored.
+Edit `study.py`; `run_notebook.py` rebuilds and executes the notebook from it.
 
 ## Provenance and limits
 

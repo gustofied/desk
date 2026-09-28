@@ -1,8 +1,7 @@
 # Data
 
-- `bronze/` contains source data exactly as supplied.
-- `silver/` contains canonical, validated records when materialized.
-- `gold/` contains derived analytical outputs when materialized.
+- `bronze/`: source files.
+- `silver/`: cleaned and validated records.
+- `gold/`: calculated results.
 
-Bronze inputs are never modified. Silver and Gold must be reproducible from
-Bronze. Stages may remain in memory when materializing them provides no value.
+Keep source files unchanged. Derived records and results must be reproducible.
