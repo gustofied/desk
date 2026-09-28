@@ -1,8 +1,10 @@
 # Desk backend
 
-A FastAPI API and Typer CLI skeleton for [Desk](../README.md).
-Ingestion, analytics and pipeline modules are placeholders. Research models
-run separately in [modelling/](../modelling/).
+A Python backend skeleton for [Desk](../README.md), built with FastAPI and Typer.
+API startup, a health endpoint, CLI commands, configuration and logging are in
+place. Ingestion, analytics and pipeline modules are laid out; their processing
+logic is still to be implemented. Research models run separately in
+[modelling/](../modelling/).
 
 ## Run
 
