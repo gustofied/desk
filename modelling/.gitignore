@@ -12,7 +12,6 @@ __pycache__/
 # Generated reports and results.
 *.html
 /rtx3090/outputs/
-/marconi100/results/
 /vast-market/results/
 /vast-market/segments/
 /building-energy/fit-summary.json
