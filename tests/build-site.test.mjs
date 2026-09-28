@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { CARD_REGISTRY } from '../src/card-registry.js';
 import { buildSite } from '../scripts/build-site.mjs';
 
-test('the public build excludes the standalone walkthrough while retaining normal site assets and data', async () => {
+test('the public build includes site assets and registered data while excluding source records', async () => {
   const projectRoot = await mkdtemp(join(tmpdir(), 'desk-build-site-test-'));
   try {
     const publicFiles = new Map([
@@ -24,9 +24,6 @@ test('the public build excludes the standalone walkthrough while retaining norma
       ['data/manifest.json', '{"version":1}'],
     ]);
     const localFiles = new Map([
-      ['walkthrough/index.html', '<title>Local walkthrough</title>'],
-      ['styles/walkthrough.css', '.walkthrough { display: block; }'],
-      ['assets/walkthrough/player.js', 'console.log("walkthrough");'],
       ['data/equities-source.json', '{"source":"local"}'],
       ['data/v1/equity-prices.json', '{"source":"retired"}'],
     ]);
@@ -49,7 +46,7 @@ test('the public build excludes the standalone walkthrough while retaining norma
     for (const [file, contents] of publicFiles) {
       assert.equal(await readFile(join(output, file), 'utf8'), contents, `${file} is published unchanged`);
     }
-    for (const file of ['walkthrough', 'styles/walkthrough.css', 'assets/walkthrough', ...localFiles.keys()]) {
+    for (const file of localFiles.keys()) {
       await assert.rejects(access(join(output, file)), { code: 'ENOENT' }, `${file} is not published`);
     }
     for (const [file, contents] of localFiles) {

@@ -1,6 +1,6 @@
 # Desk backend
 
-A Python backend skeleton for [Desk](../README.md), built with FastAPI and Typer.
+A Python backend skeleton for [Desk](../README.md), built with FastAPI.
 API startup, a health endpoint, CLI commands, configuration and logging are in
 place. Ingestion, analytics and pipeline modules are laid out; their processing
 logic is still to be implemented. Research models run separately in
