@@ -21,7 +21,7 @@ views, monitor and share. Built for anyone building or running a compute desk.
 
 The idea behind Desk is that you can compose what you want to see: compute market data, power data, your deals, or anything else relevant to your work. It is a workspace with the basic pieces to build your own compute desk. A simple Bloomberg-esque terminal, just for compute, just sleeker.
 
-The repository also includes research on [GPU rental prices](https://www.adamsioud.com/exemplars/gpu-prices/) and [energy monitoring in buildings](https://www.adamsioud.com/exemplars/building-energy/), with notebooks and code in [modelling/](modelling/). I’ve also started a simple [Python backend skeleton](backend/) for data processing and an API.
+The repository also includes research on [GPU rental prices](https://www.adamsioud.com/exemplars/gpu-prices/) and [energy monitoring in buildings](https://www.adamsioud.com/exemplars/building-energy/), with available research materials in [modelling/](modelling/). I’ve also started a simple [Python backend skeleton](backend/) for data processing and an API.
 
 See [The Compute Bazaar](https://github.com/gustofied/the-compute-bazaar) for
 my wider work on compute markets.
