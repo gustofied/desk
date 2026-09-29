@@ -14,7 +14,7 @@ sellers quote more than 10% above their April prices; 34 quote more than 100% ab
 The increase is widespread within the sample. Its size depends on the method:
 May 29's +48.4% daily change uses 29 machines and fails coverage when two daily
 quotes are required. Equal-seller weighting and a direct April comparison give
-different peak levels. [Pearl mining](pearl_notes.md) may have contributed to
+different peak levels. Pearl mining may have contributed to
 demand, but these records do not establish its share of the increase.
 
 ## Method
@@ -53,5 +53,4 @@ article data and figures go to `outputs/publication/`. Matplotlib draws the
 notebook figures; the article's D3 charts use the exported values.
 
 [Source data](https://huggingface.co/datasets/MarcusLammers/vast-rtx3090-market-6mo):
-Marc Lammers, CC BY 4.0. See also [index methodology](index_methodology_notes.md)
-and [Pearl research](pearl_notes.md).
+Marc Lammers, CC BY 4.0.

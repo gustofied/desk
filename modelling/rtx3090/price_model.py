@@ -745,7 +745,7 @@ story.insert(0,'stage',['Pre-event','Anomaly begins','Confirmed','Index peak',
     'Within residual limits','End of sample'])
 story.to_csv(OUT/'price_episode_timeline.csv')
 summary=dict(input_sha256=hashes,source_audit=source_audit,parameters=parameters,
-    review_revision=dict(review='independent_cohort_review.md',
+    review_revision=dict(
         rental_activity_comparable=False,component_timing='Detection in the visible price distribution; not individual repricing dates.',
         retrospective_panel_configurations=int(panel_summary.machines.iloc[0]),
         component_observation_thresholds=[1,2,3,6],

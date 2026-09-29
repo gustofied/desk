@@ -7,5 +7,3 @@ RTX 3090 rental prices rose. The D3 charts use values exported by the notebook.
 
 - [Notebook](price_model.ipynb)
 - [Reproduction instructions](README.md#reproduce)
-- [Index methodology](index_methodology_notes.md)
-- [Pearl research](pearl_notes.md)
